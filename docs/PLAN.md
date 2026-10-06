@@ -1,0 +1,253 @@
+# mac-monitor 구현 계획
+
+작성: 2026-10-06 · 대상 Paseo 0.10.2 (`@getpaseo/plugin` 0.10.2 = 0.10.3 dist 동일)
+
+## 0. 목적
+
+사용자의 전용 Mac에서, Paseo 호스트로 연결된 여러 Mac의 CPU·메모리 상태를 보고
+**어느 Mac이 쉬고 있고 어느 Mac이 작업 중인지**, 그리고 **무엇이(Chrome, codex, claude 등) 자원을 많이 쓰는지**
+파악한다. 무엇보다 **측정 자체가 부하를 주지 않아야** 한다.
+
+기존 `paseo-top`(npm `@xpufx/paseo-top` 0.4.3, 플러그인 id `top`)과 독립적으로 동작한다.
+플러그인 id는 `mac-monitor`.
+
+## 1. 확정된 결정 (사용자 승인)
+
+| 항목 | 결정 |
+|---|---|
+| 멀티호스트 | **공식 + 실험 병행.** 기본은 공식 API만으로 동작. 추가로 모든 Mac 지표를 한 표에 모으는 비공식 레지스트리를 넣되, 설정에서 끌 수 있고 실패 시 호스트 선택기 방식으로 자동 폴백 |
+| 앱별 상위 목록 | **첫 버전에 포함.** CPU 순·메모리 순 상위 5개 앱 그룹을 팝오버/대시보드에만 표시 |
+| 프로젝트 위치 | `~/dev/mac-monitor` (별도 git 저장소) |
+
+## 2. 범위
+
+포함
+- CPU 전체 사용률 (사용자 + 시스템, 전 코어 합산 0~100%)
+- 메모리: 사용된 메모리(앱 + 와이어드 + 압축), 캐시된 파일, 전체 용량
+- 메모리 압력: 정상 / 주의 / 위험 / 확인 불가
+- 스왑 사용량 / 전체
+- 앱 그룹별 상위 CPU·메모리 (상위 5개)
+- 호스트별 에이전트 작업 중/대기 수 (공식 SDK `agents`)
+
+제외: 토큰·비용·세션 통계·사용자 정의 셸 명령·GPU·디스크·네트워크.
+
+## 3. 리서치 요약 (상세: `docs/research/`)
+
+- `report-native.md` — macOS 측정 API 실측 (이 Mac: arm64, macOS 26.5.1, 16 GiB, 16 KB 페이지, 10코어)
+- `report-paseo-api.md` — Paseo 0.10.2 플러그인 API, 멀티호스트 제약
+- `report-paseo-top.md` — paseo-top 0.4.3 분석 (반면교사 + 재사용 패턴)
+- `prototypes/` — 실측에 쓴 C/Swift/Node 테스트 코드 (`sys.c`, `procs.c`가 핵심 참고)
+
+핵심 수치
+- 시스템 샘플 1회(vm + cpu + sysctl): **3.7 µs**
+- 전체 pid 스캔(~1,800개, `proc_pid_rusage` V4): **3.5 ms** (경로 포함 4.5 ms, 경로는 캐시)
+- 상주 헬퍼 2초 간격: 코어 1개의 **0.2~0.4%**, RSS ~3 MB
+- 비교: `ps -axo` 매번 실행 4.5%, `top -l 1` 1.63 s → 사용 금지
+- root 소유 프로세스(WindowServer 등)는 root 없이 프로세스별 수치를 읽을 수 없음 (EPERM 208/1,800)
+
+## 4. 측정 설계
+
+### 4.1 메모리 (`host_statistics64(HOST_VM_INFO64)`, 페이지 크기는 `host_page_size`)
+
+| 표시 항목 | 계산식 | 비고 |
+|---|---|---|
+| 앱 메모리 | (internal_page_count − purgeable_count) × page | |
+| 와이어드 메모리 | wire_count × page | |
+| 압축 메모리 | compressor_page_count × page | `total_uncompressed_pages_in_compressor` 쓰지 말 것 (압축 전 크기, 실측 55 GiB) |
+| **사용된 메모리** | 앱 + 와이어드 + 압축 | Activity Monitor "사용된 메모리"에 대응 |
+| 캐시된 파일 | (external_page_count + purgeable_count) × page | 사용량에 포함하지 않음 |
+| 물리 메모리 | `hw.memsize` | |
+
+- `os.freemem()`은 사용하지 않는다 (libuv = free_count × page, 실측 0.12 GiB → "99% 사용"이 나오는 원인).
+- 출처: xnu `vm_statistics.h`, exelban/Stats, htop/btop darwin (URL은 `report-native.md`).
+- Activity Monitor와 완전히 같다고 단정하지 않는다. 실측 대조 결과를 `docs/VALIDATION.md`에 기록한 뒤에만 "대조 완료"로 표현.
+
+### 4.2 메모리 압력 — 색상의 유일한 기준
+
+- `sysctl kern.memorystatus_vm_pressure_level`: 1 → 정상, 2 → 주의, 4 → 위험, 그 외/읽기 실패 → **확인 불가**.
+- 보조: `kern.memorystatus_level`(가용 %)은 세부 화면에만 참고값으로 표시.
+- RAM 사용률이 높다는 이유만으로, 또는 스왑이 존재한다는 이유만으로 위험 색을 쓰지 않는다.
+- (선택) `DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`는 레벨 변화 시 즉시 샘플을 트리거하는 보조로만.
+
+### 4.3 스왑
+
+- `sysctl vm.swapusage` (`struct xsw_usage`: xsu_total, xsu_used). 스왑 값은 정보로만 표시하고 상태 색에 쓰지 않는다.
+
+### 4.4 CPU
+
+- `host_statistics(HOST_CPU_LOAD_INFO)` 누적 tick(user, system, idle, nice)의 **2초 간격 차이**.
+- 사용률 = (Δuser + Δnice + Δsystem) / Δtotal × 100. 사용자(= user + nice)와 시스템을 따로도 제공.
+- 첫 샘플은 기준점이 없으므로 **"측정 중"** 표시.
+- 측정 간격은 헬퍼의 고정 타이머만 결정한다. 클라이언트 요청 수·에이전트 수와 무관.
+- Activity Monitor 하단 "사용자 + 시스템"과 비교 (그쪽 갱신 주기 기본 5초 → 차이 원인으로 기록).
+
+### 4.5 앱 그룹별 상위
+
+- `proc_listallpids` + `proc_pid_rusage(RUSAGE_INFO_V4)`.
+  - 메모리: `ri_phys_footprint` (Activity Monitor "메모리" 열과 같은 값)
+  - CPU 시간: `ri_user_time + ri_system_time` (mach absolute 단위 → `mach_timebase_info` 변환 필수; 이 Mac 125/3)
+- 그룹 키: 실행 경로(`proc_pidpath`)의 **가장 바깥 `.app` 번들 이름** (Chrome Helper → Google Chrome).
+  - 예외 규칙: 경로에 `/claude/versions/` → `claude`; 그 외 `.app` 밖 실행 파일은 실행 파일 이름 (codex, node 등).
+  - 경로는 (pid, 시작 시각) 키로 캐시.
+- 그룹 CPU% = Δ(CPU 시간 합) / Δ실시간. **전체 코어 합산 기준으로 정규화(÷코어 수)**해 시스템 CPU와 같은 0~100% 척도로 표시하고, 단위를 명시.
+- 앱 메모리 합계를 "RAM 점유율"로 표시하지 않는다 (footprint는 압축/스왑분 포함, 실측 합계 55 GiB > 16 GiB). 절대값(GiB)만 표시.
+- 읽지 못한 프로세스 수(EPERM)를 함께 내보내고 화면에 "root 프로세스 N개 제외"로 표시.
+- **부하 절감:** 프로세스 스캔은 최근 30초 안에 상위 목록을 요청한 클라이언트가 있을 때만 수행 (팝오버/대시보드가 열려 있을 때). 그 외에는 시스템 지표만 수집. 스캔 재개 직후 첫 주기는 "측정 중".
+
+## 5. 아키텍처
+
+```
+[각 Mac 데몬]
+  plugin server subprocess (데몬당 1개, Paseo가 보장)
+    └─ Collector (모듈 싱글턴)
+         └─ macmon-helper (C 상주 프로세스, 1개)
+              stdout: 2초마다 JSON 한 줄
+              stdin : "procs on" / "procs off"
+    └─ 최신 스냅샷 캐시 ← RPC는 캐시만 읽음 (측정 트리거 없음)
+
+[보는 Mac의 Paseo 앱]
+  호스트별 클라이언트 번들 (플러그인이 설치된 호스트마다 따로 평가됨)
+    ├─ composer pill (에이전트별) → 그 에이전트의 호스트 RPC
+    ├─ 사이드바 대시보드 (호스트 선택기 자동)
+    └─ [실험] globalThis 레지스트리로 모든 호스트 RPC 집계
+```
+
+### 5.1 네이티브 헬퍼 (`native/macmon-helper.c`)
+
+- 단일 C 파일, 외부 의존성 없음. Swift보다 빌드가 빠르고(universal 0.17 s) 오버헤드가 작음.
+- 고정 간격 타이머(mach 절대 시간 기준, 드리프트 누적 없음) 2초.
+- **원시 카운터를 출력**하고 계산은 TS에서 한다 (계산 로직을 TS 단위 테스트로 검증하기 위해). 단, 프로세스 그룹 집계와 그룹별 Δ는 헬퍼에서 계산(1,800개 원시값 전송 회피) 후 상위 N개만 출력.
+- 출력 예 (스키마 버전 필드 필수):
+  ```json
+  {"v":1,"seq":42,"t":1791261760004,"mono":123456789,
+   "sys":{"pageSize":16384,"memsize":17179869184,
+          "vm":{"internal":0,"purgeable":0,"wire":0,"compressor":0,"external":0,"free":0},
+          "cpu":{"user":0,"system":0,"idle":0,"nice":0},
+          "swap":{"total":0,"used":0},"pressureLevel":2,"memoryLevel":35},
+   "procs":null,
+   "errors":[]}
+  ```
+  각 필드는 읽기 실패 시 `null` + `errors`에 사유. 0으로 대체하지 않는다.
+- 부모 종료 감지: stdin EOF 또는 `getppid()` 변화 시 즉시 종료 (고아 프로세스 방지).
+- `--once` 모드: 한 번 출력 후 종료 (검증·폴백용).
+
+### 5.2 서버 (`index.server.ts`, `server/`)
+
+- `Collector` 싱글턴: 헬퍼 spawn 1회, 줄 단위 파싱(zod로 검증), 최신 스냅샷 + 직전 CPU 카운터 보관.
+- 신선도: 마지막 성공 샘플 기준 `> 5 s` → `stale`(지연), `> 15 s` 또는 헬퍼 종료 → `error`. 응답에 `sampledAt`, `ageMs`, `status` 포함. 이전 값은 유지하되 지연 상태로 표시.
+- 헬퍼 재시작: 지수 백오프(1 s → 최대 60 s), 동시에 2개 이상 실행되지 않도록 상태 머신으로 보호.
+- 헬퍼 실행 실패 시 단계적 폴백:
+  1. 저장소에 커밋된 prebuilt universal 바이너리 (`bin/macmon-helper`)
+  2. 실행 불가 시 CLT가 있으면 `clang`으로 플러그인 데이터 디렉터리에 빌드
+  3. 둘 다 실패 → **Node 전용 모드**: CPU는 `os.cpus()` 차이, 메모리는 2초마다 `vm_stat`/`sysctl` 실행 (실측 0.11%). 상위 목록은 미지원으로 표시.
+- macOS가 아니면(`process.platform !== "darwin"`) 헬퍼를 띄우지 않고 `unsupported` 상태 반환.
+- 정리 함수: 타이머 해제, 헬퍼 stdin 닫기 → SIGTERM → 1 s 후 SIGKILL. Paseo의 shutdown(2 s 후 SIGTERM)보다 먼저 끝나야 함.
+- 로그: 시작/재시작/폴백 전환만 기록, 샘플마다 로그 금지.
+
+RPC (`shared/contracts.ts`, 모두 zod)
+- `mac-monitor.snapshot.get` `{ includeProcesses: boolean }` → 스냅샷. `includeProcesses: true`면 프로세스 스캔 "관심" 타임스탬프를 갱신(30 s 유지).
+- `mac-monitor.host.info` → `{ hostname, serverId?, platform, helperMode: "native"|"node"|"unsupported", version }`
+  - `serverId`: 데몬 홈의 `server-id` 파일에서 읽기 시도 (실험 레지스트리 키). 경로·환경변수(`PASEO_HOME` 등)는 구현 시 확인할 것.
+
+### 5.3 클라이언트 (`index.client.tsx`, `client/`)
+
+공통
+- 모든 색은 `theme.colors` (`statusSuccess`/`statusWarning`/`statusDanger`/`foregroundMuted`), 레이아웃은 `layout.compact`.
+- React Native 기본 요소만. `rg -n "document\.|window\.|localStorage|navigator\.|<[a-z]+[ >]|className=|onClick=" client/` 결과 0건.
+- 용량 단위는 **GiB(1024³)**로 통일하고 소수 1자리. (Activity Monitor의 "GB"도 실제로는 1024³ — README와 화면 각주에 명시)
+
+composer pill (에이전트별)
+- `client.paseo.agents.list({ subscribe: {}, signal })`로 에이전트 목록을 구독해 에이전트마다 `addComposerPill({ id, workspaceId, agentId, button })` 등록 (`plugin-examples/local-plugin` 방식). cleanup에서 abort + 전부 remove.
+- `button.label`: `CPU 23% · 14.1/16 GiB` (좁으면 `23% · 14.1G`). 측정 중/확인 불가/미지원/지연은 텍스트로 구분.
+- `button.icon`: 컴포넌트 아이콘 — 메모리 압력 색 점(라벨 문자열은 색을 못 가지므로 색은 아이콘이 담당).
+- `behavior: { kind: "popover", Content }`: CPU(사용자/시스템), 메모리 세부(앱/와이어드/압축/캐시), 메모리 압력, 스왑, 앱 상위 5, 호스트 이름, 마지막 갱신 시각(상대 + 절대), 지연 상태.
+- 갱신: 화면에 보이는 pill만 공유 타이머 하나(2 s)로 RPC 1회 → 값이 바뀐 경우에만 `update({label})`. 보이는 pill 판정은 아이콘 컴포넌트 mount/unmount 카운트 (paseo-top `pill.tsx:346-378` 패턴). 팝오버는 열려 있는 동안 `useQuery({ refetchInterval: 2000 })`.
+- 동일 호스트의 여러 pill은 하나의 in-flight 요청을 공유 (single-flight).
+
+사이드바 대시보드 (`addSurface` + `addSidebarItem`)
+- 공식 모드: 선택된 호스트의 상세 + `useHosts()` 전체 목록과 각 호스트의 에이전트 작업 중/대기 수 (`getPaseoClient(serverId).agents` 구독). 다른 호스트의 CPU·메모리 칸은 "호스트 선택기로 전환" 안내.
+- 실험 모드 (5.4): 모든 호스트를 한 표에 — 호스트명 · 상태 · CPU · 사용된 메모리/전체 · 압력 · 스왑 · 작업 중 에이전트 수 · 갱신 시각. 행을 누르면 상세(앱 상위 목록 포함).
+- compact 레이아웃에서는 표 대신 카드 목록.
+
+### 5.4 실험: 멀티호스트 레지스트리
+
+- 근거: 앱은 호스트별 설치 번들을 같은 JS realm에서 평가함 (0.10.2 소스 확인, 문서화되지 않은 동작).
+- 각 설치의 client entry가 로드 시 `globalThis.__pasoMacMonitor ??= { v: 1, hosts: new Map() }`에 `{ serverId, rpc, registeredAt, pluginVersion }`를 등록, cleanup에서 자기 항목 제거.
+- 키(serverId)는 `mac-monitor.host.info` RPC로 얻고 `useHosts()`의 serverId와 매칭. 매칭 실패 시 hostname으로 표시.
+- 대시보드가 보이는 동안에만 등록된 호스트마다 2 s 간격 폴링 (호스트별 single-flight, 타임아웃 3 s).
+- 설정(`defineSettings`) `experimentalFleet` 기본 **켜짐**. 레지스트리가 없거나 자기 호스트만 있으면 공식 모드로 자동 폴백하고 그 사실을 화면에 표시.
+- 스키마 버전(`v`)이 다르면 무시. 이 기능에 의존하는 코드는 `client/fleet/` 한 곳에 격리.
+
+## 6. 오류·상태 표시 규칙
+
+| 상태 | 조건 | 표시 |
+|---|---|---|
+| 측정 중 | CPU 기준점 없음 / 프로세스 스캔 첫 주기 | "측정 중", 값 대신 — |
+| 정상 | 최신 샘플 5 s 이내 | 값 + 압력 색 |
+| 지연 | 5~15 s | 이전 값 + "N초 전" + 지연 표시(흐린 색) |
+| 오류 | 15 s 초과 / 헬퍼 중단 | 이전 값(있으면) + 마지막 갱신 시각 + 오류 |
+| 확인 불가 | 압력 sysctl 실패 | 압력만 "확인 불가"(회색) |
+| 미지원 | macOS 아님 | "macOS 전용 — 이 호스트는 미지원" |
+
+실패한 측정을 0 또는 정상으로 표시하지 않는다.
+
+## 7. 프로젝트 구조
+
+```
+mac-monitor/
+  paseo-plugin.json      { "id": "mac-monitor", "requirements": { "paseo": ">=0.10.2" } }
+  package.json           devDeps: @getpaseo/plugin 0.10.2, react, react-native, zod, typescript, vitest
+  tsconfig.json          (paseo plugin init 스캐폴드 기반, DOM lib 금지)
+  index.client.tsx
+  index.server.ts
+  client/  pill.tsx, popover.tsx, dashboard.tsx, fleet/registry.ts, format.ts
+  server/  collector.ts, helper-process.ts, node-fallback.ts, host-info.ts
+  shared/  contracts.ts, compute.ts (메모리/CPU/상태 계산 순수 함수), units.ts
+  native/  macmon-helper.c, build.sh
+  bin/     macmon-helper (prebuilt universal, ad-hoc 서명, 커밋)
+  test/    compute.test.ts, collector.test.ts (가짜 헬퍼 프로세스), format.test.ts
+  docs/    PLAN.md, VALIDATION.md, research/
+  README.md
+```
+
+- `paseo plugin init`으로 스캐폴드를 만든 뒤 위 구조로 정리할 것 (init이 만드는 tsconfig·의존성 버전을 기준으로).
+- 빌드: `clang -O2 -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -o bin/macmon-helper native/macmon-helper.c && codesign -s - -f bin/macmon-helper`
+- 로컬 디렉터리 설치는 manifest `build`를 실행하지 않음 → prebuilt 바이너리 커밋이 기본 경로. git 소스 설치용으로 `build: [["/bin/sh","native/build.sh"]]`를 두되, `build.sh`는 CLT가 없으면 prebuilt를 유지하고 성공 종료.
+
+## 8. 테스트
+
+- `npm run typecheck`
+- `compute.test.ts`: 고정 카운터 → 메모리 항목, CPU Δ(카운터 동일/역행/0 Δtotal), 압력 매핑(1/2/4/기타/null), 첫 샘플 "측정 중".
+- `collector.test.ts`: 가짜 헬퍼(node 스크립트)로 정상 스트림, 잘못된 JSON 줄, 중단 → 재시작 백오프, 지연/오류 전환, 동시 RPC 100개가 측정을 트리거하지 않음, cleanup 후 자식 프로세스 0개.
+- `format.test.ts`: GiB 표기, 상대 시각, 라벨 축약.
+- 헬퍼: `bin/macmon-helper --once | node -e`로 스키마 검증 스모크 테스트.
+
+## 9. 검증 (완료 조건)
+
+1. `paseo plugin install ~/dev/mac-monitor` → `paseo plugin ls`에서 `running`, `paseo plugin logs mac-monitor` 오류 없음. **데몬 재시작 금지** (변경 반영은 `paseo plugin reload mac-monitor`).
+2. 여러 에이전트 화면을 연 상태에서 `pgrep -fl macmon-helper` 결과 1개, 수집 간격이 2 s로 유지되는지 로그/seq로 확인.
+3. 헬퍼 자체 부하 측정 (`ps -o %cpu,rss -p <pid>` 수 분 관찰) → 결과를 README에 기록.
+4. Activity Monitor 대조: `npm run compare`(같은 시각 값 출력 CLI)와 Activity Monitor 화면을 나란히 놓고 CPU(사용자+시스템), 사용된 메모리·앱·와이어드·압축·캐시, 스왑을 3회 이상 기록. 차이와 원인(샘플링 시각·간격, 단위, 계산 기준)을 `docs/VALIDATION.md`에 기록. 화면 대조는 사용자 확인이 필요할 수 있음 — 확인 전까지 "일치"라고 쓰지 않는다.
+5. 테마 전환(라이트/다크), 좁은 창(compact)에서 pill·팝오버·대시보드 확인.
+6. 플러그인 disable → 헬퍼 프로세스 종료 확인.
+7. 다른 Mac 호스트에 설치 후 실험 레지스트리 집계 / 폴백 동작 확인 (다른 호스트 설치는 사용자 승인 후).
+
+## 10. README에 쓸 것
+
+설치(로컬 경로, 다른 호스트 `--host`/git), 업데이트(`git pull` + `paseo plugin reload`), 제거(`paseo plugin remove mac-monitor`), 측정 기준과 계산식·출처, 단위(GiB), 상태 규칙, 실험 기능과 끄는 법, 알려진 한계(root 프로세스, Activity Monitor와의 차이, x86_64 미검증), 측정된 자체 부하.
+
+## 11. 하지 말 것
+
+- 기존 `paseo-top` 또는 다른 프로젝트 수정 (`~/.paseo/top/pills` 잔여 파일 포함)
+- 데몬 재시작
+- `ps`/`top`을 주기적으로 실행
+- 클라이언트 요청으로 측정 트리거
+- 사용자 승인 없이 다른 호스트에 설치하거나 플러그인 전역 설정 변경
+
+## 12. 미해결·구현 시 확인할 것
+
+- 플러그인 서버 subprocess에서 데몬 홈(`server-id`) 경로를 얻는 방법
+- 0.10.2 `defineSettings` 정확한 시그니처 (`report-paseo-api.md` 참고, 타입 정의로 확인)
+- pill 아이콘 컴포넌트가 받는 props에서 theme 접근 방식 (타입 정의 `dist/client/buttons.d.ts`)
+- x86_64 슬라이스 실행 검증 (Rosetta 없음 → Intel Mac 호스트가 있으면 그때)
+- 0.11 업그레이드 시 `addScreen` 등 API 변경 대응 (지금은 0.10.2 API만 사용)
