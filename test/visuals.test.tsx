@@ -34,11 +34,11 @@ it('앱 탭 전환에서 목록과 상대 비교 기준을 유지', async () => 
   const tabs = renderer!.root.findAll(node => node.props.accessibilityRole === 'tab');
   await act(async () => tabs[1].props.onPress());
   expect(JSON.stringify(renderer!.toJSON())).toContain('Google Chrome');
-  expect(JSON.stringify(renderer!.toJSON())).toContain('목록 내 최대값 대비');
+  expect(JSON.stringify(renderer!.toJSON())).toContain('앱 간 상대 크기');
   const bars = renderer!.root.findAllByType(Bar);
   expect(bars.find(b => b.props.label.startsWith('Google Chrome'))?.props.value).toBe(100);
   expect(bars.find(b => b.props.label.startsWith('claude'))?.props.value).toBe(25);
-  expect(JSON.stringify(renderer!.toJSON())).toContain('할당된 스왑 없음');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('1 GiB =');
 });
 it('RAM 사용률이 높아도 상태 색은 OS 압력만 기준', () => {
   expect(pressureColor(sample, props.theme)).toBe(props.theme.colors.statusSuccess);
@@ -59,8 +59,17 @@ it('10개 순위를 스크롤 영역에 표시하고 기본 폰트 크기를 유
   await act(async () => { renderer = create(<Details {...props} snapshot={{ ...sample, processes }} name="Mac" />); });
   const scroll = renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록');
   expect(scroll.props.nestedScrollEnabled).toBe(true);
-  expect(scroll.props.style.maxHeight).toBe(320);
+  expect(scroll.props.style.height).toBe(320);
   const appBars = renderer!.root.findAllByType(Bar).filter(b => b.props.label.startsWith('앱 '));
   expect(appBars).toHaveLength(TOP_APP_LIMIT);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('fontSize');
+});
+it('로딩·완료·오류·미지원 모두 같은 높이의 목록을 유지', async () => {
+  await act(async () => { renderer = create(<Details {...props} name="Mac" />); });
+  const viewport = () => renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록');
+  expect(viewport().props.style).toMatchObject({ height: 320, flexGrow: 0, flexShrink: 0 });
+  for (const next of [{ ...sample, processes: null, processesStatus: 'warming' as const }, sample, { ...sample, processes: null, processesStatus: 'error' as const }, { ...emptySnapshot('node'), processesStatus: 'unsupported' as const }]) {
+    await act(async () => renderer!.update(<Details {...props} snapshot={next} name="Mac" />));
+    expect(viewport().props.style).toMatchObject({ height: 320, flexGrow: 0, flexShrink: 0 });
+  }
 });
