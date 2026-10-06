@@ -327,10 +327,14 @@ clang -O2 -o /tmp/mac-monitor-measure-load test/manual/measure-load.c
 표시 반올림이나 읽는 시각만으로 이 합계 차이가 해소된다고 판단할 수 없다.
 
 PLAN 4.1절의 `사용 = 앱 + 와이어드 + 압축`과 각 카운터 식은 구현·단위 테스트로 확인했다.
-Activity Monitor 합계가 포함하는 다른 영역이나 내부 계산식은 이 검증에서 확정하지 못했다.
-예약·관리 영역 등을 원인으로 단정하지 않으며 추측에 따른 보정이나 `total − free`로의 변경은 하지 않았다.
+이 직접 화면 대조 단계에서는 Activity Monitor 내부 계산식을 확정하지 못했으며 제품 식을 바꾸지 않았다.
+후속 원인 조사에서 설치된 Apple 실행 파일을 추적해 `hw.memsize − (free − speculative + external) × page`를 확인했다.
+18:48~18:51 KST의 원시 값 100회에서 두 식의 차이는 0.538~0.587 GiB였고,
+주된 차이는 물리 RAM과 usable RAM 사이 예약 영역 0.510208 GiB였다. purgeable과 작은 카운터 잔여 차이가 더해진다.
+후속 수치는 같은 원시 값에 적용한 식의 비교이며 새로운 Activity Monitor 화면 대조로 표현하지 않는다.
+실행 파일 경로·재현 소스·한계는 [합계 차이 조사](research/report-memory-accounting.md)에 기록했다.
 [Apple 메모리 용어](https://support.apple.com/guide/activity-monitor/actmntr1004/mac)는 항목의 의미를 설명하지만,
-이 차이의 구체적인 카운터 대응은 설명하지 않는다. 계산식 유지 근거는 [DECISIONS.md](DECISIONS.md)에 기록했다.
+이 차이의 구체적인 카운터 대응은 설명하지 않는다. 제품 계산식 유지 근거는 [DECISIONS.md](DECISIONS.md)에 기록했다.
 
 | 화면/CLI 시각 KST | 출처 | CPU 사용자 % | 시스템 % | 합계 % |
 |---|---|---:|---:|---:|
