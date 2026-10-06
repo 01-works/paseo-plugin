@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
 import { createPaseoClient } from '@getpaseo/client';
-import { AgentDirectory } from '../../client/directory.ts';
+import { createAgentDirectory } from '../../client/directory.ts';
 import { scopeForest, countForest } from '../../shared/forest.ts';
 const home = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
@@ -21,7 +21,7 @@ try {
   const list = api.agents.list.bind(api.agents);
   let reads = 0, leases = 0;
   api.agents.list = options => { reads++; if (options?.subscribe) leases++; return list(options); };
-  directory = new AgentDirectory(api, 'local-validation');
+  directory = createAgentDirectory(api, 'local-validation');
   releaseWatch = directory.watch();
   await directory.start();
   const deadline = Date.now() + 15000;

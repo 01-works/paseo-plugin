@@ -27,9 +27,9 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
     Icon: () => null, copyText: vi.fn(async () => {}), useToast: () => ({ show() {}, error() {} }),
     Modal: Object.assign(props => props.children, { Content: props => createPortal(props.children, document.getElementById('portal')) }) };
 });
-import { AgentDirectory } from '../client/directory';
+import { createAgentDirectory } from '../client/directory';
 import { contributePills } from '../client/pill';
-import { GraphViews } from '../client/view-state';
+import { createGraphViews } from '../client/view-state';
 import { page, raw } from './fixtures';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 let root, directory, stop;
@@ -45,8 +45,8 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
   const lease = { subscriptionId: 's', subscribe: observer => {
     observer.snapshot({ ...snapshot, subscriptionId: 's' }); return () => {};
   }, release: async () => {} };
-  directory = new AgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }) } }, 'h');
-  const views = new GraphViews(); let button;
+  directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }) } }, 'h');
+  const views = createGraphViews(); let button;
   const client = { addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
   stop = contributePills(client, directory, views); await directory.start();
   const Icon = button.icon;

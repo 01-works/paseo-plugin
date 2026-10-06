@@ -1,7 +1,7 @@
 {
   "name": "paseo-agent-graph",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Paseo 에이전트의 부모·자식 구조 보기",
   "files": [
     "paseo-plugin.json",
@@ -25,6 +25,7 @@
     "@types/react": "~19.2.0",
     "@types/react-dom": "19.1.9",
     "@types/react-test-renderer": "^19.3.0",
+    "esbuild": "0.28.1",
     "jsdom": "26.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",

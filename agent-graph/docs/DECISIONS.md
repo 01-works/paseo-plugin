@@ -74,3 +74,19 @@ mac-monitor와 같은 바깥 Pressable guard로 React portal의 클릭이 pill a
 측정과 실행 결과는 VALIDATION에 기록한다. 이 변경도 로컬 설치만 반영하며 GitHub에는 push하지 않는다.
 
 참고: [D3 simulation의 stop/tick](https://d3js.org/d3-force/simulation), [충돌 force](https://d3js.org/d3-force/collide), [RN PanResponder](https://reactnative.dev/docs/panresponder).
+
+## 7. iOS의 pill 누락과 번들 문법 호환 — 0.1.2
+
+사용자는 같은 iOS 앱에서 mac-monitor는 보이지만 agent-graph pill은 보이지 않는다고 보고했다. 플랫폼을 숨기는 조건은 없었다.
+실제 로컬 데몬의 client catalog에서 0.1.1 번들을 받아 RN 0.81.5에 포함된 Hermes 컴파일러에 전달하자 `AgentDirectory`, `GraphViewState`, `GraphViews`의 클래스 표현식에서 `Invalid expression encountered`가 발생했다.
+
+Paseo 0.10.2의 [`compiler.ts`](https://github.com/getpaseo/paseo/blob/v0.10.2/packages/server/src/server/plugins/compiler.ts)는 client를 es2020으로 묶고 async 문법과 CommonJS interop을 보정하지만 클래스 문법은 변환하지 않는다.
+이 번들은 앱의 [`evaluate.ts`](https://github.com/getpaseo/paseo/blob/v0.10.2/packages/app/src/plugins/evaluate.ts)에서 문자열로 평가된다. 따라서 iOS는 pill 등록 전에 구문 분석에서 멈출 수 있고, 데몬의 `running`·`Plugin ready`만으로 client 로드 성공을 확인할 수 없다.
+mac-monitor의 client 진입 경로에는 해당 클래스 문법이 없다. D3 계산이나 모바일 표시 조건이 이번 재현의 원인은 아니다.
+
+- 세 클래스를 함수와 closure로 생성하는 방식으로 바꿨다. 구독·캐시·세대 검사·정리와 뷰 상태의 공개 동작은 유지한다.
+- `esbuild@0.28.1`을 검증용 개발 의존성으로 추가해 0.10.2 client compiler와 같은 주요 설정으로 제품 entry를 묶는다. 새 제품 런타임 의존성은 추가하지 않는다.
+- 이전 문법이 Hermes에서 실패하는 재현, 새 전체 번들의 Hermes 컴파일, iOS 형태의 pill 등록·탭·compact 목록을 자동 검증한다.
+- 로컬 reload 후 실제 데몬이 배포하는 수정 번들도 Hermes 컴파일을 통과했다. 0.11 미검증 호환 범위는 확대하지 않는다.
+
+실제 iPhone 화면을 직접 제어하지 못했으므로 표시·터치 확인까지 완료했다고 기록하지 않는다. 데몬 재시작·mac-monitor 변경·GitHub push는 수행하지 않는다.

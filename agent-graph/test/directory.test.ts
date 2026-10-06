@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OwnedSubscription, PaseoApi, PaseoAgentListResult, SubscriptionObserver } from '@getpaseo/client';
-import { AgentDirectory } from '../client/directory';
+import { createAgentDirectory, type AgentDirectory } from '../client/directory';
 import { page, raw } from './fixtures';
 type Observer = SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>;
 const directories: AgentDirectory[] = [];
@@ -12,7 +12,7 @@ function harness(first = page([raw('a')]), next?: (cursor?: string) => Promise<P
     subscribe: vi.fn((value: Observer) => { observer = value; value.snapshot({ ...first, subscriptionId: 's' }); return vi.fn(); }), release };
   const list = vi.fn(async (options: { subscribe?: {}; page?: { cursor?: string } }) =>
     options.subscribe ? { ...first, subscription: lease } : next ? await next(options.page?.cursor) : page([]));
-  const directory = new AgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
+  const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
   directories.push(directory);
   return { directory, list, lease, release, snapshot: (value: PaseoAgentListResult) => observer.snapshot({ ...value, subscriptionId: 's' }),
     update: (agent: ReturnType<typeof raw>) => observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent, project: {} } } as Parameters<Observer['update']>[0]),

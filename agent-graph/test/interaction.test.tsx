@@ -3,8 +3,8 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { PluginButton, PluginButtonIconProps, PluginClientContext } from '@getpaseo/plugin/client';
 import type { PaseoApi, PaseoAgentListResult, SubscriptionObserver } from '@getpaseo/client';
-import { AgentDirectory } from '../client/directory';
-import { GraphViews } from '../client/view-state';
+import { createAgentDirectory } from '../client/directory';
+import { createGraphViews } from '../client/view-state';
 import { page, raw } from './fixtures';
 
 vi.mock('react-native', async () => {
@@ -39,12 +39,16 @@ import { Graph } from '../client/graph';
 import { GraphContent } from '../client/content';
 import { GraphModal } from '../client/modal';
 import { copyText } from '@getpaseo/plugin/client/react-native';
+import { Platform } from 'react-native';
 const palette = { foreground: '#eee', foregroundMuted: '#aaa', surface0: '#111', surface1: '#222', surface2: '#333', border: '#444',
   accent: '#88c', statusSuccess: '#0a0', statusWarning: '#aa0', statusDanger: '#a00' };
 const props = { theme: { colors: palette }, host: { id: 'h', label: '호스트' }, layout: { compact: false, platform: 'web' }, size: 14, color: '#aaa' } as PluginButtonIconProps;
 let renderer: ReactTestRenderer | undefined;
 const cleanups: (() => unknown)[] = [];
-beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; vi.useFakeTimers(); });
+beforeEach(() => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  Platform.OS = 'web'; vi.useFakeTimers();
+});
 afterEach(async () => {
   await act(async () => renderer?.unmount()); renderer = undefined;
   for (const cleanup of cleanups.splice(0)) await cleanup(); vi.useRealTimers();
@@ -55,8 +59,8 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const release = vi.fn(async () => {});
   const lease = { subscriptionId: 's', subscribe: (value: typeof observer) => { observer = value; value.snapshot({ ...snapshot, subscriptionId: 's' }); return vi.fn(); }, release };
   const list = vi.fn(async () => ({ ...snapshot, subscription: lease }));
-  const directory = new AgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
-  const views = new GraphViews();
+  const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
+  const views = createGraphViews();
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
   const openPanel = vi.fn();
   const client = { openPanel, addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
@@ -129,8 +133,23 @@ it('compact는 확대 도구 없이 트리와 기본 텍스트를 표시', async
     expect(text.props.style.color).toBeTruthy(); expect(text.props.style.fontSize).toBeUndefined();
   }
 });
+it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 목록을 표시', async () => {
+  Platform.OS = 'ios';
+  const h = await setup(), registration = h.buttons.get('a')!;
+  const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  const ios = { ...props, layout: { compact: true, platform: 'ios' as const } };
+  await act(async () => { renderer = create(<Icon {...ios} />); });
+  expect(registration.update).toHaveBeenLastCalledWith({ label: '구조 2' });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); });
+  expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(1);
+  expect(renderer!.root.findAllByType(Graph)).toHaveLength(0);
+  expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(1);
+  expect(h.list).toHaveBeenCalledOnce();
+});
 it('뷰 상태는 호스트·workspace·에이전트별로 구분하며 접기와 배율을 보존', () => {
-  const views = new GraphViews(), first = views.forAgent('h', 'w', 'a');
+  const views = createGraphViews(), first = views.forAgent('h', 'w', 'a');
   first.toggle('child'); first.zoomTo(1.25);
   expect(views.forAgent('h', 'w', 'a')).toBe(first);
   expect(views.forAgent('other', 'w', 'a').getSnapshot().collapsed.size).toBe(0);

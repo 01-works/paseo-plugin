@@ -1,6 +1,6 @@
 # agent-graph
 
-Paseo 에이전트의 부모·자식 구조를 pill에서 열어 보는 플러그인입니다. 정적 D3 force 그래프와 접이식 목록을 제공합니다. **Paseo 0.10.2**, 플러그인 0.1.1 기준입니다.
+Paseo 에이전트의 부모·자식 구조를 pill에서 열어 보는 플러그인입니다. 정적 D3 force 그래프와 접이식 목록을 제공합니다. **Paseo 0.10.2**, 플러그인 0.1.2 기준입니다.
 
 ## 설치
 
@@ -14,6 +14,8 @@ paseo plugin install "$PWD"
 
 설치 후 에이전트 입력창의 `구조 N · 실행 R` pill을 누릅니다. 100개 이상이거나 compact 화면에서는 `구조 N`으로 줄여 표시합니다.
 플러그인 사용은 Paseo 설정에서 활성화되어 있어야 합니다.
+
+0.1.2는 iOS에서 pill이 보이지 않던 번들 문법 호환 문제를 수정했습니다. 0.1.0·0.1.1을 사용했다면 소스를 갱신하고 reload합니다.
 
 수정 반영은 `paseo plugin reload agent-graph`, 비활성화·복귀는 `paseo plugin disable agent-graph`와 `paseo plugin enable agent-graph`입니다.
 제거는 `paseo plugin remove agent-graph`입니다. 데몬을 재시작할 필요가 없습니다.
@@ -83,7 +85,9 @@ node --import tsx test/manual/live.mjs
 0.1.1의 정적 force 배치 120 tick 중앙값은 209개 **127ms**, 500개 **367ms**, 2,000개 **1,815ms**였습니다.
 이는 Node의 순수 배치 비용이며 실제 Paseo 렌더링 시간·전체 CPU·추가 메모리를 측정한 값은 아닙니다. 기존 `bench`는 초기 계층 배치의 비교용입니다.
 실제 데스크톱 다크 화면의 209개 구조에서 전체 보기·카드 확대·드래그·이름 검색·접기/복원·ID 복사를 확인했습니다.
-타입 검사·46개 테스트·DOM/기본 폰트 audit가 통과했습니다. 최초 설치의 disable/enable도 검증했습니다. GitHub workflow는 추가했으며 원격 실행은 아직 하지 않았습니다.
+타입 검사·49개 테스트·DOM/기본 폰트 audit가 통과했습니다. 제품 entry와 실제 설치 번들을 React Native에 포함된 Hermes 컴파일러로 검증했습니다.
+iOS 형태의 pill 등록·탭·목록 표시는 호스트 mock 테스트로 확인했으며, 실제 iPhone 터치·표시는 별도 확인이 필요합니다.
+최초 설치의 disable/enable도 검증했습니다. GitHub workflow는 추가했으며 원격 실행은 아직 하지 않았습니다.
 
 상세 결과는 [VALIDATION](docs/VALIDATION.md), 구현 중 판단은 [DECISIONS](docs/DECISIONS.md)에 기록합니다.
 설계와 출처는 [PLAN](docs/PLAN.md), [REFERENCES](docs/REFERENCES.md)에서 볼 수 있습니다.

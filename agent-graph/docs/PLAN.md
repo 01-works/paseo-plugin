@@ -6,6 +6,8 @@
 
 상태: 0.1.1 정적 D3 force 배치와 드래그·검색 개선을 로컬 반영했다. 사용자의 많은 subagent 탐색 불편과 D3 전환 요청에 따라 초기 계층 배치·75% 최소 배율·드래그 제외안을 변경했다. 아래 초기 설계와 달라진 내용은 DECISIONS 6절과 VALIDATION의 후속 검증을 따른다.
 
+후속 0.1.2: iOS에서 pill이 누락되는 원인을 번들에 남은 클래스 문법으로 재현했다. directory·뷰 상태를 함수 기반 생성으로 바꾸고, 제품 번들의 Hermes 문법 검증을 추가했다. 데이터 수집·표시 구조·지원 버전 범위는 유지한다. 근거와 검증 범위는 DECISIONS 7절과 VALIDATION에 기록한다.
+
 위치: `01-works/paseo-plugin/agent-graph/`
 
 기준 환경: Paseo CLI·daemon·SDK 0.10.2

@@ -1,10 +1,10 @@
 # 검증 기록
 
-검증일: 2026-10-06 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.1이며, 최초 0.1.0 결과는 아래에 이력으로 유지한다.
+검증일: 2026-10-06 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.2이며, 이전 결과는 아래에 이력으로 유지한다.
 
 ## 자동 검증
 
-최종 결과: `npm run typecheck` 통과, `npm test` **6개 파일·46개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 최초 0.1.0의 테스트는 38개였다.
+최종 결과: `npm run typecheck` 통과, `npm test` **7개 파일·49개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 0.1.0의 테스트는 38개, 0.1.1은 46개였다.
 
 | 범위 | 확인 내용 |
 |---|---|
@@ -13,6 +13,7 @@
 | directory | 단일 lease/single-flight, 200개 밖 update, 페이지/update/remove 경합, reconnect 캐시·세대 검사, 2,000 상한, 알림 묶기, stale·타이머 정리, 늦은 lease release, 실패 뒤 삭제 유지, 연속 재시도 |
 | React 상호작용 | pill 3개도 공유 조회, 모달·선택·배율·geometry 유지, 큰 보기 context, compact 트리, 기본 Text 크기·색, host/workspace별 뷰 상태, ID 복사와 길게 누르기 |
 | React DOM portal | 노드·확대·ID 복사·본문 클릭 후 바깥 pill action 1회 유지, 배율·선택·모달 유지 |
+| 모바일 번들 | 이전 클래스 문법의 Hermes 오류 재현, 제품 entry 전체의 Hermes 컴파일, iOS pill 등록·탭·compact 목록 표시 |
 
 UI 단위 테스트는 React Native·Paseo 호스트 요소를 mock한다. portal 검증은 JSDOM에서 실제 React DOM portal의 이벤트 경계를 확인한다. 실제 Paseo UI 전체의 대체 검증은 아니다.
 제품 client에는 DOM/HTML·Canvas/SVG·React Flow·직접 clipboard 접근이 없다. DOM은 portal 테스트 파일에서만 사용한다. TypeScript lib에는 DOM이 없다.
@@ -108,3 +109,30 @@ GitHub workflow 파일을 추가했지만 아직 push하지 않아 원격 CI 결
 초기 강도 설정으로 간단히 측정한 2,000개 약 0.85초는 최종 비용으로 사용하지 않는다. 위 값은 카드 충돌 회피를 포함한 최종 설정이다.
 UI에서는 6ms 단위로 나누지만 한 tick이 더 오래 걸릴 수 있다. 이 Node 총 계산 시간을 UI가 멈춘 시간·FPS·전체 CPU·RSS로 해석하지 않는다.
 상태 갱신에는 새 force 계산을 하지 않으나 React 표시·directory 처리 비용은 남는다. 2,000개의 실제 화면·모바일·라이트 테마·추가 RSS/FPS는 미검증이다.
+
+## 0.1.2 iOS pill 누락 수정
+
+사용자 보고: iOS에서 mac-monitor pill은 보이지만 agent-graph는 보이지 않음. iOS 앱 버전은 제공되지 않았다.
+
+### 실제 번들 구문 분석
+
+검증용 로컬 DaemonClient의 `getPluginCatalog()`로 실제 설치의 client bundle을 받아 임시 파일에 저장했다. 인증 값은 출력하지 않았으며 검증 연결만 종료했다.
+React Native 0.81.5에 포함된 `sdks/hermesc/osx-bin/hermesc`(HBC 96)의 `-emit-binary`로 읽었다.
+
+| 번들 | 결과 |
+|---|---|
+| 이전 0.1.1, 100,820 bytes | 종료 코드 2. 세 클래스 표현식에서 `Invalid expression encountered` |
+| 수정 0.1.2, 100,070 bytes | 종료 코드 0. 전체 번들 컴파일 성공 |
+
+이는 iOS 엔진의 문법 호환 검증이며 실제 iPhone 화면·React Native 렌더링·전체 런타임 실행을 검증한 것은 아니다.
+
+### 자동·로컬 검증
+
+- `test/client-bundle.test.mjs`: 이전 클래스 문법의 실패와 제품 entry 전체의 Hermes 컴파일 성공을 확인한다. esbuild 설정은 Paseo 0.10.2의 client target·외부 모듈·async 보정을 따른다.
+- iOS 플랫폼·compact props로 pill을 등록하고 탭하면 GraphModal의 목록을 표시한다. 라벨은 `구조 2`, 공유 목록 조회는 한 번이다. RN·Paseo 호스트 요소를 mock한 검사다.
+- 기존 directory 11개, 그래프 상태·캐시·드래그·검색·portal 검증을 포함한 49개 테스트와 타입 검사·audit가 통과했다.
+- 수정된 directory를 실제 로컬 API에 연결해 297개 에이전트·228개 부모 관계를 2페이지와 구독 한 개로 읽었다. 이후 5초 동안 추가 조회는 없었고, 209개 구조도 유지됐다.
+- `agent-graph`만 reload하여 enabled/running을 확인했다. 실제 수정된 catalog bundle도 위 Hermes 검사에 통과했다. 플러그인 로그의 마지막 준비 시각은 22:45:46 KST이며 stderr·오류는 없다.
+- 실화면 확인을 위한 CUA의 Paseo 선택이 시간 초과됐다. 실제 iPhone pill 표시·터치와 새 버전의 데스크톱 실화면은 미검증이다.
+
+데몬 재시작·다른 플러그인 반영·원격 호스트 조작·GitHub push는 수행하지 않았다.
