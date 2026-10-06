@@ -8,7 +8,7 @@ import { snapshotSchema } from '../shared/contracts';
 
 const collectors: Collector[] = [], dirs: string[] = [];
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-async function until(predicate: () => boolean, ms = 3000) { const end = Date.now() + ms; while (!predicate()) { if (Date.now() > end) throw new Error('상태 대기 시간 초과'); await pause(10); } }
+async function until(predicate: () => boolean | Promise<boolean>, ms = 3000) { const end = Date.now() + ms; while (!await predicate()) { if (Date.now() > end) throw new Error('상태 대기 시간 초과'); await pause(10); } }
 function fake(code: string, extras: ConstructorParameters<typeof Collector>[0] = {}) {
   const c = new Collector({ platform: 'darwin', command: { file: process.execPath, args: ['-e', code] }, log: () => {}, ...extras }); collectors.push(c); return c;
 }
@@ -95,9 +95,12 @@ describe('캐시 및 헬퍼 수명주기', () => {
     const c = fake(code, { backoffMs: 100 });await c.start();
     await until(() => c.snapshot().status === 'error');
     await until(() => c.snapshot().seq === 1 && c.snapshot().status !== 'error');
-    await until(() => c.snapshot().status === 'error');await pause(300);
-    const starts = (await readFile(file, 'utf8')).trim().split('\n').map(l => JSON.parse(l) as {pid:number;t:number});
+    await until(() => c.snapshot().status === 'error');
+    // 백오프가 끝나도 OS의 프로세스 시작은 늦어질 수 있다. 고정 sleep 대신 실제 세 번째 시작을 기다린다.
+    let starts: {pid:number;t:number}[] = [];
+    await until(async () => { starts = (await readFile(file, 'utf8')).trim().split('\n').map(l => JSON.parse(l) as {pid:number;t:number}); return starts.length >= 3; });
     expect(starts.length).toBeGreaterThanOrEqual(3);expect(starts[1].t-starts[0].t).toBeGreaterThanOrEqual(100);expect(starts[2].t-starts[1].t).toBeGreaterThanOrEqual(200);
+    expect(starts.filter(({ pid }) => { try { process.kill(pid, 0); return true; } catch { return false; } }).length).toBeLessThanOrEqual(1);
     await c.stop(); const n = (await readFile(file, 'utf8')).length;await pause(450);expect((await readFile(file,'utf8')).length).toBe(n);
     for (const { pid } of starts) expect(() => process.kill(pid, 0)).toThrow();
   });
