@@ -56,11 +56,15 @@ jobs:
           bin/macmon-helper --once | node --import tsx --input-type=module -e '
             import assert from "node:assert/strict";
             import { rawSchema } from "./shared/contracts.ts";
+            import { computeMemory } from "./shared/compute.ts";
             let input = "";
             for await (const chunk of process.stdin) input += chunk;
             const sample = rawSchema.parse(JSON.parse(input));
             assert.ok(sample.sys.pageSize > 0 && sample.sys.memsize > 0);
             assert.ok(sample.sys.cpu && sample.sys.vm);
+            assert.ok(sample.sys.vm.speculative !== null);
+            const memory = computeMemory(sample.sys);
+            assert.ok(memory && memory.used <= memory.total);
             assert.deepEqual(sample.errors, []);
             console.log(process.arch + " prebuilt 실행 확인 완료");
           '
@@ -72,9 +76,14 @@ jobs:
       - name: 네이티브 JSON 스키마 확인
         run: |
           bin/macmon-helper --once | node --import tsx --input-type=module -e '
+            import assert from "node:assert/strict";
             import { rawSchema } from "./shared/contracts.ts";
+            import { computeMemory } from "./shared/compute.ts";
             let input = "";
             for await (const chunk of process.stdin) input += chunk;
-            rawSchema.parse(JSON.parse(input));
+            const sample = rawSchema.parse(JSON.parse(input));
+            assert.ok(sample.sys.vm && sample.sys.vm.speculative !== null);
+            assert.ok(computeMemory(sample.sys));
+            assert.deepEqual(sample.errors, []);
             console.log("네이티브 JSON 스키마 확인 완료");
           '
