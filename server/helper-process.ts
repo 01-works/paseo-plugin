@@ -44,9 +44,18 @@ export async function buildLocal(root: string, signal?: AbortSignal): Promise<st
 async function run(command: string, args: string[], signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'], signal });
-    let message = ''; child.stderr.on('data', value => { message = (message + value).slice(-2000); });
+    let message = '', failure: Error | undefined;
+    child.stderr.on('data', value => { message = (message + value).slice(-2000); });
     const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
-    child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`${command}: ${message || code}`)); });
+    let abortKill: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => { child.kill('SIGTERM'); abortKill ??= setTimeout(() => child.kill('SIGKILL'), 1000); };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    child.once('error', error => { failure = error; });
+    // AbortError도 실제 close까지 기다려 컴파일 자식을 정리한다.
+    child.once('close', code => {
+      clearTimeout(timer); clearTimeout(abortKill); signal?.removeEventListener('abort', onAbort);
+      if (failure) reject(failure); else if (code === 0) resolve(); else reject(new Error(`${command}: ${message || code}`));
+    });
   });
 }
