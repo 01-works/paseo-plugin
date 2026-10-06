@@ -7,7 +7,7 @@ import { hostInfoRpc, type Snapshot } from '../shared/contracts';
 import { emptySnapshot } from '../shared/compute';
 import { useSnapshot } from './data';
 import { gib, percent, pressureLabels, statusLabels, displaySnapshot, appPercent } from './format';
-import { Badge, Bar, Card, Legend, barPercent, type Theme } from './visuals';
+import { Badge, Bar, Card, Legend, barPercent, usageColor, type Theme } from './visuals';
 import { GroupTermination, ProcessPanel } from './processes';
 
 export function pressureColor(s: Snapshot | null | undefined, theme: Theme): string {
@@ -30,7 +30,8 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
       <View style={{ flexDirection: 'row', gap: 8 }}>
       {(['cpu', 'memory'] as const).map(key => <Pressable key={key} accessibilityRole="button"
         accessibilityLabel={`${key === 'cpu' ? 'CPU' : '메모리'} 순위로 정렬`} accessibilityState={{ selected: tab === key }}
-        onPress={() => setTab(key)} style={{ width: key === 'cpu' ? 64 : 88, alignItems: 'flex-end', paddingVertical: 4 }}>
+        onPress={() => setTab(key)} style={({ pressed }) => ({ width: key === 'cpu' ? 64 : 88, alignItems: 'flex-end', paddingVertical: 6,
+          paddingHorizontal: 4, borderRadius: 4, backgroundColor: tab === key || pressed ? c.surface2 : undefined })}>
         <Text style={{ color: tab === key ? c.foreground : c.foregroundMuted, fontWeight: '600' }}>{key === 'cpu' ? 'CPU' : '메모리'}{tab === key ? ' ↓' : ''}</Text>
       </Pressable>)}
       </View>
@@ -43,12 +44,16 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
     </View> : null}
     {groups.map((g, i) => <View key={g.name} accessibilityLabel={`${i + 1}위 ${g.name}, 프로세스 ${g.processCount}개`}
       style={{ flexDirection: 'row', flexWrap: compact ? 'wrap' : 'nowrap', gap: 8, alignItems: 'center', minHeight: 38, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
-      <View style={{ flex: 1, minWidth: 0 }}><Pressable accessibilityRole="button" accessibilityLabel={`${g.name} 프로세스 보기`} disabled={!canInspect || muted}
-        onPress={() => onSelect(g.name, 'processes')}><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground }}>{g.name}</Text></Pressable></View>
-      <View style={{ width: 64, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontVariant: ['tabular-nums'] }}>{appPercent(g.cpuPercent)}</Text></View>
-      <View style={{ width: 88, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontVariant: ['tabular-nums'] }}>{gib(g.memoryBytes)}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${g.name} 프로세스 보기`} disabled={!canInspect || muted}
+        onPress={() => onSelect(g.name, 'processes')} style={({ pressed }) => ({ flex: 1, minWidth: 0, minHeight: 32, justifyContent: 'center',
+          borderRadius: 4, backgroundColor: pressed ? c.surface2 : undefined })}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: muted ? c.foregroundMuted : c.foreground }}>{g.name}</Text>
+      </Pressable>
+      <View style={{ width: 64, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontWeight: tab === 'cpu' ? '600' : '400', fontVariant: ['tabular-nums'] }}>{appPercent(g.cpuPercent)}</Text></View>
+      <View style={{ width: 88, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontWeight: tab === 'memory' ? '600' : '400', fontVariant: ['tabular-nums'] }}>{gib(g.memoryBytes)}</Text></View>
       {canInspect ? <Pressable accessibilityRole="button" accessibilityLabel={`${g.name} 전체 종료 선택`} disabled={muted}
-        onPress={() => onSelect(g.name, 'terminate')} style={{ width: compact ? '100%' : 68, alignItems: 'flex-end', paddingVertical: 4 }}>
+        onPress={() => onSelect(g.name, 'terminate')} style={({ pressed }) => ({ width: compact ? '100%' : 68, alignItems: 'flex-end',
+          paddingVertical: 6, borderRadius: 4, backgroundColor: pressed ? c.surface2 : undefined })}>
         <Text style={{ color: c.foregroundMuted }}>전체 종료</Text>
       </Pressable> : null}
     </View>)}
@@ -66,8 +71,10 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
   }, [snapshot, error]);
   const muted = s.status !== 'ok';
   const valueColor = muted ? c.foregroundMuted : c.foreground;
+  const cpuUsage = barPercent(s.cpu?.total);
+  const diskUsage = barPercent(s.disk?.used, s.disk?.total ?? 0);
   const memoryParts = [
-    { label: '앱', value: s.memory?.app, color: c.accent },
+    { label: '앱', value: s.memory?.app, color: pressureColor(s, theme) },
     { label: '와이어드', value: s.memory?.wired, color: c.foregroundMuted },
     { label: '압축', value: s.memory?.compressed, color: c.foreground },
   ];
@@ -94,18 +101,19 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
     <Card theme={theme}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
         <Text selectable style={{ color: c.foregroundMuted }}>CPU</Text>
-        <Text selectable style={{ color: valueColor, fontVariant: ['tabular-nums'] }}>{percent(s.cpu?.total)}</Text>
+        <Text selectable style={{ color: valueColor, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{percent(s.cpu?.total)}</Text>
       </View>
-      <Bar theme={theme} value={barPercent(s.cpu?.total)} muted={muted} label={`CPU ${percent(s.cpu?.total)}`} height={6} />
+      <Bar theme={theme} value={cpuUsage} color={usageColor(cpuUsage, theme, 'cpu', muted)} muted={muted} label={`CPU ${percent(s.cpu?.total)}`} height={6} />
+      <Text selectable style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>사용자 {percent(s.cpu?.user)} · 시스템 {percent(s.cpu?.system)}</Text>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
         <Text selectable style={{ color: c.foregroundMuted }}>메모리</Text>
-        <Text selectable style={{ color: valueColor, fontVariant: ['tabular-nums'] }}>{gib(s.memory?.used)} / {gib(s.memory?.total)}</Text>
+        <Text selectable style={{ color: valueColor, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{gib(s.memory?.used)} / {gib(s.memory?.total)}</Text>
       </View>
       <View accessibilityLabel={`앱 ${gib(s.memory?.app)}, 와이어드 ${gib(s.memory?.wired)}, 압축 ${gib(s.memory?.compressed)}. 막대 기준 ${gib(memoryScale || null)}`}
         style={{ flexDirection: 'row', height: 6, width: '100%', borderRadius: 3, overflow: 'hidden', backgroundColor: c.surface2, opacity: muted ? 0.4 : 1 }}>
-        {memoryParts.map(part => { const width = barPercent(part.value, memoryScale); return width === null ? null : <View key={part.label} style={{ height: '100%', width: `${width}%`, backgroundColor: part.color }} />; })}
+        {memoryParts.map(part => { const width = barPercent(part.value, memoryScale); return width === null ? null : <View key={part.label} style={{ height: '100%', width: `${width}%`, backgroundColor: muted ? c.foregroundMuted : part.color }} />; })}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{memoryParts.map(part => <Legend key={part.label} theme={theme} label={part.label} value={gib(part.value)} color={part.color} />)}</View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{memoryParts.map(part => <Legend key={part.label} theme={theme} label={part.label} value={gib(part.value)} color={part.color} muted={muted} />)}</View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: 1, borderColor: c.border }}>
         <Text selectable style={{ color: c.foregroundMuted }}>메모리 압력</Text>
         <Badge theme={theme} label={pressureLabels[s.pressure]} color={pressureColor(s, theme)} dot />
@@ -115,13 +123,12 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
         <Text selectable style={{ color: c.foregroundMuted }}>캐시 {gib(s.memory?.cached)}</Text>
         <Text selectable style={{ color: c.foregroundMuted }}>스왑 {gib(s.swap?.used)} / {gib(s.swap?.total)}</Text>
       </View>
-      <Text selectable style={{ color: c.foregroundMuted }}>CPU 사용자 {percent(s.cpu?.user)} · 시스템 {percent(s.cpu?.system)}</Text>
       <View style={{ gap: 8, paddingTop: 8, borderTopWidth: 1, borderColor: c.border }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
           <Text selectable style={{ color: c.foregroundMuted }}>디스크</Text>
-          <Text selectable style={{ color: valueColor, fontVariant: ['tabular-nums'] }}>{gib(s.disk?.used)} / {gib(s.disk?.total)}</Text>
+          <Text selectable style={{ color: valueColor, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{gib(s.disk?.used)} / {gib(s.disk?.total)}</Text>
         </View>
-        <Bar theme={theme} value={barPercent(s.disk?.used, s.disk?.total ?? 0)} muted={muted} label={`디스크 ${gib(s.disk?.used)} / ${gib(s.disk?.total)}`} height={6} />
+        <Bar theme={theme} value={diskUsage} color={usageColor(diskUsage, theme, 'disk', muted)} muted={muted} label={`디스크 ${gib(s.disk?.used)} / ${gib(s.disk?.total)}`} height={6} />
         <Text selectable style={{ color: c.foregroundMuted }}>여유 {gib(s.disk?.available)}</Text>
       </View>
       {s.memory && s.memory.used > s.memory.total ? <Text selectable style={{ color: c.foregroundMuted }}>구성 합계가 전체 용량을 초과해 구성 막대는 사용량 기준으로 표시합니다.</Text> : null}

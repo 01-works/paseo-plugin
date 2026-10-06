@@ -11,7 +11,7 @@ vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressab
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn(async () => ({ status: 'ok', entries: [] })) }));
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView', copyText: vi.fn(async () => {}) }));
 import { Details, pressureColor } from '../client/popover';
-import { Bar, barPercent } from '../client/visuals';
+import { Bar, barPercent, usageColor } from '../client/visuals';
 
 const props = { theme: { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444',
   accent: '#aaf', statusSuccess: '#0a0', statusWarning: '#aa0', statusDanger: '#a00' } },
@@ -49,6 +49,35 @@ it('RAM 사용률이 높아도 상태 색은 OS 압력만 기준', () => {
   expect(pressureColor(sample, props.theme)).toBe(props.theme.colors.statusSuccess);
   expect(pressureColor({ ...sample, pressure: 'unknown' }, props.theme)).toBe(props.theme.colors.foregroundMuted);
   expect(pressureColor({ ...sample, status: 'error' }, props.theme)).toBe(props.theme.colors.foregroundMuted);
+});
+it('CPU·디스크 강조 기준의 경계를 구분하고 누락·지연 값은 중립색 사용', () => {
+  const c = props.theme.colors;
+  for (const [resource, warning, high] of [['cpu', 50, 80], ['disk', 85, 95]] as const) {
+    expect(usageColor(0, props.theme, resource)).toBe(c.accent);
+    expect(usageColor(warning - 0.01, props.theme, resource)).toBe(c.accent);
+    expect(usageColor(warning, props.theme, resource)).toBe(c.statusWarning);
+    expect(usageColor(high - 0.01, props.theme, resource)).toBe(c.statusWarning);
+    expect(usageColor(high, props.theme, resource)).toBe(c.statusDanger);
+    expect(usageColor(100, props.theme, resource, true)).toBe(c.foregroundMuted);
+    expect(usageColor(null, props.theme, resource)).toBe(c.foregroundMuted);
+    expect(usageColor(NaN, props.theme, resource)).toBe(c.foregroundMuted);
+  }
+});
+it('높은 CPU·디스크 사용률과 RAM 압력을 독립적으로 표현하고 오래된 값은 색을 제거', async () => {
+  const c = props.theme.colors;
+  const stressed: Snapshot = { ...sample, sampledAt: Date.now(), cpu: { total: 90, user: 75, system: 15 },
+    disk: { total: 100 * GiB, used: 96 * GiB, available: 4 * GiB, sampledAt: Date.now() } };
+  await act(async () => { renderer = create(<Details {...props} snapshot={stressed} name="Mac" />); });
+  const memoryBar = () => renderer!.root.find(node => String(node.type) === 'View' && (node.props.accessibilityLabel ?? '').startsWith('앱 '));
+  const bars = () => renderer!.root.findAllByType(Bar);
+  expect(bars().map(bar => bar.props.color)).toEqual([c.statusDanger, c.statusDanger]);
+  expect(memoryBar().findAll(node => String(node.type) === 'View')[1].props.style.backgroundColor).toBe(c.statusSuccess);
+  await act(async () => renderer!.update(<Details {...props} snapshot={{ ...stressed, pressure: 'critical' }} name="Mac" />));
+  expect(memoryBar().findAll(node => String(node.type) === 'View')[1].props.style.backgroundColor).toBe(c.statusDanger);
+  await act(async () => renderer!.update(<Details {...props} snapshot={{ ...stressed, sampledAt: Date.now() - 6000, status: 'stale' }} name="Mac" />));
+  expect(bars().map(bar => bar.props.color)).toEqual([c.foregroundMuted, c.foregroundMuted]);
+  expect(memoryBar().findAll(node => String(node.type) === 'View').slice(1).every(node => node.props.style.backgroundColor === c.foregroundMuted)).toBe(true);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('90%');
 });
 it('앱 상세는 좌상단 뒤로·앱 이름으로 진입을 표시하고 돌아오면 정렬 기준 유지', async () => {
   const client = new QueryClient();

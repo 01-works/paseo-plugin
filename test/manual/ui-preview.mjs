@@ -16,7 +16,8 @@ await build({
     const s = { ...emptySnapshot('native'), status: 'ok', sampledAt: Date.now(), ageMs: 0,
       cpu: { total: 23, user: 18, system: 5 },
       memory: { used: 14.1 * GiB, total: 16 * GiB, app: 6.2 * GiB, wired: 3.1 * GiB, compressed: 4.8 * GiB, cached: 1.3 * GiB },
-      swap: { used: 4.2 * GiB, total: 6 * GiB }, pressure: 'normal', memoryLevel: 35, processesStatus: 'ok',
+      swap: { used: 4.2 * GiB, total: 6 * GiB }, disk: { used: 196.3 * GiB, total: 228.3 * GiB, available: 32 * GiB, sampledAt: Date.now() },
+      pressure: 'normal', memoryLevel: 35, processesStatus: 'ok',
       processes: { topCpu: [
         { name: 'Google Chrome', processCount: 24, cpuPercent: 12, memoryBytes: 4.5 * GiB },
         { name: 'codex', processCount: 3, cpuPercent: 7, memoryBytes: 1.2 * GiB },
@@ -31,13 +32,14 @@ await build({
     s.processes.topCpu.push(...extra);
     s.processes.topMemory = [...s.processes.topCpu].sort((a,b)=>b.memoryBytes-a.memoryBytes);
     const escape = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-    const flatten = style => Array.isArray(style) ? Object.assign({}, ...style.map(flatten)) : style ?? {};
+    const flatten = style => Array.isArray(style) ? Object.assign({}, ...style.map(flatten)) : typeof style === 'function' ? style({ pressed: false }) : style ?? {};
     const units = new Set(['flex','flexGrow','flexShrink','fontWeight','opacity','zIndex']);
     function html(node) {
       if (node == null) return '';
       if (typeof node === 'string' || typeof node === 'number') return escape(node);
       if (Array.isArray(node)) return node.map(html).join('');
       const style = flatten(node.props.style);
+      if (node.props.numberOfLines === 1) Object.assign(style, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
       for (const prefix of ['padding','margin']) for (const axis of ['Horizontal','Vertical']) {
         const key = prefix + axis;
         if (style[key] != null) { for (const side of axis === 'Horizontal' ? ['Left','Right'] : ['Top','Bottom']) style[prefix+side] = style[key]; delete style[key]; }
@@ -46,15 +48,18 @@ await build({
       const css = Object.entries(style).map(([key,value]) => key.replace(/[A-Z]/g,x=>'-'+x.toLowerCase()) + ':' + (typeof value === 'number' && value !== 0 && !units.has(key) ? value+'px' : value)).join(';');
       return '<div class="'+node.type+'" style="'+escape(css)+'">'+html(node.children)+'</div>';
     }
-    (async () => { for (const dark of [true, false]) for (const compact of [false, true]) {
+    (async () => { for (const dark of [true, false]) for (const compact of [false, true]) for (const scenario of ['normal', 'high', 'stale']) {
       const colors = dark ? { foreground: '#ededed', foregroundMuted: '#9b9ba3', surface0: '#141416', surface1: '#1e1e22', surface2: '#2b2b30', border: '#34343b', accent: '#aaa3ff', statusSuccess: '#73c99d', statusWarning: '#edc268', statusDanger: '#ed8585' }
         : { foreground: '#25252b', foregroundMuted: '#71717d', surface0: '#fafafa', surface1: '#ffffff', surface2: '#f0f0f4', border: '#e3e3e9', accent: '#7664d8', statusSuccess: '#268050', statusWarning: '#92720d', statusDanger: '#b83939' };
       const props = { theme: { colors }, layout: { compact, platform: 'web' }, host: { id: 'h', label: 'Mac mini' } };
+      const snapshot = scenario === 'normal' ? { ...s, sampledAt: Date.now() }
+        : { ...s, sampledAt: Date.now() - (scenario === 'stale' ? 6000 : 0), status: scenario === 'stale' ? 'stale' : 'ok',
+          cpu: { total: 87, user: 70, system: 17 }, pressure: 'critical', disk: { used: 220 * GiB, total: 228.3 * GiB, available: 8.3 * GiB, sampledAt: Date.now() } };
       let renderer;
-      await act(async()=>{ renderer = create(<Details {...props} snapshot={s} name="Mac mini" onRefresh={()=>{}}/>); });
+      await act(async()=>{ renderer = create(<Details {...props} snapshot={snapshot} name="Mac mini" />); });
       const content = html(renderer.toJSON());
       await act(async()=>renderer.unmount());
-      const filename = (dark ? 'dark' : 'light') + (compact ? '-compact' : '-desktop');
+      const filename = (dark ? 'dark' : 'light') + (compact ? '-compact' : '-desktop') + (scenario === 'normal' ? '' : '-' + scenario);
       const width = compact ? 360 : 520;
       const page = '<!doctype html><meta charset="utf-8"><title>mac-monitor 구성 검토</title><style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;background:'+colors.surface0+';color:'+colors.foreground+'}.View,.Pressable{display:flex;flex-direction:column;flex-shrink:0;min-height:0;border-style:solid;border-width:0}.ScrollView{overflow-y:auto;min-height:0;flex-shrink:1}.Text{display:block;flex-shrink:0;white-space:pre-wrap;overflow-wrap:break-word;line-height:1.45}main{width:'+width+'px;padding:'+(compact?16:24)+'px}header{font-size:11px;padding-bottom:16px;color:'+colors.foregroundMuted+'}</style><main><header>레이아웃 검토용 · 예시 데이터 / 예시 테마</header>'+content+'</main>';
       writeFileSync(${JSON.stringify(directory)}+'/'+filename+'.html', page);

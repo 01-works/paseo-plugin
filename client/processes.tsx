@@ -39,7 +39,7 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
           <Pressable accessibilityRole="button" disabled={pending} onPress={() => choose(null)}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`PID ${chosen.pid} 종료 확인`} disabled={pending} onPress={() => void send()}>
-            <Text style={{ color: c.foreground }}>{pending ? '요청 중' : '종료'}</Text>
+            <Text style={{ color: pending ? c.foregroundMuted : c.statusDanger }}>{pending ? '요청 중' : '종료'}</Text>
           </Pressable>
         </View>
       </View> : null}
@@ -106,7 +106,7 @@ export function GroupTermination({ group, theme, onBack }: { group: string; them
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
           <Pressable accessibilityRole="button" disabled={pending} onPress={onBack}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`${group} 전체 종료 확인`} disabled={!ready || pending} onPress={() => void send()}>
-            <Text style={{ color: ready ? c.foreground : c.foregroundMuted }}>{pending ? '요청 중' : '전체 종료'}</Text>
+            <Text style={{ color: ready && !pending ? c.statusDanger : c.foregroundMuted }}>{pending ? '요청 중' : '전체 종료'}</Text>
           </Pressable>
         </View>
         {entries.map(p => <Text key={`${p.pid}:${p.start}`} numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.name} · PID {p.pid}</Text>)}

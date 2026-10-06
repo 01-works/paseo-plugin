@@ -8,7 +8,7 @@ vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressab
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView' }));
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: (contract: { name: string }) => contract.name.endsWith('.list') ? rpc.list : contract.name === 'mac-monitor.group.terminate' ? rpc.group : rpc.terminate }));
 import { GroupTermination, ProcessPanel } from '../client/processes';
-const theme = { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444' } } as PluginHostProps['theme'];
+const theme = { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444', statusDanger: '#a00' } } as PluginHostProps['theme'];
 const entry = { pid: 123, start: '90071992547409999', group: 'codex', name: 'codex', memoryBytes: 100, cpuPercent: 0.4 };
 let renderer: ReactTestRenderer | undefined;
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.clearAllMocks(); });
