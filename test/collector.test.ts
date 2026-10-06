@@ -15,6 +15,20 @@ function fake(code: string, extras: ConstructorParameters<typeof Collector>[0] =
 const sampleCode = `const raw=${JSON.stringify(raw)}; raw.t=Date.now(); console.log(JSON.stringify(raw)); raw.seq++;raw.t=Date.now();raw.sys.cpu.user+=50;raw.sys.cpu.idle+=50;console.log(JSON.stringify(raw));`;
 afterEach(async () => { await Promise.all(collectors.splice(0).map(c => c.stop())); await Promise.all(dirs.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 describe('캐시 및 헬퍼 수명주기', () => {
+  it('전체 종료의 응답 순서가 달라도 PID별 성공·보호 대상 실패를 보존', async () => {
+    const members = [123, 124].map(pid => ({ pid, start: String(pid), group: '앱', name: '앱', memoryBytes: 100, cpuPercent: 1 }));
+    const payload = { ...raw, procs: { ready: true, sampledAt: Date.now(), coreCount: 10, excludedRoot: 0, excludedPermission: 0, otherErrors: 0,
+      topCpu: [{ name: '앱', memoryBytes: 200, processCount: 2, cpuPercent: 2 }], topMemory: [], members } };
+    const c = fake(`const raw=${JSON.stringify(payload)};console.log(JSON.stringify(raw));require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+      if(line==='procs on'){raw.seq++;raw.sys.cpu.user+=10;console.log(JSON.stringify(raw));}
+      if(line.startsWith('terminate ')){const [,id,pid]=line.split(' ').map(Number);setTimeout(()=>console.log(JSON.stringify({action:'terminate',id,sent:pid===123,...(pid===124?{error:'보호된 프로세스'}:{})})),pid===123?20:0);}
+    });`);
+    await c.start();await until(() => c.snapshot().seq === 0);c.processList('앱');await until(() => c.processList('앱').status === 'ok');
+    expect((await c.terminateGroup({ group: '앱', targets: members })).results).toEqual([
+      { pid: 123, sent: true, error: undefined }, { pid: 124, sent: false, error: '보호된 프로세스' },
+    ]);
+    expect(c.snapshot().seq).toBe(1);
+  });
   it('프로세스 조회는 캐시만 읽고 종료는 최신 PID·시작 시각·그룹에 한정', async () => {
     const entry = { pid: 12345, start: '90071992547409999', group: 'codex', name: 'codex', memoryBytes: 100, cpuPercent: 1 };
     const procs = { ready: true, sampledAt: Date.now(), coreCount: 10, excludedRoot: 1, excludedPermission: 1, otherErrors: 0,
@@ -31,8 +45,14 @@ describe('캐시 및 헬퍼 수명주기', () => {
     expect((await c.terminate({ ...entry, start: '1' })).sent).toBe(false);
     expect((await c.terminate({ ...entry, group: 'other' })).sent).toBe(false);
     expect((await c.terminate(entry)).sent).toBe(true);
+    expect((await c.terminateGroup({ group: 'codex', targets: [{ pid: entry.pid, start: entry.start }] })).results).toEqual([{ pid: entry.pid, sent: true, error: undefined }]);
+    expect((await c.terminateGroup({ group: 'other', targets: [entry] })).results[0].sent).toBe(false);
+    expect((await c.terminateGroup({ group: 'codex', targets: [entry, { ...entry, pid: 54321 }] })).results.every(p => !p.sent)).toBe(true);
+    expect((await c.terminateGroup({ group: 'codex', targets: [{ ...entry, start: '1' }] })).results[0].sent).toBe(false);
+    expect((await c.terminateGroup({ group: 'codex', targets: [entry, entry] })).results.every(p => !p.sent)).toBe(true);
     expect(c.snapshot().status).toBe('ok');
     mono += 5001;expect((await c.terminate(entry)).sent).toBe(false);
+    expect((await c.terminateGroup({ group: 'codex', targets: [entry] })).results[0].sent).toBe(false);
   });
   it('정상 스트림: RPC 100개가 새 측정을 만들지 않음', async () => {
     const c = fake(`${sampleCode}setInterval(()=>{},1000);`); await c.start(); await until(() => c.snapshot().seq === 1);

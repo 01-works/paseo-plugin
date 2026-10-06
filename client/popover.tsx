@@ -8,21 +8,18 @@ import { emptySnapshot } from '../shared/compute';
 import { useSnapshot } from './data';
 import { gib, percent, pressureLabels, statusLabels, displaySnapshot, appPercent } from './format';
 import { Badge, Bar, Card, Legend, barPercent, type Theme } from './visuals';
-import { ProcessPanel } from './processes';
+import { GroupTermination, ProcessPanel } from './processes';
 
 export function pressureColor(s: Snapshot | null | undefined, theme: Theme): string {
   if (!s || s.status !== 'ok') return theme.colors.foregroundMuted;
   return s.pressure === 'normal' ? theme.colors.statusSuccess : s.pressure === 'warning' ? theme.colors.statusWarning : s.pressure === 'critical' ? theme.colors.statusDanger : theme.colors.foregroundMuted;
 }
 
-function AppRanking({ snapshot: s, theme, canInspect }: { snapshot: Snapshot; theme: Theme; canInspect: boolean }) {
-  const [tab, setTab] = useState<'cpu' | 'memory'>('cpu');
-  const [selected, select] = useState<string | null>(null);
+function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, compact }: { snapshot: Snapshot; theme: Theme; canInspect: boolean; onSelect: (group: string, mode: 'processes' | 'terminate') => void; tab: 'cpu' | 'memory'; setTab: (tab: 'cpu' | 'memory') => void; compact: boolean }) {
   const c = theme.colors;
   const groups = (tab === 'cpu' ? s.processes?.topCpu : s.processes?.topMemory) ?? [];
   const muted = s.status !== 'ok' || s.processesStatus !== 'ok';
   const processState = { off: '측정 중', warming: '측정 중', ok: '최신', stale: '지연', error: '확인 불가', unsupported: '미지원' } as const;
-  if (selected && canInspect) return <ProcessPanel group={selected} theme={theme} onBack={() => select(null)} />;
   return <Card theme={theme}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
       <Text selectable style={{ color: c.foreground, fontWeight: '600' }}>상위 앱</Text>
@@ -37,6 +34,7 @@ function AppRanking({ snapshot: s, theme, canInspect }: { snapshot: Snapshot; th
         <Text style={{ color: tab === key ? c.foreground : c.foregroundMuted, fontWeight: '600' }}>{key === 'cpu' ? 'CPU' : '메모리'}{tab === key ? ' ↓' : ''}</Text>
       </Pressable>)}
       </View>
+      {canInspect && !compact ? <View style={{ width: 68 }} /> : null}
     </View>
     <ScrollView accessibilityLabel="앱 사용 순위 목록" nestedScrollEnabled showsVerticalScrollIndicator
       style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ flexGrow: 1 }}>
@@ -44,18 +42,24 @@ function AppRanking({ snapshot: s, theme, canInspect }: { snapshot: Snapshot; th
       <Text selectable style={{ color: c.foregroundMuted }}>{s.processesStatus === 'unsupported' ? '앱 목록 미지원' : s.processesStatus === 'ok' ? '앱 없음' : processState[s.processesStatus]}</Text>
     </View> : null}
     {groups.map((g, i) => <View key={g.name} accessibilityLabel={`${i + 1}위 ${g.name}, 프로세스 ${g.processCount}개`}
-      style={{ flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 38, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
+      style={{ flexDirection: 'row', flexWrap: compact ? 'wrap' : 'nowrap', gap: 8, alignItems: 'center', minHeight: 38, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
       <View style={{ flex: 1, minWidth: 0 }}><Pressable accessibilityRole="button" accessibilityLabel={`${g.name} 프로세스 보기`} disabled={!canInspect || muted}
-        onPress={() => select(g.name)}><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground }}>{g.name}</Text></Pressable></View>
+        onPress={() => onSelect(g.name, 'processes')}><Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground }}>{g.name}</Text></Pressable></View>
       <View style={{ width: 64, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontVariant: ['tabular-nums'] }}>{appPercent(g.cpuPercent)}</Text></View>
       <View style={{ width: 88, alignItems: 'flex-end' }}><Text selectable style={{ color: muted ? c.foregroundMuted : c.foreground, fontVariant: ['tabular-nums'] }}>{gib(g.memoryBytes)}</Text></View>
+      {canInspect ? <Pressable accessibilityRole="button" accessibilityLabel={`${g.name} 전체 종료 선택`} disabled={muted}
+        onPress={() => onSelect(g.name, 'terminate')} style={{ width: compact ? '100%' : 68, alignItems: 'flex-end', paddingVertical: 4 }}>
+        <Text style={{ color: c.foregroundMuted }}>전체 종료</Text>
+      </Pressable> : null}
     </View>)}
     {s.processes && s.processes.otherErrors > 0 ? <Text selectable style={{ color: c.foregroundMuted }}>앱 정보 읽기 오류 {s.processes.otherErrors}개</Text> : null}
     </ScrollView>
   </Card>;
 }
 
-export function Details({ snapshot, theme, name, error, onRefresh, refreshing = false, canInspect = true }: PluginHostProps & { snapshot?: Snapshot; name: string; error?: string; onRefresh?: () => void; refreshing?: boolean; canInspect?: boolean }) {
+export function Details({ snapshot, theme, layout, name, error, onRefresh, refreshing = false, canInspect = true }: PluginHostProps & { snapshot?: Snapshot; name: string; error?: string; onRefresh?: () => void; refreshing?: boolean; canInspect?: boolean }) {
+  const [selection, select] = useState<{ group: string; mode: 'processes' | 'terminate' } | null>(null);
+  const [tab, setTab] = useState<'cpu' | 'memory'>('cpu');
   const c = theme.colors;
   const s: Snapshot = useMemo(() => snapshot ? displaySnapshot(snapshot, Boolean(error)) : {
     ...emptySnapshot('native'), ...(error ? { status: 'error', processesStatus: 'error' } : {}),
@@ -68,6 +72,9 @@ export function Details({ snapshot, theme, name, error, onRefresh, refreshing = 
     { label: '압축', value: s.memory?.compressed, color: c.foreground },
   ];
   const memoryScale = s.memory ? Math.max(s.memory.total, s.memory.used) : 0;
+  if (selection && canInspect) return selection.mode === 'processes'
+    ? <ProcessPanel group={selection.group} theme={theme} onBack={() => select(null)} />
+    : <GroupTermination group={selection.group} theme={theme} onBack={() => select(null)} />;
   return <View style={{ gap: 12, minWidth: 0, width: '100%' }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <View style={{ flex: 1, minWidth: 100, gap: 4 }}>
@@ -119,7 +126,7 @@ export function Details({ snapshot, theme, name, error, onRefresh, refreshing = 
       </View>
       {s.memory && s.memory.used > s.memory.total ? <Text selectable style={{ color: c.foregroundMuted }}>구성 합계가 전체 용량을 초과해 구성 막대는 사용량 기준으로 표시합니다.</Text> : null}
     </Card>
-    <AppRanking snapshot={s} theme={theme} canInspect={canInspect} />
+    <AppRanking snapshot={s} theme={theme} canInspect={canInspect} compact={layout.compact} tab={tab} setTab={setTab} onSelect={(group, mode) => select({ group, mode })} />
     {s.errors.length ? <Card theme={theme}><Text selectable style={{ color: c.foreground, fontWeight: '600' }}>측정 오류</Text>{s.errors.map((message, i) => <Text selectable key={i} style={{ color: c.foregroundMuted }}>{message}</Text>)}</Card> : null}
   </View>;
 }

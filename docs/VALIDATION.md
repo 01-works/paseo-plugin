@@ -9,7 +9,7 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (8개 파일, 44개 테스트) |
+| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (8개 파일, 48개 테스트) |
 | client DOM/HTML audit | 0건 |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
@@ -33,7 +33,23 @@
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: 통합 화면·자동 갱신·개별 종료·디스크
+## 최종 후속 검증: 전체 종료와 앱 상세 이동
+
+- `npm run typecheck` 통과, 테스트 8개 파일/48개 통과. 전체 종료 확인 전 RPC 없음·취소·대상 고정,
+  다른 그룹/시작 시각/누락 PID/중복 PID/오래된 값 차단, 응답 순서가 다른 부분 성공·실패를 검증했다.
+- 앱 상세 진입 시 좌상단 ‹ 뒤로·앱 이름, 시스템 화면에서 분리된 프로세스 목록,
+  복귀 시 메모리 정렬 기준 유지도 테스트했다. DOM 클릭 회귀 검증은 자동 갱신·Modal 재마운트 방지를 통과했다.
+- `node --import tsx test/manual/group-actions.mjs`: 스크립트가 만든 테스트 자식 두 개만 대상으로 했다.
+  시작 시각 하나가 불일치하면 둘 다 전송하지 않고 살아 있음을 확인했다. 유효한 목록은 두 자식 모두 SIGTERM으로 종료했다.
+  검증 종료 시 Collector와 추가 헬퍼를 정리했다. 네이티브 측정·보호 로직과 바이너리는 이번 변경에서 그대로 사용한다.
+- 16:44 KST plugin reload 후 running. 16:45 실제 Paseo 데스크톱 다크 화면에서 각 행의 전체 종료,
+  claude 상세의 좌상단 뒤로/앱 이름, codex 전체 종료 확인의 25개/PID 목록을 확인했다.
+  전체 종료 확인은 취소했고 상위 목록으로 복귀했다. 기존 사용자 프로세스를 종료하지 않았다.
+- compact 버튼 배치 보완 후 16:47 KST 타입 검사·48개 테스트가 통과했고 plugin reload 후 running을 확인했다.
+  최종 로그에 오류가 없고 상주 헬퍼 PID는 33629다. client DOM/HTML·fontSize audit와 git diff --check도 통과했다.
+- 라이트·compact 실제 화면, Activity Monitor 대조, 다른 Mac 검증은 앞서 기록한 사용자 확인 항목으로 남아 있다.
+
+## 이전 후속 검증: 통합 화면·자동 갱신·개별 종료·디스크
 
 - `npm run typecheck` 통과, `npm test` 8개 파일/44개 테스트 통과.
   초기 pill 값 즉시 표시, 2초 자동 읽기 중 ScrollView 인스턴스 유지·닫기 후 중단,
@@ -79,7 +95,7 @@ HTML 패턴에서 TypeScript의 `Promise<void>`와 `useState<string | null>` 타
 React Native 기본 요소만 사용하고, tsconfig의 lib는 `ES2023`이다.
 스캐폴드의 DOM 사용 웹 예제는 제거했다.
 
-최종 결과: `npm run typecheck` 통과, `npm test` 8개 파일 / 44개 테스트 통과.
+최종 결과: `npm run typecheck` 통과, `npm test` 8개 파일 / 48개 테스트 통과.
 
 자동 테스트 범위:
 

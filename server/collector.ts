@@ -181,6 +181,17 @@ export class Collector {
     if (!this.source || this.stopped || this.mode !== 'native') return { sent: false, error: '프로세스 종료 미지원' };
     return this.source.terminate(input.pid, input.start);
   }
+  async terminateGroup(input: { group: string; targets: { pid: number; start: string }[] }) {
+    const list = this.processList(input.group);
+    const source = this.source;
+    // 확인한 목록만 대상으로 한다. 새 프로세스를 추가하거나 변경된 PID를 따라가지 않는다.
+    const valid = list.status === 'ok' && source && !this.stopped && this.mode === 'native'
+      && input.targets.length > 0 && new Set(input.targets.map(p => p.pid)).size === input.targets.length
+      && input.targets.every(p => list.entries.some(entry => entry.pid === p.pid && entry.start === p.start));
+    if (!valid) return { results: input.targets.map(p => ({ pid: p.pid, sent: false, error: '대상 목록이 변경되었거나 측정값이 오래되었습니다. 다시 확인하세요.' })) };
+    const results = await Promise.all(input.targets.map(async p => ({ pid: p.pid, ...await source.terminate(p.pid, p.start) })));
+    return { results };
+  }
 }
 let singleton: Collector | undefined;
 export function getCollector(): Collector { return singleton ??= new Collector(); }

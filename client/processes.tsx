@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { ScrollView } from '@getpaseo/plugin/client/react-native';
 import { useRpc } from '@getpaseo/plugin/client';
-import { processListRpc, terminateRpc, type ProcessInfo } from '../shared/contracts';
+import { processListRpc, terminateRpc, terminateGroupRpc, type ProcessInfo } from '../shared/contracts';
 import { useStableQuery } from './data';
 import { appPercent, gib } from './format';
 import { Card, type Theme } from './visuals';
@@ -28,12 +28,7 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
     finally { setPending(false); }
   };
   return <Card theme={theme}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-      <Text numberOfLines={1} style={{ color: c.foreground, flexShrink: 1, fontWeight: '600' }}>{group}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="상위 앱으로 돌아가기" onPress={onBack}>
-        <Text style={{ color: c.foregroundMuted }}>뒤로</Text>
-      </Pressable>
-    </View>
+    <ProcessHeader group={group} theme={theme} onBack={onBack} disabled={pending} />
     <ScrollView accessibilityLabel="개별 프로세스 목록" nestedScrollEnabled showsVerticalScrollIndicator
       style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, flexGrow: 1 }}>
       {query.error ? <Text selectable style={{ color: c.foregroundMuted }}>연결 오류: {query.error.message}</Text> : null}
@@ -63,6 +58,59 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
           </Pressable>
         </View>
       </View>)}
+    </ScrollView>
+  </Card>;
+}
+
+function ProcessHeader({ group, theme, onBack, disabled = false }: { group: string; theme: Theme; onBack: () => void; disabled?: boolean }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="상위 앱으로 돌아가기" disabled={disabled} onPress={onBack}
+      style={{ paddingVertical: 6 }}>
+      <Text style={{ color: theme.colors.foregroundMuted }}>‹ 뒤로</Text>
+    </Pressable>
+    <Text numberOfLines={1} style={{ color: theme.colors.foreground, flex: 1, fontWeight: '600' }}>{group}</Text>
+  </View>;
+}
+
+export function GroupTermination({ group, theme, onBack }: { group: string; theme: Theme; onBack: () => void }) {
+  const c = theme.colors;
+  const listRpc = useRpc(processListRpc);
+  const terminate = useRpc(terminateGroupRpc);
+  // 자동 갱신으로 확인 대상이 늘어나지 않도록 최초 결과를 고정한다.
+  const query = useStableQuery({ queryKey: ['mac-monitor', 'terminate-group', group], queryFn: () => listRpc({ group }) });
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<{ results: { pid: number; sent: boolean; error?: string }[] }>();
+  const [error, setError] = useState('');
+  const entries = query.data?.entries ?? [];
+  const ready = !query.error && query.data?.status === 'ok' && entries.length > 0 && entries.length <= 4096;
+  const send = async () => {
+    if (!ready || pending || result) return;
+    setPending(true); setError('');
+    try { setResult(await terminate({ group, targets: entries.map(({ pid, start }) => ({ pid, start })) })); }
+    catch (err) { setError(`종료 실패: ${String(err)}`); }
+    finally { setPending(false); }
+  };
+  return <Card theme={theme}>
+    <ProcessHeader group={group} theme={theme} onBack={onBack} disabled={pending} />
+    <ScrollView accessibilityLabel="앱 전체 종료 확인" nestedScrollEnabled style={{ height: 320, flexGrow: 0, flexShrink: 0 }}
+      contentContainerStyle={{ gap: 12 }}>
+      {result ? <>
+        <Text style={{ color: c.foreground }}>종료 요청 {result.results.filter(p => p.sent).length}개 · 보내지 못함 {result.results.filter(p => !p.sent).length}개</Text>
+        {result.results.filter(p => !p.sent).map(p => <Text key={p.pid} style={{ color: c.foregroundMuted }}>PID {p.pid} · {p.error ?? '종료하지 못했습니다.'}</Text>)}
+      </> : <>
+        <Text style={{ color: c.foreground, fontWeight: '600' }}>전체 종료{query.data ? ` · ${entries.length}개` : ''}</Text>
+        <Text style={{ color: c.foregroundMuted }}>저장하지 않은 작업을 잃을 수 있습니다.</Text>
+        <Text style={{ color: c.foregroundMuted }}>아래에 표시된 프로세스만 종료합니다.</Text>
+        {query.error || error ? <Text style={{ color: c.foregroundMuted }}>{error || `목록 확인 실패: ${query.error?.message}`}</Text> : null}
+        {!ready ? <Text style={{ color: c.foregroundMuted }}>{query.data ? '종료할 수 있는 최신 목록이 없습니다. 뒤로 가서 다시 확인하세요.' : '프로세스 확인 중'}</Text> : null}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
+          <Pressable accessibilityRole="button" disabled={pending} onPress={onBack}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${group} 전체 종료 확인`} disabled={!ready || pending} onPress={() => void send()}>
+            <Text style={{ color: ready ? c.foreground : c.foregroundMuted }}>{pending ? '요청 중' : '전체 종료'}</Text>
+          </Pressable>
+        </View>
+        {entries.map(p => <Text key={`${p.pid}:${p.start}`} numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.name} · PID {p.pid}</Text>)}
+      </>}
     </ScrollView>
   </Card>;
 }

@@ -41,6 +41,10 @@ export const processListRpc = defineRpc({ name: 'mac-monitor.processes.list', in
   output: z.object({ status: snapshotSchema.shape.processesStatus, sampledAt: nullable, entries: z.array(processSchema) }) });
 export const terminateRpc = defineRpc({ name: 'mac-monitor.process.terminate', input: processSchema.pick({ pid: true, start: true, group: true }),
   output: z.object({ sent: z.boolean(), error: z.string().optional() }) });
+export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate',
+  input: z.object({ group: z.string().max(256), targets: z.array(processSchema.pick({ pid: true, start: true })).min(1).max(4096)
+    .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
+  output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
 export const settings = defineSettings({ id: 'monitor', scope: 'host', version: 1, schema: z.object({ experimentalFleet: z.boolean().default(true) }) });
 export const VERSION = '0.1.0';
 export type RawSample = z.infer<typeof rawSchema>;

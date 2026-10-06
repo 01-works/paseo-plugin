@@ -8,7 +8,7 @@ import { GiB } from '../shared/units';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readAppSample, useStableQuery } from '../client/data';
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
-vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn() }));
+vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn(async () => ({ status: 'ok', entries: [] })) }));
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView', copyText: vi.fn(async () => {}) }));
 import { Details, pressureColor } from '../client/popover';
 import { Bar, barPercent } from '../client/visuals';
@@ -37,7 +37,7 @@ it('CPU·메모리를 같은 행에 표시하고 열 제목으로 순위를 전�
   await act(async () => tabs[1].props.onPress());
   expect(JSON.stringify(renderer!.toJSON())).toContain('Google Chrome');
   const row = renderer!.root.find(node => node.props.accessibilityLabel === '1위 Google Chrome, 프로세스 12개');
-  expect(row.findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['Google Chrome', '4.0%', '32.0 GiB']);
+  expect(row.findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['Google Chrome', '4.0%', '32.0 GiB', '전체 종료']);
   expect(JSON.stringify(renderer!.toJSON())).toContain('—');
   expect(tabs[1].props.accessibilityState.selected).toBe(true);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('1 GiB =');
@@ -49,6 +49,18 @@ it('RAM 사용률이 높아도 상태 색은 OS 압력만 기준', () => {
   expect(pressureColor(sample, props.theme)).toBe(props.theme.colors.statusSuccess);
   expect(pressureColor({ ...sample, pressure: 'unknown' }, props.theme)).toBe(props.theme.colors.foregroundMuted);
   expect(pressureColor({ ...sample, status: 'error' }, props.theme)).toBe(props.theme.colors.foregroundMuted);
+});
+it('앱 상세는 좌상단 뒤로·앱 이름으로 진입을 표시하고 돌아오면 정렬 기준 유지', async () => {
+  const client = new QueryClient();
+  await act(async () => { renderer = create(<QueryClientProvider client={client}><Details {...props} snapshot={sample} name="Mac" /></QueryClientProvider>); });
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '메모리 순위로 정렬' }).props.onPress());
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'Google Chrome 프로세스 보기' }).props.onPress());
+  const texts = renderer!.root.findAll(node => String(node.type) === 'Text').map(node => node.children.join(''));
+  expect(texts.slice(0, 2)).toEqual(['‹ 뒤로', 'Google Chrome']);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('메모리 압력');
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '상위 앱으로 돌아가기' }).props.onPress());
+  expect(renderer!.root.findByProps({ accessibilityLabel: '메모리 순위로 정렬' }).props.accessibilityState.selected).toBe(true);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Google Chrome');client.clear();
 });
 it('연결 실패 시 그래프를 흐리게 표시하고 최신을 표시하지 않음', async () => {
   await act(async () => { renderer = create(<Details {...props} snapshot={sample} name="Mac" error="연결 끊김" />); });
@@ -67,7 +79,7 @@ it('10개 순위를 스크롤 영역에 표시하고 기본 폰트 크기를 유
   expect(scroll.props.style.height).toBe(320);
   const appRows = renderer!.root.findAll(node => /^\d+위 앱 /.test(node.props.accessibilityLabel ?? ''));
   expect(appRows).toHaveLength(TOP_APP_LIMIT);
-  expect(appRows[9].findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['앱 10', '1.0%', '1.0 GiB']);
+  expect(appRows[9].findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['앱 10', '1.0%', '1.0 GiB', '전체 종료']);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('fontSize');
 });
 it('로딩·완료·오류·미지원 모두 같은 높이의 목록을 유지', async () => {
