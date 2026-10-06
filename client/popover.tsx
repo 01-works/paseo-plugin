@@ -33,12 +33,15 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingRight: 8, borderBottomWidth: 1, borderColor: c.border }}>
       <View style={{ flex: 1, minWidth: 0 }}><Text style={{ color: c.foregroundMuted }}>앱</Text></View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-      {(['cpu', 'memory'] as const).map(key => <Pressable key={key} accessibilityRole="button"
-        accessibilityLabel={`${key === 'cpu' ? 'CPU' : '메모리'} 순위로 정렬`} accessibilityState={{ selected: tab === key }}
-        onPress={() => setTab(key)} style={({ pressed }) => ({ ...rankingColumns[key], minHeight: 32, justifyContent: 'center', paddingVertical: 6,
-          borderRadius: 4, backgroundColor: tab === key || pressed ? c.surface2 : undefined })}>
-        <Text style={{ color: tab === key ? c.foreground : c.foregroundMuted, fontWeight: '600' }}>{key === 'cpu' ? 'CPU' : '메모리'}{tab === key ? ' ↓' : ''}</Text>
-      </Pressable>)}
+      {(['cpu', 'memory'] as const).map(key => <View key={key} style={{ width: rankingColumns[key].width, alignItems: 'flex-end' }}>
+        <Pressable accessibilityRole="button"
+          accessibilityLabel={`${key === 'cpu' ? 'CPU' : '메모리'} 순위로 정렬`} accessibilityState={{ selected: tab === key }}
+          onPress={() => setTab(key)} style={({ pressed }) => ({ minHeight: 32, alignItems: 'center', justifyContent: 'center',
+            paddingHorizontal: rankingColumns[key].paddingHorizontal, paddingVertical: 6,
+            borderRadius: 4, backgroundColor: tab === key || pressed ? c.surface2 : undefined })}>
+          <Text style={{ color: tab === key ? c.foreground : c.foregroundMuted, fontWeight: '600' }}>{key === 'cpu' ? 'CPU' : '메모리'}{tab === key ? ' ↓' : ''}</Text>
+        </Pressable>
+      </View>)}
       </View>
       {canInspect && !compact ? <View style={{ width: 68 }} /> : null}
     </View>
