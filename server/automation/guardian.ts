@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import { automaticProtection, automationConfigSchema, processKey, type AutomationConfig, type AutomaticTarget, type AutomationEvent, type AutomationStatus } from '../../shared/automation';
+import { automaticProtection, automationConfigSchema, processKey, type AutomationConfig, type AutomaticTarget, type AutomationEvent, type AutomationStatus, type AutomationTargetInput } from '../../shared/automation';
 import type { ProcessInfo, Snapshot } from '../../shared/contracts';
 import { abovePressure, canAutomaticallyTerminate, growing, healthy, POLICY, sameTarget, reviewHeadroom, type Candidate, type Point } from './policy';
 import { createCodexReviewer, validateReview, type Reviewer } from './reviewer';
@@ -74,7 +74,7 @@ export class MemoryGuardian {
     this.state.config = automationConfigSchema.parse(input); this.revision++; this.abort?.abort(); this.reset();
     await this.save(); this.failure = ''; this.ready = true; this.phase = input.enabled ? 'idle' : 'off'; return this.report();
   }
-  async target(input: { pid: number; start: string; group: string; allow: boolean }) {
+  async target(input: AutomationTargetInput) {
     const key = processKey(input);
     if (!input.allow) {
       this.state.targets = this.state.targets.filter(t => processKey(t) !== key); this.revision++; this.abort?.abort();
@@ -85,12 +85,17 @@ export class MemoryGuardian {
     const reason = p ? automaticProtection(p) : '대상 프로세스 없음';
     if (!this.ready || !healthy(snapshot) || snapshot.processesStatus !== 'ok' || reason || !p?.path || Buffer.byteLength(p.path) > 511)
       return { changed: false, error: reason ?? '최신 네이티브 측정이 필요합니다.' };
+    if (!sameTarget(p, input)) return { changed: false, error: '확인한 프로세스 정보가 변경되었습니다. 다시 선택하세요.' };
     if (this.state.targets.length >= 32 && !this.isAllowed(p)) return { changed: false, error: '자동 관리 대상은 최대 32개입니다.' };
     const target: AutomaticTarget = { pid: p.pid, start: p.start, name: p.name, group: p.group, path: p.path };
     const revision = this.revision;
     const validation = await this.collector.validateAutomatically(target);
     if (this.stopped || revision !== this.revision) return { changed: false, error: '자동 관리 설정이 변경되었습니다. 다시 확인하세요.' };
     if (!validation.allowed) return { changed: false, error: validation.error ?? '자동 관리 보호 대상입니다.' };
+    const fresh = this.collector.observeAutomation();
+    const current = fresh.members.find(p => processKey(p) === key);
+    if (!healthy(fresh.snapshot) || fresh.snapshot.processesStatus !== 'ok' || !current || !sameTarget(current, target))
+      return { changed: false, error: '확인한 프로세스 정보가 변경되었습니다. 다시 선택하세요.' };
     this.state.targets = [...this.state.targets.filter(t => processKey(t) !== key), target]; this.revision++; this.abort?.abort();
     await this.save(); return { changed: true };
   }
@@ -222,8 +227,7 @@ export class MemoryGuardian {
       this.pendingExit.delete(key);
       const target = pending.record.target;
       if (!target.path) continue;
-      const work = this.collector.inspectAutomatically({ ...target, path: target.path }).then(async state => {
-        if (this.stopped) return;
+      const work = this.collector.inspectAutomatically({ ...target, path: target.path }).catch(() => 'unknown' as const).then(async state => {
         const observation = this.collector.observeAutomation();
         await this.audit({ ...pending.record, at: this.now(), kind: state, after: auditMetrics(observation.snapshot, observation.members.find(p => processKey(p) === key)) });
         this.event(state === 'exited' ? 'exited' : 'still-running', state === 'exited' ? '프로세스 종료를 확인했습니다.'
@@ -235,6 +239,15 @@ export class MemoryGuardian {
   }
   async stop() {
     this.stopped = true; this.revision++; this.unsubscribe?.(); this.abort?.abort(); this.collector.setAutomaticInterest(false);
-    await this.inFlight; await Promise.all(this.confirmations); await this.writes.catch(() => {});
+    await this.inFlight; await Promise.all(this.confirmations);
+    const pending = [...this.pendingExit.values()]; this.pendingExit.clear();
+    for (const { record } of pending) {
+      try {
+        await this.audit({ ...record, at: this.now(), kind: 'unknown', reason: '플러그인 종료로 종료 여부를 확인하지 못했습니다.' });
+        this.event('skipped', '플러그인 종료로 종료 여부를 확인하지 못했습니다.', record.target.pid);
+      } catch { break; } // 기록 실패도 헬퍼 정리를 막지 않는다.
+    }
+    if (pending.length && !this.failure) await this.save().catch(() => {});
+    await this.writes.catch(() => {});
   }
 }

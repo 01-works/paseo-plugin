@@ -57,7 +57,7 @@ it('worker 자동 관리 선택은 확인 후에만 해당 PID·시작 시각으
   await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 선택' }).props.onPress());
   expect(rpc.target).not.toHaveBeenCalled(); expect(JSON.stringify(renderer!.toJSON())).toContain('/opt/dev/worker');
   await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 확인' }).props.onPress());
-  expect(rpc.target).toHaveBeenCalledExactlyOnceWith({ pid: entry.pid, start: entry.start, group: 'worker', allow: true });
+  expect(rpc.target).toHaveBeenCalledExactlyOnceWith({ pid: entry.pid, start: entry.start, group: 'worker', name: worker.name, path: worker.path, allow: true });
   expect(rpc.terminate).not.toHaveBeenCalled(); client.clear();
 });
 it('보호된 Codex 프로세스에는 자동 관리 허용 버튼을 표시하지 않음', async () => {

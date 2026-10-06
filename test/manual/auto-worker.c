@@ -14,6 +14,17 @@ static void work(void) {
   }
 }
 int main(int argc,char **argv) {
+  if(argc==3&&!strcmp(argv[1],"--orphan-parent")) {
+    pid_t parent=fork();if(parent<0) return 2;if(parent) return 0;
+    setsid();pid_t child=fork();if(child<0) return 2;
+    if(!child) {
+      freopen("/dev/null","w",stdout);freopen("/dev/null","w",stderr);close(STDIN_FILENO);
+      execl(argv[2],argv[2],"--foreground",NULL);_exit(3);
+    }
+    printf("%d %d\n",getpid(),child);fflush(stdout);
+    freopen("/dev/null","w",stdout);freopen("/dev/null","w",stderr);close(STDIN_FILENO);
+    sleep(40);kill(child,SIGTERM);return 0;
+  }
   if(argc==3&&!strcmp(argv[1],"--parent")) {
     pid_t child=fork();if(child<0) return 2;
     if(!child) { execl(argv[2],argv[2],"--foreground",NULL);_exit(3); }

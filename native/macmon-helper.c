@@ -142,13 +142,13 @@ static void sample(uint64_t seq) {
   printf("},\"procs\":"); if(print_procs(mono_ns())!=0) { errors[ne++]="프로세스 스캔 실패";free(previous);previous=NULL;previous_n=0;previous_time=0; }
   printf(",\"errors\":[");for(int i=0;i<ne;i++) {if(i) putchar(',');json_string(errors[i]);}printf("]}\n");fflush(stdout);
 }
-static int protected_path(const char *file,int ancestor) {
+static int protected_path(const char *file) {
   char lower[PROC_PIDPATHINFO_MAXSIZE];size_t n=strlen(file);if(n>=sizeof lower) return 1;
   for(size_t i=0;i<=n;i++) lower[i]=(file[i]>='A'&&file[i]<='Z')?file[i]+('a'-'A'):file[i];
-  if(strstr(lower,"paseo")||strstr(lower,"codex")||strstr(lower,"claude")||strstr(lower,"macmon-helper")
-    ||strstr(lower,"chrome")||strstr(lower,"safari")||strstr(lower,"firefox")) return 1;
-  return !ancestor&&(strstr(lower,".app/")||!strncmp(lower,"/system/",8)||!strncmp(lower,"/usr/libexec/",13)
-    ||!strncmp(lower,"/usr/sbin/",10)||!strncmp(lower,"/sbin/",6)||strstr(lower,"terminal")||strstr(lower,"iterm")||strstr(lower,"warp"));
+  return strstr(lower,"paseo")||strstr(lower,"codex")||strstr(lower,"claude")||strstr(lower,"macmon-helper")
+    ||strstr(lower,"chrome")||strstr(lower,"safari")||strstr(lower,"firefox")||strstr(lower,".app/")
+    ||!strncmp(lower,"/system/",8)||!strncmp(lower,"/usr/libexec/",13)
+    ||!strncmp(lower,"/usr/sbin/",10)||!strncmp(lower,"/sbin/",6)||strstr(lower,"terminal")||strstr(lower,"iterm")||strstr(lower,"warp");
 }
 static const char *terminate_one(pid_t pid,uint64_t start,const char *expected_path,int send_signal) {
   if(pid<=1||pid==getpid()) return "보호된 프로세스";
@@ -174,14 +174,14 @@ static const char *terminate_one(pid_t pid,uint64_t start,const char *expected_p
   if(expected_path) {
     char executable[PROC_PIDPATHINFO_MAXSIZE];
     if(proc_pidpath(pid,executable,sizeof executable)<=0||strcmp(executable,expected_path)) return "실행 경로가 변경되었습니다";
-    if(protected_path(executable,0)) return "자동 종료 보호 대상";
+    if(protected_path(executable)) return "자동 종료 보호 대상";
     pid_t ancestor=si.pbsi_ppid;int depth=0;
     for(;ancestor>1&&depth<64;depth++) {
       for(size_t i=0;i<ancestor_n;i++) if(ancestor==protected_ancestors[i]) return "작업·Paseo 하위 프로세스 보호";
       struct proc_bsdshortinfo parent_info;
       if(proc_pidinfo(ancestor,PROC_PIDT_SHORTBSDINFO,0,&parent_info,sizeof parent_info)!=sizeof parent_info
         ||proc_pidpath(ancestor,executable,sizeof executable)<=0) return "작업 상위 프로세스 확인 실패";
-      if(protected_path(executable,1)) return "작업·브라우저 하위 프로세스 보호";
+      if(protected_path(executable)) return "앱·시스템·작업 하위 프로세스 보호";
       if((pid_t)parent_info.pbsi_ppid==ancestor) return "상위 프로세스 확인 실패";
       ancestor=parent_info.pbsi_ppid;
     }

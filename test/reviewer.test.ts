@@ -49,6 +49,18 @@ it.each([
 it.each(['command_execution', 'mcp_tool_call', 'web_search'])('도구 이벤트 %s는 즉시 취소', async type => {
   await expect(fake(`console.log(JSON.stringify({type:'item.started',item:{type:${JSON.stringify(type)}}}));process.on('SIGTERM',()=>{});setInterval(()=>{},100);`)(input, new AbortController().signal)).rejects.toThrow('도구 사용');
 });
+it.each([
+  ['도구 사용', JSON.stringify({ type: 'item.started', item: { type: 'command_execution' } })],
+  ['요청 실패', JSON.stringify({ type: 'turn.failed' })],
+  ['이벤트 형식', 'broken'],
+  ['이벤트 형식', 'null'],
+  ['이벤트 형식', '{}'],
+])('개행 없는 마지막 출력의 %s도 거절', async (reason, tail) => {
+  await expect(fake(`${parseArgs}fs.writeFileSync(result,JSON.stringify(${JSON.stringify(good)}));process.stdout.write(${JSON.stringify(tail)});`)(input, new AbortController().signal)).rejects.toThrow(reason);
+});
+it('개행 없는 마지막 정상 이벤트도 검사하고 허용', async () => {
+  expect(await fake(`${parseArgs}fs.writeFileSync(result,JSON.stringify(${JSON.stringify(good)}));process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message'}}));`)(input, new AbortController().signal)).toEqual(good);
+});
 it('CLI 실패·과대한 출력·깨진 JSON·과대한 결과는 실패 처리', async () => {
   await expect(fake('process.exit(2)')(input, new AbortController().signal)).rejects.toThrow('종료 코드');
   await expect(fake('console.log("x".repeat(70*1024))')(input, new AbortController().signal)).rejects.toThrow('출력 한도');
@@ -73,5 +85,6 @@ it('비활성화한 Code Mode의 알려진 시작 알림만 허용하고 실제 
   const boot = `console.log(JSON.stringify({type:'item.completed',item:{type:'error',message:${JSON.stringify(notice)}}}));`;
   expect(await fake(`${parseArgs}${boot}fs.writeFileSync(result,JSON.stringify(${JSON.stringify(good)}));`)(input, new AbortController().signal)).toEqual(good);
   await expect(fake(`${boot}console.log(JSON.stringify({type:'turn.failed'}));`)(input, new AbortController().signal)).rejects.toThrow('요청 실패');
+  await expect(fake(`console.log(JSON.stringify({type:'turn.failed',item:{type:'error',message:${JSON.stringify(notice)}}}));`)(input, new AbortController().signal)).rejects.toThrow('요청 실패');
   await expect(fake(`console.log(JSON.stringify({type:'item.completed',item:{type:'error',message:'모델 접근 불가'}}));`)(input, new AbortController().signal)).rejects.toThrow('모델 접근 불가');
 });

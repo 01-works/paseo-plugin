@@ -32,9 +32,11 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
   };
   const permit = async (p: ProcessInfo, allow: boolean) => {
     if (pending) return;
+    if (allow && !p.path) { setMessage('실행 경로를 확인할 수 없습니다.'); return; }
     setPending(true); setMessage('');
     try {
-      const result = await autoTarget({ pid: p.pid, start: p.start, group, allow });
+      const identity = { pid: p.pid, start: p.start, group };
+      const result = await autoTarget(allow ? { ...identity, name: p.name, path: p.path!, allow: true } : { ...identity, allow: false });
       setMessage(result.changed ? `PID ${p.pid} 자동 관리 ${allow ? '허용' : '해제'}` : result.error ?? '설정을 저장하지 못했습니다.');
       choose(null); await query.refetch();
     } catch { setMessage('자동 관리 설정 실패'); }
