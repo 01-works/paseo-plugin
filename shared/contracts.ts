@@ -1,5 +1,6 @@
 import { defineRpc, defineSettings } from '@getpaseo/plugin';
 import { z } from 'zod';
+import { automationStatusSchema } from './automation';
 
 const number = z.number().finite().nonnegative();
 const nullable = number.nullable();
@@ -7,7 +8,8 @@ export const TOP_APP_LIMIT = 10;
 export const diskSchema = z.object({ total: number, used: number, available: number, sampledAt: number });
 export const cpuTicksSchema = z.object({ user: number, system: number, idle: number, nice: number });
 export const groupSchema = z.object({ name: z.string(), memoryBytes: number, processCount: number.int(), cpuPercent: nullable });
-export const processSchema = z.object({ pid: number.int().positive(), start: z.string().regex(/^\d+$/), group: z.string(), name: z.string(), memoryBytes: number, cpuPercent: nullable });
+export const processSchema = z.object({ pid: number.int().positive(), start: z.string().regex(/^\d+$/), group: z.string(), name: z.string(), memoryBytes: number, cpuPercent: nullable,
+  path: z.string().max(511).nullable().optional(), autoAllowed: z.boolean().optional() });
 export const processesSchema = z.object({
   ready: z.boolean(), sampledAt: number, excludedPermission: number.int(), excludedRoot: number.int(),
   otherErrors: number.int(), coreCount: number.int().positive(), topCpu: z.array(groupSchema).max(TOP_APP_LIMIT), topMemory: z.array(groupSchema).max(TOP_APP_LIMIT),
@@ -35,6 +37,7 @@ export const snapshotSchema = z.object({
   disk: diskSchema.nullable().optional(),
   processes: processesSchema.nullable(), processesStatus: z.enum(['off', 'warming', 'ok', 'stale', 'error', 'unsupported']),
   errors: z.array(z.string()),
+  automation: automationStatusSchema.optional(),
 });
 export const snapshotRpc = defineRpc({ name: 'mac-monitor.snapshot.get', input: z.object({ includeProcesses: z.boolean() }), output: snapshotSchema });
 export const hostInfoSchema = z.object({ hostname: z.string(), serverId: z.string().optional(), platform: z.string(), helperMode: z.enum(['native', 'node', 'unsupported']), version: z.string() });
@@ -48,7 +51,7 @@ export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate'
     .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
   output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
 export const settings = defineSettings({ id: 'monitor', scope: 'host', version: 1, schema: z.object({ experimentalFleet: z.boolean().default(true) }) });
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';
 export type RawSample = z.infer<typeof rawSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type HostInfo = z.infer<typeof hostInfoSchema>;
