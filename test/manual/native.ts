@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { rawSchema, TOP_APP_LIMIT, type RawSample } from '../../shared/contracts';
+import { computeMemory } from '../../shared/compute';
 import { spawnSource } from '../../server/helper-process';
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate: () => boolean) { const end = Date.now() + 8000;while (!predicate()) { if (Date.now() > end) throw new Error('네이티브 상태 대기 시간 초과');await pause(20); } }
@@ -9,6 +10,7 @@ async function main() {
   const source = spawnSource(path.resolve('bin/macmon-helper'), [], line => { samples.push(rawSchema.parse(JSON.parse(line))); }, () => {});
   try {
     await until(() => samples.length === 1);source.setProcesses(true);
+    if (samples[0].sys.vm?.speculative == null || computeMemory(samples[0].sys) === null) throw new Error('Activity Monitor 메모리 계산 필드 오류');
     await until(() => samples.length >= 3);
     if (samples[1].procs?.ready !== false || samples[2].procs?.ready !== true) throw new Error('앱 CPU 기준점/두 번째 샘플 오류');
     if (samples[2].procs.topCpu.length !== TOP_APP_LIMIT || samples[2].procs.topMemory.length !== TOP_APP_LIMIT) throw new Error('상위 목록 수 오류');

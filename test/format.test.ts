@@ -12,7 +12,7 @@ it('GiB 1024³ 소수 1자리와 작은 양·0·누락값 구분', () => {
 it('상대 시각', () => { expect(relativeTime(null)).toBe('아직 샘플 없음'); expect(relativeTime(999)).toBe('방금'); expect(relativeTime(5999)).toBe('5초 전'); });
 it('160px pill용 축약 라벨/오류/미지원', () => {
   const s = { ...emptySnapshot('native'), status: 'ok' as const, cpu: { total: 23.4, user: 20, system: 3.4 }, memory: computeMemory(raw.sys) };
-  expect(pillLabel(s)).toBe('23% · 0.0G');
+  expect(pillLabel(s)).toBe('23% · 16.0G');
   expect(pillLabel({ ...s, status: 'stale' })).toContain('지연'); expect(pillLabel({ ...s, status: 'error' })).toContain('오류');
   expect(pillLabel(emptySnapshot('unsupported'))).toBe('macOS 미지원');
 });

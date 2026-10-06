@@ -3,7 +3,7 @@
 2026-10-06, PLAN 4.1절의 메모리 식과 Activity Monitor 직접 대조에서 발견한 약 0.56 GiB 차이를 추적했다.
 **이 Mac의 Activity Monitor는 `앱 + 와이어드 + 압축`을 합계로 쓰지 않는다.**
 설치된 Apple 실행 파일의 계산 경로와 공개 VM 카운터로 차이가 발생하는 식을 확인했다.
-제품 코드는 승인된 식을 유지했다.
+원인 조사 당시 제품 코드는 최초 승인 식을 유지했다. 이후 사용자의 개선 요청으로 0.1.1부터 아래 Activity Monitor 식을 적용한다.
 
 ## 확인한 두 계산식
 
@@ -12,7 +12,7 @@
 `W`는 `wire_count`, `C`는 `compressor_page_count`, `T`는 `hw.memsize`다.
 
 ```text
-mac-monitor 사용량 = (I − Q + W + C) × P
+mac-monitor 0.1.0 사용량 = (I − Q + W + C) × P
 이 Mac의 Activity Monitor 사용량 = T − (F − S + E) × P
 양쪽의 캐시된 파일 = (E + Q) × P
 ```
@@ -82,7 +82,7 @@ VM의 초기 wired 계산도 `max_mem`을 기준으로 한다.
 [초기 wired 계산](https://github.com/apple-oss-distributions/xnu/blob/xnu-12377.121.6/osfmk/vm/vm_resident.c#L2359).
 
 Activity Monitor는 전체 물리 크기에서 빈 페이지와 파일 기반 페이지를 빼므로 이 예약 차이가 합계에 남는다.
-세 VM 구성 항목의 합만 사용하는 현재 플러그인에는 이 영역이 추가되지 않는다.
+세 VM 구성 항목의 합만 사용하는 이전 플러그인에는 이 영역이 추가되지 않았다.
 이는 root/다른 사용자 프로세스 제외와 무관하다. 해당 제외는 앱 순위에만 적용한다.
 
 ## 원시 값 100회로 재현
@@ -103,7 +103,7 @@ clang -O2 -Wall -Wextra -Werror docs/research/prototypes/memory-accounting.c \
 이 시각에 Activity Monitor 화면을 다시 읽은 값으로 표현하지 않는다. 이번 후속 조사에서는 UI 도구가
 Activity Monitor 창을 읽지 못했다(`cgWindowNotFound`). 이전 실제 화면 대조는 VALIDATION.md의 18:09 기록이다.
 
-| 시각 KST | 현재 플러그인 식 GiB | Activity Monitor 식 재구성 GiB | 차이 GiB |
+| 시각 KST | 이전 플러그인 식 GiB | Activity Monitor 식 재구성 GiB | 차이 GiB |
 |---|---:|---:|---:|
 | 18:48:34.353 | 12.819214 | 13.382172 | 0.562958 |
 | 18:49:54.640 | 12.965393 | 13.525345 | 0.559952 |
@@ -134,7 +134,7 @@ VM 카운터 합 = (F − S + I + E + W + C) × P
 예약 영역이 언제나 0.510208 GiB라고 일반화하거나 0.56 GiB를 상수로 더하면 안 된다.
 AM와 헬퍼의 조회 시각 차이는 별도로 남는다.
 
-## 적용 판단
+## 원인 조사 당시의 적용 판단
 
 이번 요청은 원인 조사이므로 PLAN 4.1절의 제품 계산식은 바꾸지 않았다.
 Activity Monitor 기준으로 총 수치를 맞추려면 합계를 `T − (F − S + E) × P`로 바꾸고,
@@ -145,3 +145,12 @@ Activity Monitor 기준으로 총 수치를 맞추려면 합계를 `T − (F −
 기록한 재현 소스는 `clang -O2 -Wall -Wextra -Werror` 빌드와 1회 실제 조회·JSON 파싱을 통과했다.
 조사용 프로그램은 모두 종료됐고 설치된 `macmon-helper`는 기존 PID의 1개를 유지했다.
 제품 코드 변경과 플러그인 reload·데몬 재시작은 없었다.
+
+## 후속 개선 적용
+
+사용자의 후속 개선 요청에 따라 0.1.1에서 총 사용량을 확인한 Activity Monitor 식으로 변경했다.
+앱·와이어드·압축 값은 그대로 두고 메모리 막대는 총 사용량/물리 메모리를 표시한다.
+speculative은 기존 조회에 포함된 값을 내보내므로 추가 VM 조회나 스캔은 없다.
+Node 폴백의 vm_stat "Pages free"는 이미 speculative을 뺀 값이므로 둘을 더해 Mach 카운터를 복원한다.
+[Apple vm_stat 구현](https://github.com/apple-oss-distributions/system_cmds/blob/main/vm_stat/vm_stat.c#L126).
+변경 근거는 [DECISIONS.md](../DECISIONS.md), 적용 후 검증 범위는 [VALIDATION.md](../VALIDATION.md)에 기록한다.

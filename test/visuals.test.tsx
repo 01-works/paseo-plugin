@@ -68,16 +68,28 @@ it('높은 CPU·디스크 사용률과 RAM 압력을 독립적으로 표현하�
   const stressed: Snapshot = { ...sample, sampledAt: Date.now(), cpu: { total: 90, user: 75, system: 15 },
     disk: { total: 100 * GiB, used: 96 * GiB, available: 4 * GiB, sampledAt: Date.now() } };
   await act(async () => { renderer = create(<Details {...props} snapshot={stressed} name="Mac" />); });
-  const memoryBar = () => renderer!.root.find(node => String(node.type) === 'View' && (node.props.accessibilityLabel ?? '').startsWith('앱 '));
+  const memoryBar = () => renderer!.root.find(node => String(node.type) === 'View' && (node.props.accessibilityLabel ?? '').startsWith('메모리 '));
   const bars = () => renderer!.root.findAllByType(Bar);
-  expect(bars().map(bar => bar.props.color)).toEqual([c.statusDanger, c.statusDanger]);
+  expect(bars().map(bar => bar.props.color)).toEqual([c.statusDanger, c.statusSuccess, c.statusDanger]);
   expect(memoryBar().findAll(node => String(node.type) === 'View')[1].props.style.backgroundColor).toBe(c.statusSuccess);
   await act(async () => renderer!.update(<Details {...props} snapshot={{ ...stressed, pressure: 'critical' }} name="Mac" />));
   expect(memoryBar().findAll(node => String(node.type) === 'View')[1].props.style.backgroundColor).toBe(c.statusDanger);
   await act(async () => renderer!.update(<Details {...props} snapshot={{ ...stressed, sampledAt: Date.now() - 6000, status: 'stale' }} name="Mac" />));
-  expect(bars().map(bar => bar.props.color)).toEqual([c.foregroundMuted, c.foregroundMuted]);
+  expect(bars().map(bar => bar.props.color)).toEqual([c.foregroundMuted, c.foregroundMuted, c.foregroundMuted]);
   expect(memoryBar().findAll(node => String(node.type) === 'View').slice(1).every(node => node.props.style.backgroundColor === c.foregroundMuted)).toBe(true);
   expect(JSON.stringify(renderer!.toJSON())).toContain('90%');
+});
+it('메모리 막대는 구성 항목 합이나 캐시를 더하지 않고 표시한 총 사용량과 같은 비율', async () => {
+  const memory = { ...sample.memory!, used: 15.5 * GiB, cached: 2 * GiB };
+  await act(async () => { renderer = create(<Details {...props} snapshot={{ ...sample, memory }} name="Mac" />); });
+  const memoryBar = () => renderer!.root.findAllByType(Bar).find(node => node.props.label.startsWith('메모리 '))!;
+  expect(memoryBar().props.value).toBe(96.875);
+  expect(memoryBar().props.label).toBe('메모리 15.5 GiB / 16.0 GiB');
+  const text = JSON.stringify(renderer!.toJSON());
+  expect(text).toContain('앱'); expect(text).toContain('8.0 GiB'); expect(text).not.toContain('기타');
+  await act(async () => renderer!.update(<Details {...props} snapshot={{ ...sample, memory: null, status: 'error' }} name="Mac" />));
+  expect(memoryBar().props.value).toBeNull();
+  expect(memoryBar().props.label).toBe('메모리 — / —');
 });
 it('앱 상세는 좌상단 뒤로·앱 이름으로 진입을 표시하고 돌아오면 정렬 기준 유지', async () => {
   const client = new QueryClient();

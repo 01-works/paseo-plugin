@@ -113,7 +113,8 @@ export class Collector {
       cpu, memory, pressure: pressure(raw.sys.pressureLevel), memoryLevel: raw.sys.memoryLevel, swap: raw.sys.swap, disk: raw.sys.disk ?? null,
       processes: this.interest && raw.procs ? (({ members: _members, ...groups }) => groups)(raw.procs) : null,
       processesStatus: this.mode === 'node' ? 'unsupported' : !this.interest ? 'off' : raw.procs ? (raw.procs.ready ? 'ok' : 'warming') : raw.errors.some(e => e.includes('프로세스')) ? 'error' : 'warming',
-      errors: [...raw.errors, ...(memory === null && raw.sys.vm ? ['메모리 카운터 조합이 유효하지 않음'] : [])],
+      errors: [...raw.errors, ...(memory === null && raw.sys.vm ? [raw.sys.vm.speculative === null
+        ? '메모리 speculative 카운터 없음 · 헬퍼 업데이트 필요' : '메모리 카운터 조합이 유효하지 않음'] : [])],
       status: valid ? cpu ? 'ok' : 'warming' : 'error' };
     this.lastIssue = valid ? '' : '시스템 측정 일부 실패';
   }

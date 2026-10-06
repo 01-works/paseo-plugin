@@ -3,8 +3,32 @@ import { computeCpu, computeMemory, pressure, sampleStatus, emptySnapshot } from
 import { raw } from './fixtures';
 
 describe('원시 카운터 계산', () => {
-  it('앱/와이어드/압축/캐시 공식 및 GiB 물리 용량', () => {
-    expect(computeMemory(raw.sys)).toEqual({ app: 80 * 16384, wired: 30 * 16384, compressed: 40 * 16384, cached: 70 * 16384, used: 150 * 16384, total: 16 * 1024 ** 3 });
+  it('Activity Monitor 합계는 실제 빈 페이지·파일 기반 페이지를 제외하고 세부 항목은 유지', () => {
+    expect(computeMemory(raw.sys)).toEqual({ app: 80 * 16384, wired: 30 * 16384, compressed: 40 * 16384, cached: 70 * 16384,
+      used: 16 * 1024 ** 3 - 56 * 16384, total: 16 * 1024 ** 3 });
+  });
+  it('실측 카운터에서 약 0.56 GiB 누락과 speculative·purgeable 중복 제외를 회귀 검증', () => {
+    const memory = computeMemory({ ...raw.sys, vm: { free: 35340, speculative: 12538, internal: 394117,
+      external: 148760, wire: 191902, compressor: 255611, purgeable: 1510 } })!;
+    expect(memory.used / 1024 ** 3).toBe(13.382171630859375);
+    expect((memory.app + memory.wired + memory.compressed) / 1024 ** 3).toBe(12.8192138671875);
+    expect(memory.cached).toBe(150270 * 16384);
+  });
+  it.each([4096, 16384])('페이지 크기 %s에 따라 총 사용량을 계산', pageSize => {
+    const memory = computeMemory({ ...raw.sys, pageSize, memsize: 200 * pageSize,
+      vm: { internal: 60, purgeable: 10, wire: 10, compressor: 10, external: 50, free: 100, speculative: 20 } });
+    expect(memory?.used).toBe(70 * pageSize);
+  });
+  it('speculative 누락·역행·음수 합계·정밀도 손실은 0으로 보정하지 않음', () => {
+    for (const vm of [{ ...raw.sys.vm!, speculative: null }, { ...raw.sys.vm!, speculative: 11 },
+      { ...raw.sys.vm!, external: 2 ** 30 }, { ...raw.sys.vm!, wire: Number.MAX_SAFE_INTEGER }]) {
+      expect(computeMemory({ ...raw.sys, vm })).toBeNull();
+    }
+    expect(computeMemory({ ...raw.sys, pageSize: 0.5 })).toBeNull();
+  });
+  it('유효한 사용량 0은 읽기 실패 null과 구분', () => {
+    expect(computeMemory({ ...raw.sys, memsize: 10 * 16384,
+      vm: { internal: 0, purgeable: 0, wire: 0, compressor: 0, external: 0, free: 10, speculative: 0 } })?.used).toBe(0);
   });
   it('누락/음수 앱 계산은 0이 아니라 null', () => {
     expect(computeMemory({ ...raw.sys, pageSize: null })).toBeNull();

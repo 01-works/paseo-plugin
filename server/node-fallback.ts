@@ -14,7 +14,10 @@ export function parseVm(text: string): Pick<RawSample['sys'], 'pageSize' | 'vm'>
   const pageSize = Number(/page size of (\d+) bytes/.exec(text)?.[1]);
   const read = (key: string) => { const value = new RegExp(`^${key}:\\s+(\\d+)\\.`, 'm').exec(text)?.[1]; if (!value) throw new Error(`vm_stat 항목 없음: ${key}`); return Number(value); };
   if (!pageSize) throw new Error('vm_stat 페이지 크기 없음');
-  return { pageSize, vm: { internal: read('Anonymous pages'), purgeable: read('Pages purgeable'), wire: read('Pages wired down'), compressor: read('Pages occupied by compressor'), external: read('File-backed pages'), free: read('Pages free') } };
+  const speculative = read('Pages speculative');
+  // vm_stat의 Pages free는 이미 speculative을 뺀 값이다. Mach 원시 카운터와 같은 의미로 복원한다.
+  return { pageSize, vm: { internal: read('Anonymous pages'), purgeable: read('Pages purgeable'), wire: read('Pages wired down'), compressor: read('Pages occupied by compressor'),
+    external: read('File-backed pages'), free: read('Pages free') + speculative, speculative } };
 }
 export function parseSwap(text: string): RawSample['sys']['swap'] {
   const read = (key: string) => { const m = new RegExp(`${key} = ([\\d.]+)([KMG])`).exec(text); if (!m) throw new Error('스왑 출력 해석 실패'); return Number(m[1]) * ({ K: 1024, M: 1024 ** 2, G: 1024 ** 3 }[m[2]]!); };

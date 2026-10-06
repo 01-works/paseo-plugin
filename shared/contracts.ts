@@ -16,7 +16,9 @@ export const rawSchema = z.object({
   v: z.literal(1), seq: number.int(), t: number, mono: number,
   sys: z.object({
     pageSize: nullable, memsize: nullable,
-    vm: z.object({ internal: number, purgeable: number, wire: number, compressor: number, external: number, free: number }).nullable(),
+    vm: z.object({ internal: number.int(), purgeable: number.int(), wire: number.int(), compressor: number.int(), external: number.int(), free: number.int(),
+      // 이전 헬퍼는 CPU 등 다른 값은 읽되 메모리 합계를 확인 불가로 처리한다.
+      speculative: number.int().nullable().optional().default(null) }).nullable(),
     cpu: cpuTicksSchema.nullable(), swap: z.object({ total: number, used: number }).nullable(),
     pressureLevel: z.number().finite().nullable(), memoryLevel: nullable, disk: diskSchema.nullable().optional(),
   }),
@@ -46,7 +48,7 @@ export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate'
     .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
   output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
 export const settings = defineSettings({ id: 'monitor', scope: 'host', version: 1, schema: z.object({ experimentalFleet: z.boolean().default(true) }) });
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 export type RawSample = z.infer<typeof rawSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type HostInfo = z.infer<typeof hostInfoSchema>;

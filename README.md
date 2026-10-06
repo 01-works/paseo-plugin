@@ -74,7 +74,8 @@ pill을 누르면 데스크톱에서는 중앙 모달, compact 화면에서는 �
 열린 상세와 대시보드는 2초마다 캐시를 읽어 자동 갱신합니다. 화면 전체를 다시 열거나 스크롤 위치를 초기화하지 않습니다.
 복사·수동 새로고침 버튼과 root/권한 제외 통계는 화면에서 제거했습니다. 연결 오류 때만 재시도 버튼을 제공합니다.
 화면에는 수치·상태를 중심으로 표시하고 단위·계산 기준 설명은 이 문서에 둡니다.
-CPU·디스크 바는 사용량 구간에 따라 색을 바꾸고, 메모리 구성 바의 앱 구간은 OS 압력에 따라 색을 바꿉니다.
+CPU·디스크 바는 사용량 구간에 따라 색을 바꾸고, 메모리 바는 총 사용량 비율과 OS 압력 색을 표시합니다.
+앱·와이어드·압축의 세부 수치는 메모리 바 아래에 표시합니다.
 디스크는 사용량/전체 용량과 남은 공간을 표시하며 30초마다 갱신합니다.
 
 앱 이름을 누르면 개별 프로세스 화면으로 전환합니다. 좌상단의 **‹ 뒤로** 옆에 앱 이름이 표시되며, 돌아오면 정렬 기준을 유지합니다.
@@ -111,8 +112,8 @@ Activity Monitor는 같은 이진 단위를 `GB`라고 표시합니다.
 | 앱 메모리 | `(internal_page_count − purgeable_count) × host_page_size` |
 | 와이어드 | `wire_count × host_page_size` |
 | 압축 | `compressor_page_count × host_page_size` |
-| 사용된 메모리 | 앱 + 와이어드 + 압축 |
-| 캐시된 파일 | `(external_page_count + purgeable_count) × host_page_size`, 사용량에서 제외 |
+| 사용된 메모리 | `hw.memsize − (free_count − speculative_count + external_page_count) × host_page_size` |
+| 캐시된 파일 | `(external_page_count + purgeable_count) × host_page_size` |
 | 물리 메모리 | `sysctl hw.memsize` |
 | CPU 전체 | `Δ(user + nice + system) / Δ전체 tick × 100`, 전 코어 합산 0~100% |
 | 압력 | `kern.memorystatus_vm_pressure_level`: 1 정상 / 2 주의 / 4 위험 / 기타 확인 불가 |
@@ -124,6 +125,11 @@ Activity Monitor는 같은 이진 단위를 `GB`라고 표시합니다.
 
 `host_statistics64(HOST_VM_INFO64)`와 `host_statistics(HOST_CPU_LOAD_INFO)`를 사용합니다.
 `os.freemem()`이나 압축 전 페이지 수는 사용하지 않습니다.
+사용된 메모리는 이 Mac의 Activity Monitor 합계 식을 적용합니다. `free_count`에는 speculative이 포함되어
+실제 빈 페이지로 보정합니다. 앱·와이어드·압축의 합과 총 사용량은 다를 수 있으며 캐시와 사용량도 일부 중첩합니다.
+합계의 예약 영역 등을 세부 항목에 임의로 배분하지 않습니다. 메모리 바는 총 사용량/물리 메모리만 표시합니다.
+Node 폴백은 `vm_stat`의 "Pages free"와 "Pages speculative"을 더해 Mach 카운터를 복원하고 같은 식을 씁니다.
+필수 값 누락이나 유효하지 않은 계산은 확인 불가로 표시합니다.
 가장 바깥 `.app` 번들 이름으로 그룹화하고, 그 밖의 실행 파일은 basename으로 표시합니다.
 `/claude/versions/` 경로는 `claude`로 묶습니다. 앱 메모리 footprint에는 압축/스왑 분이 포함되어
 그룹 합이 물리 RAM보다 클 수 있으므로 RAM 점유율로 환산하지 않습니다.
@@ -138,12 +144,14 @@ Activity Monitor는 같은 이진 단위를 `GB`라고 표시합니다.
 [XNU 압력 레벨](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_memorystatus_notify.c),
 [Stats RAM 구현](https://github.com/exelban/stats/blob/master/Modules/RAM/readers.swift),
 [htop Darwin 구현](https://github.com/htop-dev/htop/blob/main/darwin/Platform.c).
+합계 식의 실행 파일 추적·원시 값 대조는 [메모리 합계 조사](docs/research/report-memory-accounting.md),
+폴백의 빈 페이지 기준은 [Apple vm_stat 구현](https://github.com/apple-oss-distributions/system_cmds/blob/main/vm_stat/vm_stat.c#L126)에 있습니다.
 API 호환성 기준은 [Paseo v0.10.2 플러그인 문서](https://github.com/getpaseo/paseo/blob/v0.10.2/public-docs/plugins/reference.md)와 설치된 0.10.2 타입입니다.
 자세한 조사와 실측은 [docs/research](docs/research/)에 있습니다.
 
 ## 상태 표시
 
-pill 상태 점과 메모리 압력·구성 바의 앱 구간은 **OS 메모리 압력**을 기준으로 삼습니다.
+pill 상태 점과 메모리 바·압력 표시는 **OS 메모리 압력**을 기준으로 삼습니다.
 RAM 사용률이나 스왑 양으로 위험 색을 부여하지 않습니다. CPU·디스크 바에는 사용량 강조 색을 별도로 적용합니다.
 모든 색은 Paseo theme의 색 토큰을 사용하며 숫자와 문구도 함께 표시합니다.
 
@@ -184,23 +192,27 @@ Paseo 업데이트로 비공식 동작이 바뀔 수 있습니다. 관련 코드
 ## 부하와 검증
 
 이 Mac(arm64 macOS 26.5.1, 16 GiB, 논리 10코어)에서 최종 헬퍼를 60초 관찰했습니다.
-상위 10개·개별 프로세스 정보·디스크 조회를 포함한 앱 스캔 활성 모드의 CPU 시간은 0.066903초,
-**코어 하나의 약 0.111%**, RSS는 **2.70 MiB**였습니다. 전체 10코어 환산은 약 0.0111%입니다.
-30개 샘플 간격은 1991~2008ms였고 디스크는 2회 읽었습니다.
+0.1.1의 상위 10개·개별 프로세스 정보·디스크 조회를 포함한 앱 스캔 활성 모드의 CPU 시간은 0.158157초,
+**코어 하나의 약 0.264%**, RSS는 **2.77 MiB**였습니다. 전체 10코어 환산은 약 0.0264%입니다.
+30개 샘플 간격은 1996.780~2004.967ms였고 디스크는 2회 읽었습니다.
+기존 VM 조회에 speculative 값을 추가했으며 조회 횟수는 늘리지 않았습니다.
 
 `statfs` 500회 별도 실측은 평균 **0.571µs**, p95 0.667µs, 최대 2.250µs였습니다.
 30초 간격의 용량 조회 비용은 이 관찰에서 매우 작았습니다. 부하가 0이라고 보장하지는 않습니다.
 이 값은 C 헬퍼 자체 비용이며 Paseo·Node 서버·화면 렌더링은 포함하지 않습니다.
+이전 0.1.0의 60초 앱 활성 관찰은 코어 하나의 약 0.111%, RSS 2.70 MiB였습니다.
+실행 중인 프로세스 수와 작업량이 달라 두 관찰을 계산식 변경의 비용 증가율로 해석하지 않습니다.
 이전 상위 5개 버전의 120초 관찰은 시스템 전용 0.104%, 앱 활성 0.346%였으며
 시점·프로세스 수가 다른 측정이므로 성능 개선 비율로 비교하지 않습니다.
 Node 폴백의 자체 부하는 이 구현에서 별도로 측정하지 않았습니다. 프로세스 수와 머신 부하에 따라 비용은 달라집니다.
 테스트·네이티브 스모크·로컬 설치/RPC·부하 측정 결과는 [docs/VALIDATION.md](docs/VALIDATION.md)에 있습니다.
 
-Activity Monitor 화면을 직접 대조했습니다. 앱·와이어드·압축·캐시·스왑은 가까운 두 관찰에서
+개선 전 Activity Monitor 화면을 직접 대조했습니다. 앱·와이어드·압축·캐시·스왑은 가까운 두 관찰에서
 항목별 0.02 GiB 미만의 차이를 보였지만, **총 사용량은 Activity Monitor가 약 0.56 GiB 더 높았습니다.**
 후속 조사에서 이 Mac의 Activity Monitor 합계는 `물리 RAM − 실제 빈 페이지 − 파일 기반 페이지`로 확인했습니다.
-현재 플러그인의 구성 항목 합과 기준이 달라 예약 영역 약 0.51 GiB와 purgeable 등의 차이가 남습니다.
-승인된 제품 계산식은 유지하며, 실행 파일 추적과 100회 원시 값 대조는 [합계 차이 조사](docs/research/report-memory-accounting.md)에 기록했습니다.
+0.1.1부터 해당 식을 적용하여 같은 원시 카운터의 차이를 해결합니다. 추가 측정 호출은 없습니다.
+실행 파일 추적과 100회 원시 값 대조는 [합계 차이 조사](docs/research/report-memory-accounting.md)에 기록했습니다.
+새 버전의 Activity Monitor 화면 대조는 사용자 대조가 필요하며 읽는 시각·갱신 간격에 따른 차이는 남습니다.
 시각별 수치와 CPU 비교의 한계는 [검증 기록](docs/VALIDATION.md)에 남겼습니다.
 
 ```sh
@@ -212,7 +224,7 @@ npm run compare -- --samples=3   # CPU 샘플 3회 기록 후 종료
 
 - root 및 다른 사용자 프로세스 일부는 권한 때문에 상위 목록에서 제외됩니다. 제외 수는 RPC 데이터에 남기되 화면에서는 숨깁니다.
 - 앱 CPU는 종료된 프로세스의 마지막 구간 및 새 프로세스의 첫 구간을 포함하지 못해 시스템 CPU 합계와 다를 수 있습니다.
-- 사용 메모리는 앱·와이어드·압축의 합이며 이 Mac의 Activity Monitor 합계 식과 다릅니다. CPU 갱신 간격·읽는 시각·반올림·압력 그래프의 내부 기준도 별도 차이를 만들 수 있습니다.
+- 합계 식은 macOS 26.5.1의 Activity Monitor에서 확인했습니다. 다른 OS 버전의 내부 합계·압력 그래프 기준은 같다고 보장하지 않습니다. 갱신 간격·읽는 시각·반올림도 차이를 만들 수 있습니다.
 - 커밋된 헬퍼는 arm64·Intel macOS 26 CI에서 실행·스키마 검증을 통과했습니다. Intel의 실제 Paseo 설치·화면은 미검증입니다.
 - 실제 Paseo 다크·라이트 화면과 두 에이전트 pill 동시 갱신을 확인했습니다. compact 실제 배치와 다른 Mac의 집계는 확인이 남아 있습니다.
 - 서버 설치 경로는 0.10.2의 설치 설정에서 읽습니다. 다른 ID로 설치하는 `--id` 별칭은 지원하지 않습니다.
