@@ -116,7 +116,7 @@ static void sample(uint64_t seq) {
   vm_statistics64_data_t vm;mach_msg_type_number_t count=HOST_VM_INFO64_COUNT;
   printf(",\"vm\":");
   if(host_statistics64(host,HOST_VM_INFO64,(host_info64_t)&vm,&count)==KERN_SUCCESS)
-    printf("{\"internal\":%u,\"purgeable\":%u,\"wire\":%u,\"compressor\":%u,\"external\":%u,\"free\":%u}",vm.internal_page_count,vm.purgeable_count,vm.wire_count,vm.compressor_page_count,vm.external_page_count,vm.free_count);
+    printf("{\"internal\":%u,\"purgeable\":%u,\"wire\":%u,\"compressor\":%u,\"external\":%u,\"free\":%u,\"speculative\":%u}",vm.internal_page_count,vm.purgeable_count,vm.wire_count,vm.compressor_page_count,vm.external_page_count,vm.free_count,vm.speculative_count);
   else {printf("null");errors[ne++]="HOST_VM_INFO64 실패";}
   host_cpu_load_info_data_t cpu; count=HOST_CPU_LOAD_INFO_COUNT;printf(",\"cpu\":");
   if(host_statistics(host,HOST_CPU_LOAD_INFO,(host_info_t)&cpu,&count)==KERN_SUCCESS)

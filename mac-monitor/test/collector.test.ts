@@ -81,6 +81,14 @@ describe('캐시 및 헬퍼 수명주기', () => {
     expect(c.snapshot().status).toBe('error'); expect(c.snapshot().memory).toBeNull();expect(c.snapshot().cpu).toBeNull();
     expect(c.snapshot().disk).toBeNull(); expect(c.snapshot().errors).toContain('Data 볼륨 용량 읽기 실패');
   });
+  it('이전 헬퍼의 speculative 누락은 CPU 캐시를 유지하고 메모리만 확인 불가', async () => {
+    const c = fake(`const raw=${JSON.stringify(raw)};delete raw.sys.vm.speculative;console.log(JSON.stringify(raw));raw.seq++;raw.sys.cpu.user+=50;raw.sys.cpu.idle+=50;console.log(JSON.stringify(raw));setInterval(()=>{},1000);`);
+    await c.start();await until(() => c.snapshot().seq === 1);
+    const s = c.snapshot();
+    expect(s.cpu?.total).toBe(50); expect(s.memory).toBeNull(); expect(s.status).toBe('error');
+    expect(s.errors).toContain('메모리 speculative 카운터 없음 · 헬퍼 업데이트 필요');
+    expect(snapshotSchema.safeParse(s).success).toBe(true);
+  });
   it('중단 후 지수 백오프, 동시에 하나만 실행, stop 후 자식 없음', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'mac-monitor-test-'));dirs.push(dir);const file = path.join(dir, 'starts');
     const code = `require('node:fs').appendFileSync(${JSON.stringify(file)},JSON.stringify({pid:process.pid,t:Date.now()})+'\\n');${sampleCode}setTimeout(()=>process.exit(0),30);`;

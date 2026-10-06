@@ -23,7 +23,7 @@
 
 포함
 - CPU 전체 사용률 (사용자 + 시스템, 전 코어 합산 0~100%)
-- 메모리: 사용된 메모리(앱 + 와이어드 + 압축), 캐시된 파일, 전체 용량
+- 메모리: Activity Monitor 기준 사용된 메모리, 앱·와이어드·압축, 캐시된 파일, 전체 용량
 - 메모리 압력: 정상 / 주의 / 위험 / 확인 불가
 - 스왑 사용량 / 전체
 - 앱 그룹별 상위 CPU·메모리 (상위 5개)
@@ -54,13 +54,16 @@
 | 앱 메모리 | (internal_page_count − purgeable_count) × page | |
 | 와이어드 메모리 | wire_count × page | |
 | 압축 메모리 | compressor_page_count × page | `total_uncompressed_pages_in_compressor` 쓰지 말 것 (압축 전 크기, 실측 55 GiB) |
-| **사용된 메모리** | 앱 + 와이어드 + 압축 | Activity Monitor "사용된 메모리"에 대응 |
-| 캐시된 파일 | (external_page_count + purgeable_count) × page | 사용량에 포함하지 않음 |
+| **사용된 메모리** | hw.memsize − (free_count − speculative_count + external_page_count) × page | 이 Mac의 Activity Monitor 합계 식 |
+| 캐시된 파일 | (external_page_count + purgeable_count) × page | 사용량과 일부 중첩하므로 구성 막대에 더하지 않음 |
 | 물리 메모리 | `hw.memsize` | |
 
 - `os.freemem()`은 사용하지 않는다 (libuv = free_count × page, 실측 0.12 GiB → "99% 사용"이 나오는 원인).
 - 출처: xnu `vm_statistics.h`, exelban/Stats, htop/btop darwin (URL은 `report-native.md`).
 - Activity Monitor와 완전히 같다고 단정하지 않는다. 실측 대조 결과를 `docs/VALIDATION.md`에 기록한 뒤에만 "대조 완료"로 표현.
+- 2026-10-06 후속 개선 지시에 따라 최초 `앱 + 와이어드 + 압축` 합계를 위 식으로 변경한다. 원인은 [합계 차이 조사](research/report-memory-accounting.md), 변경 근거와 UI·폴백 처리는 [결정 기록](DECISIONS.md)의 "Activity Monitor 기준 메모리 합계 개선" 절에 있다.
+- `free_count`에는 speculative이 포함돼 있다. Node 폴백의 `vm_stat` "Pages free"는 이미 speculative을 제외하므로 둘을 더해 원시 카운터를 복원한다. 누락·역행·음수 또는 안전한 정수 범위를 벗어난 계산 결과는 `null`과 오류다.
+- 메모리 막대는 사용량/물리 메모리 비율만 표시하며 OS 압력 색을 사용한다. 앱·와이어드·압축 값은 아래에 유지한다. 합계와 세부 항목 합이 다르다고 임의의 보정 상수를 더하거나 별도 메모리 영역을 추측하지 않는다.
 
 ### 4.2 메모리 압력 — 색상의 유일한 기준
 
@@ -121,13 +124,14 @@
   ```json
   {"v":1,"seq":42,"t":1791261760004,"mono":123456789,
    "sys":{"pageSize":16384,"memsize":17179869184,
-          "vm":{"internal":0,"purgeable":0,"wire":0,"compressor":0,"external":0,"free":0},
+          "vm":{"internal":0,"purgeable":0,"wire":0,"compressor":0,"external":0,"free":0,"speculative":0},
           "cpu":{"user":0,"system":0,"idle":0,"nice":0},
           "swap":{"total":0,"used":0},"pressureLevel":2,"memoryLevel":35},
    "procs":null,
    "errors":[]}
   ```
   각 필드는 읽기 실패 시 `null` + `errors`에 사유. 0으로 대체하지 않는다.
+  speculative이 없는 이전 v1 헬퍼의 누락 필드는 `null`로 해석해 CPU 등 다른 값을 유지하고 메모리를 확인 불가로 표시한다.
 - 부모 종료 감지: stdin EOF 또는 `getppid()` 변화 시 즉시 종료 (고아 프로세스 방지).
 - `--once` 모드: 한 번 출력 후 종료 (검증·폴백용).
 
@@ -218,6 +222,7 @@ mac-monitor/
 
 - `npm run typecheck`
 - `compute.test.ts`: 고정 카운터 → 메모리 항목, CPU Δ(카운터 동일/역행/0 Δtotal), 압력 매핑(1/2/4/기타/null), 첫 샘플 "측정 중".
+- 메모리 후속 회귀: 실제 VM 카운터의 Activity Monitor 식, 4/16 KiB 페이지, speculative 중복 제외·누락·역행, 음수/정밀도 손실, Node의 빈 페이지 복원, 이전 헬퍼의 부분 실패, 합계와 같은 막대 비율.
 - `collector.test.ts`: 가짜 헬퍼(node 스크립트)로 정상 스트림, 잘못된 JSON 줄, 중단 → 재시작 백오프, 지연/오류 전환, 동시 RPC 100개가 측정을 트리거하지 않음, cleanup 후 자식 프로세스 0개.
 - `format.test.ts`: GiB 표기, 상대 시각, 라벨 축약.
 - 헬퍼: `bin/macmon-helper --once | node -e`로 스키마 검증 스모크 테스트.

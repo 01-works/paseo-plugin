@@ -7,7 +7,7 @@ import { hostInfoRpc, type Snapshot } from '../shared/contracts';
 import { emptySnapshot } from '../shared/compute';
 import { useSnapshot } from './data';
 import { gib, percent, pressureLabels, statusLabels, displaySnapshot, appPercent } from './format';
-import { Badge, Bar, Card, Legend, barPercent, usageColor, type Theme } from './visuals';
+import { Badge, Bar, Card, barPercent, usageColor, type Theme } from './visuals';
 import { GroupTermination, ProcessPanel } from './processes';
 
 const rankingColumns = {
@@ -81,12 +81,12 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
   const valueColor = muted ? c.foregroundMuted : c.foreground;
   const cpuUsage = barPercent(s.cpu?.total);
   const diskUsage = barPercent(s.disk?.used, s.disk?.total ?? 0);
+  const memoryUsage = barPercent(s.memory?.used, s.memory?.total ?? 0);
   const memoryParts = [
-    { label: '앱', value: s.memory?.app, color: pressureColor(s, theme) },
-    { label: '와이어드', value: s.memory?.wired, color: c.foregroundMuted },
-    { label: '압축', value: s.memory?.compressed, color: c.foreground },
+    { label: '앱', value: s.memory?.app },
+    { label: '와이어드', value: s.memory?.wired },
+    { label: '압축', value: s.memory?.compressed },
   ];
-  const memoryScale = s.memory ? Math.max(s.memory.total, s.memory.used) : 0;
   if (selection && canInspect) return selection.mode === 'processes'
     ? <ProcessPanel group={selection.group} theme={theme} onBack={() => select(null)} />
     : <GroupTermination group={selection.group} theme={theme} onBack={() => select(null)} />;
@@ -120,11 +120,10 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
           <Text selectable style={{ color: c.foregroundMuted }}>메모리</Text>
           <Text selectable style={{ color: valueColor, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{gib(s.memory?.used)} / {gib(s.memory?.total)}</Text>
         </View>
-        <View accessibilityLabel={`앱 ${gib(s.memory?.app)}, 와이어드 ${gib(s.memory?.wired)}, 압축 ${gib(s.memory?.compressed)}. 막대 기준 ${gib(memoryScale || null)}`}
-          style={{ flexDirection: 'row', height: 6, width: '100%', borderRadius: 3, overflow: 'hidden', backgroundColor: c.surface2, opacity: muted ? 0.4 : 1 }}>
-          {memoryParts.map(part => { const width = barPercent(part.value, memoryScale); return width === null ? null : <View key={part.label} style={{ height: '100%', width: `${width}%`, backgroundColor: muted ? c.foregroundMuted : part.color }} />; })}
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{memoryParts.map(part => <Legend key={part.label} theme={theme} label={part.label} value={gib(part.value)} color={part.color} muted={muted} />)}</View>
+        <Bar theme={theme} value={memoryUsage} color={pressureColor(s, theme)} muted={muted}
+          label={`메모리 ${gib(s.memory?.used)} / ${gib(s.memory?.total)}`} height={6} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{memoryParts.map(part =>
+          <Text key={part.label} selectable style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{part.label} {gib(part.value)}</Text>)}</View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <Text selectable style={{ color: c.foregroundMuted }}>메모리 압력</Text>
           <Badge theme={theme} label={pressureLabels[s.pressure]} color={pressureColor(s, theme)} dot />
@@ -134,7 +133,6 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
           <Text selectable style={{ color: c.foregroundMuted }}>캐시 {gib(s.memory?.cached)}</Text>
           <Text selectable style={{ color: c.foregroundMuted }}>스왑 {gib(s.swap?.used)} / {gib(s.swap?.total)}</Text>
         </View>
-        {s.memory && s.memory.used > s.memory.total ? <Text selectable style={{ color: c.foregroundMuted }}>구성 합계가 전체 용량을 초과해 구성 막대는 사용량 기준으로 표시합니다.</Text> : null}
       </View>
       <View style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>

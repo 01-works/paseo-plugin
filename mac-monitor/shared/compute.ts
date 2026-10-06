@@ -2,11 +2,16 @@ import type { CpuTicks, RawSample, Snapshot } from './contracts';
 
 export function computeMemory(sys: RawSample['sys']): Snapshot['memory'] {
   const { vm, pageSize, memsize } = sys;
-  if (!vm || pageSize === null || pageSize <= 0 || memsize === null || memsize <= 0 || vm.internal < vm.purgeable) return null;
+  if (!vm || pageSize === null || pageSize <= 0 || memsize === null || memsize <= 0 || vm.speculative === null
+    || vm.free < vm.speculative || vm.internal < vm.purgeable) return null;
   const app = (vm.internal - vm.purgeable) * pageSize;
   const wired = vm.wire * pageSize;
   const compressed = vm.compressor * pageSize;
-  return { app, wired, compressed, cached: (vm.external + vm.purgeable) * pageSize, used: app + wired + compressed, total: memsize };
+  // Activity Monitor 합계. free_count에는 speculative이 이미 들어 있으므로 중복 제외하지 않는다.
+  const used = memsize - (vm.free - vm.speculative + vm.external) * pageSize;
+  const memory = { app, wired, compressed, cached: (vm.external + vm.purgeable) * pageSize, used, total: memsize };
+  if (!Number.isSafeInteger(pageSize) || Object.values(memory).some(value => !Number.isSafeInteger(value) || value < 0)) return null;
+  return memory;
 }
 export function computeCpu(current: CpuTicks | null, previous: CpuTicks | null): Snapshot['cpu'] {
   if (!current || !previous) return null;

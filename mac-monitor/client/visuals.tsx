@@ -38,11 +38,3 @@ export function Bar({ theme, value, label, color, muted = false, height = 7 }: {
       borderRadius: height, backgroundColor: muted ? theme.colors.foregroundMuted : color ?? theme.colors.accent }} /> : null}
   </View>;
 }
-
-export function Legend({ theme, label, value, color, muted = false }: { theme: Theme; label: string; value: string; color: string; muted?: boolean }) {
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-    <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: muted ? theme.colors.foregroundMuted : color }} />
-    <Text selectable style={{ color: theme.colors.foregroundMuted }}>{label}</Text>
-    <Text selectable style={{ color: muted ? theme.colors.foregroundMuted : theme.colors.foreground, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
-  </View>;
-}

@@ -9,8 +9,8 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (8개 파일, 50개 테스트) |
-| client DOM/HTML audit | 0건 |
+| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (0.1.1, 8개 파일, 58개 테스트) |
+| client DOM/HTML audit | 금지 사용 0건 (`Promise<void>` 타입의 검색 결과 1건은 DOM/HTML 아님) |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
 | 실제 C JSON → Zod 스모크 | 완료, `v:1`, 페이지 16384, errors 없음 |
@@ -22,9 +22,9 @@
 | disable → 자식 종료 → enable | 완료, 헬퍼 1개로 복귀 |
 | 부모 SIGKILL → 고아 헬퍼 방지 | 실제 네이티브 검증 완료 |
 | prebuilt 실패 → 로컬 빌드 → Node 폴백 | 전용 임시 홈에서 실제 검증 완료 |
-| Activity Monitor 화면 대조 | 완료: 구성 항목은 근접, 총 사용량은 약 0.56 GiB 차이 발견·원인 미확정 |
-| 실제 Paseo 데스크톱 다크 화면 | 완료: 통합 카드·앱 순위·개별 PID·디스크·자동 갱신 확인 |
-| 실제 Paseo 데스크톱 라이트 화면 | 완료: RAM 잘림 없음, 고정 목록 공간, 정상/주의 색·자동 갱신 확인 |
+| Activity Monitor 화면 대조 | 이전 버전 대조 및 원인 확인 완료; **0.1.1 새 합계는 사용자 대조 필요** |
+| 실제 Paseo 데스크톱 다크 화면 | 이전 통합 카드·앱 순위·개별 PID·디스크·자동 갱신 확인; 0.1.1 단일 메모리 바 확인 남음 |
+| 실제 Paseo 데스크톱 라이트 화면 | 이전 RAM·고정 목록·정상/주의 색 확인; 0.1.1 단일 메모리 바 확인 남음 |
 | compact 실제 화면 | **추가 확인 필요**: 확대 조작으로 호스트 compact 배치를 재현하지 못함 |
 | 다른 Mac 설치 / 실제 fleet 집계 | **별도 사용자 승인 및 확인 필요**: 현재 연결 호스트 1개, 공식 모드 폴백 표시 확인 |
 | x86_64 실행 | Intel macOS 26 CI에서 커밋된 prebuilt 실행 완료; Intel의 Paseo 설치는 미검증 |
@@ -35,7 +35,42 @@ compact 실제 배치와 다른 Mac의 Paseo 설치·fleet 집계는 남아 있�
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: 실화면·동시 pill·Intel 실행
+## 최종 후속 검증: Activity Monitor 기준 메모리 합계 (0.1.1)
+
+2026-10-06 19:56~20:03 KST, 사용자의 후속 개선 지시에 따라 PLAN 4.1의 총 사용량 식을 바꿨다.
+세부 항목 값은 유지하고 메모리 바는 총 사용량/물리 메모리로 간소화했다. 변경 근거는 DECISIONS.md에 있다.
+
+- `npm run typecheck`, 8개 파일/58개 테스트, `git diff --check`를 통과했다.
+  실제 원시 카운터로 이전 12.819213867 GiB 대신 확인한 Activity Monitor 식의 13.382171631 GiB를 검증했다.
+  4/16 KiB 페이지·speculative 중복 제외·누락·역행·음수/정밀도 손실·유효한 0·이전 헬퍼의 부분 실패를 포함한다.
+  Node의 Pages free 보정과 합계가 구성 합과 다르거나 캐시와 중첩할 때의 막대 비율도 확인했다.
+- client 금지 패턴 검색은 `Promise<void>` 타입 표기 1건뿐이었다. 실제 DOM/HTML 사용과 fontSize 지정은 0건이다.
+  변경한 Text는 theme 색을 사용하고 고정 목록 높이·mount 유지·2초 자동 읽기 테스트도 통과했다.
+- universal 바이너리를 다시 빌드·ad-hoc 서명했다. `lipo -verify_arch arm64 x86_64`, `codesign --verify --strict`,
+  실제 JSON의 speculative 필드·Zod·메모리 계산·errors 빈 배열을 확인했다.
+  네이티브 4개 샘플의 간격은 2005.021/1997.017/2002.222ms, 앱 순위는 각각 10개였다.
+  앱 on 첫 주기 warming·다음 ok·off 후 스캔 중단·부모 SIGKILL 후 헬퍼 종료도 통과했다.
+- 전용 임시 홈에서 prebuilt 실행 실패 → 로컬 clang → Node 폴백을 실제 확인했다.
+  두 모드 모두 시스템 status=ok, errors=[]였다. Node의 앱 목록은 unsupported로 구분한다.
+- 플러그인만 reload하여 running을 확인했다. PID 33087 한 개로 기존 헬퍼를 교체했고 로그 100행에 오류·stderr가 없었다.
+  RPC 100개 동시 요청은 seq 21 하나였다. seq 21~26의 간격은 2000/2000/1999/1997/2004ms였고 errors=[]였다.
+  네이티브 수집 횟수·2초 타이머·앱 관심 30초·디스크 30초 주기는 그대로다.
+- disable 뒤 `pgrep -fl macmon-helper`는 결과 없이 종료 코드 1을 반환했다. 다시 enable하여 running으로 복귀했다.
+  데몬 재시작·전역 설정 변경·다른 Mac 설치는 하지 않았다.
+- 0.1.1 C 헬퍼 자체를 앱 활성 상태로 60.002초 측정했다. CPU 시간 0.158157초,
+  코어 하나의 0.263585%(10코어 환산 0.026359%), RSS 2.765625 MiB, 30개 샘플,
+  간격 1996.780~2004.967ms, 디스크 조회 2회, 출력 구성원 최대 338개였다.
+  CPU 시간은 Python RUSAGE_CHILDREN의 종료 전후 차이로 읽었다. 실제 프로세스 스캔 수는 출력 구성원 수보다 많다.
+  측정 초기에 네이티브·폴백 테스트가 함께 실행됐다. 다른 시점의 이전 0.111%와 비용 증가율로 비교하지 않는다.
+- `npm run compare -- --samples=3`는 20:00:55.523/57.518/59.522 KST에 사용량
+  12.985/13.003/12.997 GiB, 전체 16.000 GiB, status=ok, errors=[]를 기록하고 자동 종료했다.
+  이 값은 CLI 단독 결과다. 비교·부하·폴백 도구의 추가 헬퍼는 모두 종료했다.
+- 새 버전의 **Activity Monitor 사용자 대조 필요**. UI 도구가 Activity Monitor를 `cgWindowNotFound`,
+  Paseo를 요청 시간 초과로 읽지 못했다. 원시 값에 대한 식 검증을 실제 화면 일치로 표현하지 않는다.
+  새 메모리 바의 실제 다크·라이트·compact 화면과 다른 Mac 설치/fleet도 확인이 남아 있다.
+- 배포 CI는 arm64와 Intel에서 prebuilt 및 재빌드 JSON의 speculative 존재와 총 사용량 계산까지 검사하도록 강화했다.
+
+## 이전 후속 검증: 실화면·동시 pill·Intel 실행
 
 2026-10-06 18:07~18:32 KST, 사용자의 직접 확인 요청에 따라 로컬 화면과 공개 CI의 검증 범위를 넓혔다.
 측정 공식·수집 주기·플러그인 코드는 변경하지 않았다.
@@ -301,7 +336,7 @@ clang -O2 -o /tmp/mac-monitor-measure-load test/manual/measure-load.c
 
 ## Activity Monitor 대조 절차와 현재 결과
 
-**직접 화면 대조 완료. 구성 항목은 가깝지만 총 사용량의 완전한 일치는 확인하지 못했다.**
+**개선 전 직접 화면 대조 완료. 0.1.1 새 합계의 화면 일치는 사용자 대조 필요.**
 
 1. Activity Monitor CPU 하단의 사용자·시스템 값과 메모리 탭을 연다.
 2. `npm run compare`를 실행한다. 자동 종료는 `npm run compare -- --samples=3`.
@@ -326,7 +361,7 @@ clang -O2 -o /tmp/mac-monitor-measure-load test/manual/measure-load.c
 13.61 − (5.95 + 3.12 + 3.98) = 0.56, 13.64 − (6.03 + 3.09 + 3.95) = 0.57 GiB의 차이가 있다.
 표시 반올림이나 읽는 시각만으로 이 합계 차이가 해소된다고 판단할 수 없다.
 
-PLAN 4.1절의 `사용 = 앱 + 와이어드 + 압축`과 각 카운터 식은 구현·단위 테스트로 확인했다.
+당시 PLAN 4.1절의 `사용 = 앱 + 와이어드 + 압축`과 각 카운터 식은 구현·단위 테스트로 확인했다.
 이 직접 화면 대조 단계에서는 Activity Monitor 내부 계산식을 확정하지 못했으며 제품 식을 바꾸지 않았다.
 후속 원인 조사에서 설치된 Apple 실행 파일을 추적해 `hw.memsize − (free − speculative + external) × page`를 확인했다.
 18:48~18:51 KST의 원시 값 100회에서 두 식의 차이는 0.538~0.587 GiB였고,
@@ -334,7 +369,7 @@ PLAN 4.1절의 `사용 = 앱 + 와이어드 + 압축`과 각 카운터 식은 �
 후속 수치는 같은 원시 값에 적용한 식의 비교이며 새로운 Activity Monitor 화면 대조로 표현하지 않는다.
 실행 파일 경로·재현 소스·한계는 [합계 차이 조사](research/report-memory-accounting.md)에 기록했다.
 [Apple 메모리 용어](https://support.apple.com/guide/activity-monitor/actmntr1004/mac)는 항목의 의미를 설명하지만,
-이 차이의 구체적인 카운터 대응은 설명하지 않는다. 제품 계산식 유지 근거는 [DECISIONS.md](DECISIONS.md)에 기록했다.
+이 차이의 구체적인 카운터 대응은 설명하지 않는다. 원인 조사 당시의 유지 판단과 이후 0.1.1 전환은 [DECISIONS.md](DECISIONS.md)에 기록했다.
 
 | 화면/CLI 시각 KST | 출처 | CPU 사용자 % | 시스템 % | 합계 % |
 |---|---|---:|---:|---:|

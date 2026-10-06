@@ -296,3 +296,24 @@ carveout을 제외하기 전후의 차이로 설명한다. Activity Monitor 합�
 이전 절의 “원인 미확정”은 직접 화면 대조 당시의 상태로 남기고 README·VALIDATION의 현재 설명을 갱신했다.
 Activity Monitor 기준으로 전환한다면 구성 바와 합계의 관계, 오류 처리, Node 폴백도 함께 변경해야 한다.
 추가로 필요한 speculative 값은 기존 VM 조회 응답에 있으므로 새 프로세스 스캔이나 비공개 API는 필요 없다.
+
+## 2026-10-06 · Activity Monitor 기준 메모리 합계 개선 (PLAN 4.1, 5.1, 5.3, 8절 변경)
+
+원인 조사 뒤 사용자가 "개선 되나?"라고 요청했다. 후속 개선 지시에 따라 총 사용량을
+`hw.memsize − (free_count − speculative_count + external_page_count) × page`로 변경한다.
+이 Mac의 Activity Monitor 실행 파일에서 확인한 식이며 이전 합계의 약 0.56 GiB 차이를 상수 보정 없이 해결한다.
+최초 승인 식과 다른 이유·원시 값·출처는 [합계 차이 조사](research/report-memory-accounting.md)에 있다.
+
+헬퍼는 이미 읽은 HOST_VM_INFO64의 speculative_count만 JSON에 추가한다. VM 조회 횟수와 2초 고정 타이머,
+앱 관심 30초·디스크 조회 30초는 그대로다. 비공개 API와 새 프로세스 스캔은 도입하지 않는다.
+Node 폴백의 vm_stat "Pages free"는 이미 speculative을 제외한다는 Apple 공식 소스를 확인했다.
+같은 출력의 "Pages speculative"을 더해 Mach free_count를 복원하므로 이중 차감하지 않는다.
+[Apple vm_stat 소스](https://github.com/apple-oss-distributions/system_cmds/blob/main/vm_stat/vm_stat.c#L126).
+
+앱·와이어드·압축·캐시 수치는 유지한다. 사용량과 캐시는 일부 중첩하고 세부 항목 합은 총 사용량과 다르므로
+메모리 막대를 총 사용량/물리 메모리의 단일 막대로 간소화한다. 색은 OS 압력 기준이며 아래에 세부 수치를 유지한다.
+분류를 확정하지 않은 "기타" 수치·설명 각주·새 버튼은 화면에 추가하지 않는다. 기본 폰트·고정 앱 목록 높이도 유지한다.
+
+speculative 누락이나 카운터 역행·음수 합계·안전한 정수 범위 초과는 메모리 null과 오류로 처리한다.
+이전 v1 헬퍼의 누락 필드는 CPU 등 다른 값을 읽을 수 있도록 null로 해석하며 헬퍼 업데이트 사유를 표시한다.
+Node에서 항목을 읽지 못해도 0으로 대체하지 않는다. 제품 버전은 0.1.1이며 Paseo SDK/manifest 최소 버전은 0.10.2를 유지한다.
