@@ -3,10 +3,10 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
-const rpc = vi.hoisted(() => ({ list: vi.fn(), terminate: vi.fn(), group: vi.fn() }));
+const rpc = vi.hoisted(() => ({ list: vi.fn(), terminate: vi.fn(), group: vi.fn(), target: vi.fn() }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView' }));
-vi.mock('@getpaseo/plugin/client', () => ({ useRpc: (contract: { name: string }) => contract.name.endsWith('.list') ? rpc.list : contract.name === 'mac-monitor.group.terminate' ? rpc.group : rpc.terminate }));
+vi.mock('@getpaseo/plugin/client', () => ({ useRpc: (contract: { name: string }) => contract.name.endsWith('.list') ? rpc.list : contract.name === 'mac-monitor.group.terminate' ? rpc.group : contract.name === 'mac-monitor.automation.target' ? rpc.target : rpc.terminate }));
 import { GroupTermination, ProcessPanel } from '../client/processes';
 const theme = { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444', statusDanger: '#a00' } } as PluginHostProps['theme'];
 const entry = { pid: 123, start: '90071992547409999', group: 'codex', name: 'codex', memoryBytes: 100, cpuPercent: 0.4 };
@@ -48,4 +48,21 @@ it('전체 종료 확인을 취소하면 종료 요청을 보내지 않음', asy
   await act(async () => { renderer = create(<QueryClientProvider client={client}><GroupTermination group="codex" theme={theme} onBack={onBack} /></QueryClientProvider>); });
   await act(async () => renderer!.root.findByProps({ accessibilityLabel: '상위 앱으로 돌아가기' }).props.onPress());
   expect(onBack).toHaveBeenCalledOnce(); expect(rpc.group).not.toHaveBeenCalled();client.clear();
+});
+it('worker 자동 관리 선택은 확인 후에만 해당 PID·시작 시각으로 허용하며 수동 종료와 분리', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  const worker = { ...entry, group: 'worker', name: 'worker', path: '/opt/dev/worker' };
+  rpc.list.mockResolvedValue({ status: 'ok', entries: [worker] }); rpc.target.mockResolvedValue({ changed: true });
+  await act(async () => { renderer = create(<QueryClientProvider client={client}><ProcessPanel group="worker" theme={theme} onBack={() => {}} /></QueryClientProvider>); });
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 선택' }).props.onPress());
+  expect(rpc.target).not.toHaveBeenCalled(); expect(JSON.stringify(renderer!.toJSON())).toContain('/opt/dev/worker');
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 확인' }).props.onPress());
+  expect(rpc.target).toHaveBeenCalledExactlyOnceWith({ pid: entry.pid, start: entry.start, group: 'worker', allow: true });
+  expect(rpc.terminate).not.toHaveBeenCalled(); client.clear();
+});
+it('보호된 Codex 프로세스에는 자동 관리 허용 버튼을 표시하지 않음', async () => {
+  const client = new QueryClient(); rpc.list.mockResolvedValue({ status: 'ok', entries: [{ ...entry, path: '/opt/dev/codex' }] });
+  await act(async () => { renderer = create(<QueryClientProvider client={client}><ProcessPanel group="codex" theme={theme} onBack={() => {}} /></QueryClientProvider>); });
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'PID 123 자동 관리 선택' })).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'PID 123 종료 선택' })).toHaveLength(1); client.clear();
 });

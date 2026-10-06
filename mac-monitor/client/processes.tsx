@@ -6,13 +6,16 @@ import { processListRpc, terminateRpc, terminateGroupRpc, type ProcessInfo } fro
 import { useStableQuery } from './data';
 import { appPercent, gib } from './format';
 import { Card, type Theme } from './visuals';
+import { automaticProtection, automationTargetRpc } from '../shared/automation';
 
 export function ProcessPanel({ group, theme, onBack }: { group: string; theme: Theme; onBack: () => void }) {
   const c = theme.colors;
   const listRpc = useRpc(processListRpc);
   const terminate = useRpc(terminateRpc);
+  const autoTarget = useRpc(automationTargetRpc);
   const query = useStableQuery({ queryKey: ['mac-monitor', 'processes', group], queryFn: () => listRpc({ group }), refreshInterval: 2000 });
   const [chosen, choose] = useState<ProcessInfo | null>(null);
+  const [action, setAction] = useState<'terminate' | 'allow'>('terminate');
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
   const ready = !query.error && query.data?.status === 'ok';
@@ -27,6 +30,16 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
     } catch (error) { setMessage(`종료 실패: ${String(error)}`); }
     finally { setPending(false); }
   };
+  const permit = async (p: ProcessInfo, allow: boolean) => {
+    if (pending) return;
+    setPending(true); setMessage('');
+    try {
+      const result = await autoTarget({ pid: p.pid, start: p.start, group, allow });
+      setMessage(result.changed ? `PID ${p.pid} 자동 관리 ${allow ? '허용' : '해제'}` : result.error ?? '설정을 저장하지 못했습니다.');
+      choose(null); await query.refetch();
+    } catch { setMessage('자동 관리 설정 실패'); }
+    finally { setPending(false); }
+  };
   return <Card theme={theme}>
     <ProcessHeader group={group} theme={theme} onBack={onBack} disabled={pending} />
     <ScrollView accessibilityLabel="개별 프로세스 목록" nestedScrollEnabled showsVerticalScrollIndicator
@@ -34,12 +47,13 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
       {query.error ? <Text selectable style={{ color: c.foregroundMuted }}>연결 오류: {query.error.message}</Text> : null}
       {message ? <Text selectable style={{ color: c.foregroundMuted }}>{message}</Text> : null}
       {chosen ? <View style={{ padding: 12, gap: 8, borderRadius: 6, backgroundColor: c.surface2 }}>
-        <Text selectable style={{ color: c.foreground }}>PID {chosen.pid} · {chosen.name} 종료</Text>
-        <Text style={{ color: c.foregroundMuted }}>저장하지 않은 작업을 잃을 수 있습니다.</Text>
+        <Text selectable style={{ color: c.foreground }}>PID {chosen.pid} · {chosen.name} {action === 'terminate' ? '종료' : '자동 관리 허용'}</Text>
+        {action === 'allow' ? <Text numberOfLines={2} style={{ color: c.foregroundMuted }}>{chosen.path}</Text> : null}
+        <Text style={{ color: c.foregroundMuted }}>{action === 'terminate' ? '저장하지 않은 작업을 잃을 수 있습니다.' : '이 프로세스에 한해 압력 지속 시 검토 후 자동 종료합니다. 종료 시 작업을 잃을 수 있습니다.'}</Text>
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
           <Pressable accessibilityRole="button" disabled={pending} onPress={() => choose(null)}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={`PID ${chosen.pid} 종료 확인`} disabled={pending} onPress={() => void send()}>
-            <Text style={{ color: pending ? c.foregroundMuted : c.statusDanger }}>{pending ? '요청 중' : '종료'}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={`PID ${chosen.pid} ${action === 'terminate' ? '종료' : '자동 관리'} 확인`} disabled={pending} onPress={() => void (action === 'terminate' ? send() : permit(chosen, true))}>
+            <Text style={{ color: pending ? c.foregroundMuted : c.statusDanger }}>{pending ? '요청 중' : action === 'terminate' ? '종료' : '허용'}</Text>
           </Pressable>
         </View>
       </View> : null}
@@ -48,12 +62,17 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
       </View> : null}
       {entries.map(p => <View key={`${p.pid}:${p.start}`} style={{ gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
         <Text selectable numberOfLines={1} style={{ color: c.foreground }}>{p.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <View style={{ flex: 1 }}><Text selectable style={{ color: c.foregroundMuted }}>PID {p.pid}</Text></View>
           <Text selectable style={{ color: c.foregroundMuted }}>{appPercent(p.cpuPercent)}</Text>
           <Text selectable style={{ color: c.foregroundMuted }}>{gib(p.memoryBytes)}</Text>
+          {p.autoAllowed || !automaticProtection(p) ? <Pressable accessibilityRole="button" accessibilityLabel={`PID ${p.pid} 자동 관리 ${p.autoAllowed ? '해제' : '선택'}`} disabled={!ready || pending}
+            onPress={() => { setMessage(''); if (p.autoAllowed) void permit(p, false); else { setAction('allow'); choose(p); } }}
+            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: c.surface2 }}>
+            <Text style={{ color: c.foregroundMuted }}>{p.autoAllowed ? '허용 해제' : '자동 관리'}</Text>
+          </Pressable> : null}
           <Pressable accessibilityRole="button" accessibilityLabel={`PID ${p.pid} 종료 선택`} disabled={!ready || pending}
-            onPress={() => { choose(p); setMessage(''); }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: c.surface2 }}>
+            onPress={() => { setAction('terminate'); choose(p); setMessage(''); }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: c.surface2 }}>
             <Text style={{ color: c.foreground }}>종료</Text>
           </Pressable>
         </View>

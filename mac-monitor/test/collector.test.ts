@@ -123,6 +123,21 @@ describe('캐시 및 헬퍼 수명주기', () => {
     await pause(40);expect(await readFile(file,'utf8')).toBe('procs on\nprocs off\n');
     expect(c.snapshot(true).processesStatus).toBe('warming');
   });
+  it('자동 조사와 UI 관심은 스캔 하나를 공유하며 한쪽 종료로 다른 쪽을 끄지 않음', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'mac-monitor-test-')); dirs.push(dir); const file = path.join(dir, 'commands');
+    const c = fake(`${sampleCode}process.stdin.on('data',d=>require('node:fs').appendFileSync(${JSON.stringify(file)},d));setInterval(()=>{},1000);`, { monotonicNow: () => 1000 });
+    await c.start(); await until(() => c.snapshot().seq === 1);
+    c.setAutomaticInterest(true);
+    vi.useFakeTimers();
+    try {
+      for (let i = 0; i < 20; i++) c.snapshot(true);
+      await vi.advanceTimersByTimeAsync(30_000); expect(c.snapshot().processesStatus).toBe('warming');
+    } finally { vi.useRealTimers(); }
+    await pause(40); expect(await readFile(file, 'utf8')).toBe('procs on\n');
+    c.setAutomaticInterest(false); await pause(40); expect(await readFile(file, 'utf8')).toBe('procs on\nprocs off\n');
+    c.snapshot(true); c.setAutomaticInterest(true); c.setAutomaticInterest(false);
+    await pause(40); expect(await readFile(file, 'utf8')).toBe('procs on\nprocs off\nprocs on\n');
+  });
   it('macOS 아닌 경우 자식 실행 없음', async () => {
     const c = fake('throw Error("실행하면 안 됨")', { platform: 'linux' });await c.start();expect(c.snapshot().status).toBe('unsupported');expect(c.mode).toBe('unsupported');
   });

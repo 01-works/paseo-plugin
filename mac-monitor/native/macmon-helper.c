@@ -16,7 +16,7 @@
 #include <signal.h>
 #define TOP_GROUPS 10
 
-typedef struct { pid_t pid; uint64_t start, cpu, foot; double percent; int valid_cpu; char name[256], process_name[256]; } Proc;
+typedef struct { pid_t pid; uint64_t start, cpu, foot; double percent; int valid_cpu; char name[256], process_name[256], path[512]; } Proc;
 typedef struct { char name[256]; double cpu; uint64_t foot; int count, valid_cpu, selected; } Group;
 static Proc *previous; static size_t previous_n; static uint64_t previous_time;
 static mach_timebase_info_data_t tb;
@@ -35,11 +35,12 @@ static int cmp_mem(const void *a,const void *b) { uint64_t x=((const Group*)a)->
 static int cmp_cpu(const void *a,const void *b) {
   const Group *ga=a,*gb=b; if(!!ga->valid_cpu!=!!gb->valid_cpu) return ga->valid_cpu?-1:1;
   double x=((const Group*)a)->cpu,y=((const Group*)b)->cpu; return (x<y)-(x>y); }
-static void name_of(pid_t pid,char *out) {
+static void name_of(pid_t pid,char *out,char *executable) {
   char path[PROC_PIDPATHINFO_MAXSIZE]={0};
   if(proc_pidpath(pid,path,sizeof path)<=0) {
     if(proc_name(pid,out,256)<=0) snprintf(out,256,"pid %d",pid); return;
   }
+  if(strlen(path)<512) strcpy(executable,path);
   if(strstr(path,"/claude/versions/")) { strcpy(out,"claude"); return; }
   char *app=strstr(path,".app/");
   if(app) { *app=0; char *base=strrchr(path,'/'); snprintf(out,256,"%s",base?base+1:path); return; }
@@ -77,8 +78,8 @@ static int print_procs(uint64_t now) {
     Proc *p=&current[n++]; p->pid=pids[i];p->start=ri.ri_proc_start_abstime;
     p->cpu=ri.ri_user_time+ri.ri_system_time;p->foot=ri.ri_phys_footprint;
     Proc *old=previous_n?bsearch(p,previous,previous_n,sizeof(Proc),cmp_pid):NULL;
-    if(old&&old->start==p->start) { strcpy(p->name,old->name);strcpy(p->process_name,old->process_name); }
-    else { name_of(p->pid,p->name);if(proc_name(p->pid,p->process_name,sizeof p->process_name)<=0) strcpy(p->process_name,p->name); }
+    if(old&&old->start==p->start) { strcpy(p->name,old->name);strcpy(p->process_name,old->process_name);strcpy(p->path,old->path); }
+    else { name_of(p->pid,p->name,p->path);if(proc_name(p->pid,p->process_name,sizeof p->process_name)<=0) strcpy(p->process_name,p->name); }
     double cpu=0;
     int valid_cpu=ready&&old&&old->start==p->start&&p->cpu>=old->cpu;
     if(valid_cpu)
@@ -100,6 +101,7 @@ static int print_procs(uint64_t now) {
     if(j==ng) continue;
     if(!first) putchar(',');first=0;
     printf("{\"pid\":%d,\"start\":\"%"PRIu64"\",\"group\":",p->pid,p->start);json_string(p->name);
+    printf(",\"path\":");if(p->path[0]) json_string(p->path);else printf("null");
     printf(",\"name\":");json_string(p->process_name);printf(",\"memoryBytes\":%"PRIu64",\"cpuPercent\":",p->foot);
     if(p->valid_cpu) printf("%.6f",p->percent);else printf("null");putchar('}');
   }
@@ -140,10 +142,23 @@ static void sample(uint64_t seq) {
   printf("},\"procs\":"); if(print_procs(mono_ns())!=0) { errors[ne++]="프로세스 스캔 실패";free(previous);previous=NULL;previous_n=0;previous_time=0; }
   printf(",\"errors\":[");for(int i=0;i<ne;i++) {if(i) putchar(',');json_string(errors[i]);}printf("]}\n");fflush(stdout);
 }
-static const char *terminate_one(pid_t pid,uint64_t start) {
+static int protected_path(const char *file,int ancestor) {
+  char lower[PROC_PIDPATHINFO_MAXSIZE];size_t n=strlen(file);if(n>=sizeof lower) return 1;
+  for(size_t i=0;i<=n;i++) lower[i]=(file[i]>='A'&&file[i]<='Z')?file[i]+('a'-'A'):file[i];
+  if(strstr(lower,"paseo")||strstr(lower,"codex")||strstr(lower,"claude")||strstr(lower,"macmon-helper")
+    ||strstr(lower,"chrome")||strstr(lower,"safari")||strstr(lower,"firefox")) return 1;
+  return !ancestor&&(strstr(lower,".app/")||!strncmp(lower,"/system/",8)||!strncmp(lower,"/usr/libexec/",13)
+    ||!strncmp(lower,"/usr/sbin/",10)||!strncmp(lower,"/sbin/",6)||strstr(lower,"terminal")||strstr(lower,"iterm")||strstr(lower,"warp"));
+}
+static const char *terminate_one(pid_t pid,uint64_t start,const char *expected_path,int send_signal) {
   if(pid<=1||pid==getpid()) return "보호된 프로세스";
+  pid_t protected_ancestors[64];size_t ancestor_n=0;
   for(pid_t parent=getppid();parent>1;) {
     if(pid==parent) return "Paseo 및 상위 프로세스는 종료할 수 없습니다";
+    if(expected_path) {
+      if(ancestor_n>=64) return "상위 프로세스 깊이 확인 실패";
+      protected_ancestors[ancestor_n++]=parent;
+    }
     struct proc_bsdshortinfo ancestor;
     if(proc_pidinfo(parent,PROC_PIDT_SHORTBSDINFO,0,&ancestor,sizeof ancestor)!=sizeof ancestor) return "상위 프로세스 확인 실패";
     if((pid_t)ancestor.pbsi_ppid==parent) return "상위 프로세스 확인 실패";
@@ -156,8 +171,49 @@ static const char *terminate_one(pid_t pid,uint64_t start) {
   if(!active||!known||known->start!=start) return "대상 측정값이 변경되었습니다";
   if(proc_pid_rusage(pid,RUSAGE_INFO_V4,(rusage_info_t*)&ri)!=0) return "대상 확인 권한이 없습니다";
   if(ri.ri_proc_start_abstime!=start) return "PID가 다른 프로세스로 바뀌었습니다";
-  if(kill(pid,SIGTERM)!=0) return "종료 신호를 보내지 못했습니다";
+  if(expected_path) {
+    char executable[PROC_PIDPATHINFO_MAXSIZE];
+    if(proc_pidpath(pid,executable,sizeof executable)<=0||strcmp(executable,expected_path)) return "실행 경로가 변경되었습니다";
+    if(protected_path(executable,0)) return "자동 종료 보호 대상";
+    pid_t ancestor=si.pbsi_ppid;int depth=0;
+    for(;ancestor>1&&depth<64;depth++) {
+      for(size_t i=0;i<ancestor_n;i++) if(ancestor==protected_ancestors[i]) return "작업·Paseo 하위 프로세스 보호";
+      struct proc_bsdshortinfo parent_info;
+      if(proc_pidinfo(ancestor,PROC_PIDT_SHORTBSDINFO,0,&parent_info,sizeof parent_info)!=sizeof parent_info
+        ||proc_pidpath(ancestor,executable,sizeof executable)<=0) return "작업 상위 프로세스 확인 실패";
+      if(protected_path(executable,1)) return "작업·브라우저 하위 프로세스 보호";
+      if((pid_t)parent_info.pbsi_ppid==ancestor) return "상위 프로세스 확인 실패";
+      ancestor=parent_info.pbsi_ppid;
+    }
+    if(ancestor>1) return "상위 프로세스 깊이 확인 실패";
+  }
+  if(send_signal&&kill(pid,SIGTERM)!=0) return "종료 신호를 보내지 못했습니다";
   return NULL;
+}
+static int decode_path(const char *encoded,char *out,size_t cap) {
+  size_t len=strlen(encoded);if(!len||len%2||len/2>=cap) return 0;
+  for(size_t i=0;i<len;i+=2) {
+    unsigned value=0;
+    for(size_t j=i;j<i+2;j++) {
+      char c=encoded[j];int digit=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:-1;
+      if(digit<0) return 0;
+      value=value*16+(unsigned)digit;
+    }
+    if(!value) return 0;out[i/2]=(char)value;
+  }
+  out[len/2]=0;return out[0]=='/';
+}
+static const char *inspect_one(pid_t pid,uint64_t start,const char *expected_path) {
+  if(pid<=1) return "unknown";
+  struct rusage_info_v4 ri;
+  if(proc_pid_rusage(pid,RUSAGE_INFO_V4,(rusage_info_t*)&ri)!=0) {
+    // 권한 실패를 종료 완료로 오인하지 않는다. kill(0)은 신호를 보내지 않는다.
+    return kill(pid,0)!=0&&errno==ESRCH?"exited":"unknown";
+  }
+  if(ri.ri_proc_start_abstime!=start) return "exited";
+  char executable[PROC_PIDPATHINFO_MAXSIZE];
+  if(proc_pidpath(pid,executable,sizeof executable)<=0||strcmp(executable,expected_path)) return "unknown";
+  return "running";
 }
 int main(int argc,char **argv) {
   mach_timebase_info(&tb);host=mach_host_self();size_t len=sizeof cores;
@@ -165,7 +221,7 @@ int main(int argc,char **argv) {
   signal(SIGTERM,stop_signal);signal(SIGINT,stop_signal);signal(SIGPIPE,stop_signal);
   setvbuf(stdout,NULL,_IOLBF,0);
   if(argc==2&&!strcmp(argv[1],"--once")) {sample(0);return 0;}
-  pid_t parent=getppid(); uint64_t seq=0,next=mono_ns(); char command[128];size_t used=0;
+  pid_t parent=getppid(); uint64_t seq=0,next=mono_ns(); char command[1200];size_t used=0;
   while(!stopped&&getppid()==parent) {
     uint64_t now=mono_ns();
     if(now>=next) { sample(seq++);next+=2000000000ULL;while(next<=mono_ns()) next+=2000000000ULL; }
@@ -180,8 +236,24 @@ int main(int argc,char **argv) {
           if(!strcmp(command,"procs off")) {active=0;free(previous);previous=NULL;previous_n=0;previous_time=0;}
           unsigned id;int pid;uint64_t start;char extra;
           if(sscanf(command,"terminate %u %d %"SCNu64" %c",&id,&pid,&start,&extra)==3) {
-            const char *error=terminate_one(pid,start);
+            const char *error=terminate_one(pid,start,NULL,1);
             printf("{\"action\":\"terminate\",\"id\":%u,\"sent\":%s",id,error?"false":"true");
+            if(error) {printf(",\"error\":");json_string(error);}printf("}\n");fflush(stdout);
+          }
+          char encoded[1023];
+          if(sscanf(command,"terminate-auto %u %d %"SCNu64" %1022s %c",&id,&pid,&start,encoded,&extra)==4) {
+            char expected[512];
+            const char *error=decode_path(encoded,expected,sizeof expected)?terminate_one(pid,start,expected,1):"자동 종료 경로 형식 오류";
+            printf("{\"action\":\"terminate\",\"id\":%u,\"sent\":%s",id,error?"false":"true");
+            if(error) {printf(",\"error\":");json_string(error);}printf("}\n");fflush(stdout);
+          }
+          if(sscanf(command,"inspect %u %d %"SCNu64" %1022s %c",&id,&pid,&start,encoded,&extra)==4) {
+            char expected[512];const char *state=decode_path(encoded,expected,sizeof expected)?inspect_one(pid,start,expected):"unknown";
+            printf("{\"action\":\"inspect\",\"id\":%u,\"state\":\"%s\"}\n",id,state);fflush(stdout);
+          }
+          if(sscanf(command,"check-auto %u %d %"SCNu64" %1022s %c",&id,&pid,&start,encoded,&extra)==4) {
+            char expected[512];const char *error=decode_path(encoded,expected,sizeof expected)?terminate_one(pid,start,expected,0):"자동 종료 경로 형식 오류";
+            printf("{\"action\":\"validate\",\"id\":%u,\"allowed\":%s",id,error?"false":"true");
             if(error) {printf(",\"error\":");json_string(error);}printf("}\n");fflush(stdout);
           }
           used=0;
