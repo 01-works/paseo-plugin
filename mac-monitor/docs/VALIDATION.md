@@ -66,6 +66,10 @@ compact 실제 배치와 다른 Mac의 Paseo 설치·fleet 집계는 남아 있�
   자동 관리가 켜져 있어도 정상 압력에서 추가 앱 스캔이나 리뷰가 없음을 확인했다.
 - 21:38:34 disable 뒤 `pgrep -fl macmon-helper`는 0개였다. 21:38:41 enable 뒤 PID 98675 한 개로 복귀했다.
   리뷰 켜짐·대상 0개가 보존됐고 `paseo plugin ls`는 enabled/running이었다. 로그 130개는 모두 stdout, 오류/실패 없음이었다.
+- GitHub main `8fb8ce8`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37465234219)가 모두 통과했다.
+  각 아키텍처에서 타입 검사·120개 테스트·커밋된 prebuilt 실행·universal 빌드/서명·JSON 스키마를 확인했다.
+  CI에서는 로그인이나 실제 AI 호출을 사용하지 않는다. 공개 mac-monitor 트리와 로컬 원본의 git tree가 같음을 확인했다.
+  배포 저장소의 다른 플러그인 작업이 진행 중이므로 별도 임시 체크아웃에서 mac-monitor 하위 변경만 게시했다.
 
 최종 헬퍼 부하 (`python3 test/manual/helper-cost.py`): 앱 스캔을 켠 별도 helper를 60.002464초 관찰했다.
 30개 샘플, CPU 시간 0.227825초, 코어 하나 **0.379693%**(10코어 환산 0.037969%), 최대 RSS **4.15625 MiB**였다.
