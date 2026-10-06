@@ -5,26 +5,44 @@ SSD 용량·앱 그룹별 CPU/메모리 상위 10개를 보여줍니다. Paseo 0
 
 ## 설치·업데이트·제거
 
-로컬 Mac에 설치합니다. 현재 데몬의 `pluginsEnabled`는 이미 켜져 있습니다.
+사용할 Mac의 Paseo 데몬에서 플러그인 사용이 활성화되어 있어야 합니다.
+Paseo 0.10.2에서 검증했으며, 다른 버전의 호환성은 별도 확인이 필요합니다.
 
 ```sh
-cd /Users/yw/dev/mac-monitor
-npm ci
-npm run typecheck
-npm test
-paseo plugin install /Users/yw/dev/mac-monitor
-paseo plugin ls
+paseo plugin install github:01-works/paseo-plugin:mac-monitor
+paseo plugin ls mac-monitor
 paseo plugin logs mac-monitor
 ```
+
+Git 설치의 업데이트는 다음 명령을 사용합니다.
+
+```sh
+paseo plugin update mac-monitor
+paseo plugin logs mac-monitor
+```
+
+기존 로컬 설치를 Git 설치로 바꾸려면 먼저 `paseo plugin remove mac-monitor`를 실행한 뒤
+위 설치 명령을 사용합니다. 로컬 소스 파일은 보존됩니다.
 
 `bin/macmon-helper`는 ad-hoc 서명된 arm64/x86_64 universal 바이너리로 저장소에 포함됩니다.
 로컬 디렉터리 설치는 manifest의 build를 실행하지 않습니다. 직접 다시 빌드하려면 `npm run build`를 사용합니다.
 Git 소스 설치의 build는 CLT가 있으면 universal 바이너리를 다시 만들고, CLT가 없으면 prebuilt를 유지합니다.
 
-업데이트 후에는 플러그인만 reload합니다. 데몬 재시작은 필요하지 않습니다.
+소스를 수정하려면 저장소를 복제해 `mac-monitor/`에서 개발합니다. 개발·검증 환경은 Node 24입니다.
 
 ```sh
-git pull                    # 원격을 등록한 경우
+git clone https://github.com/01-works/paseo-plugin.git
+cd paseo-plugin/mac-monitor
+npm ci
+npm run typecheck
+npm test
+paseo plugin install "$PWD"
+```
+
+로컬 소스를 업데이트한 뒤에는 플러그인만 reload합니다. 데몬 재시작은 필요하지 않습니다.
+
+```sh
+git pull
 npm ci
 npm run typecheck
 npm test
@@ -38,11 +56,11 @@ paseo plugin enable mac-monitor
 paseo plugin remove mac-monitor
 ```
 
-제거는 로컬 소스 저장소를 지우지 않습니다. 실행 실패 시 생성된 로컬 빌드 캐시는
+제거는 로컬 소스 저장소를 지우지 않으며 Git 설치의 관리 복사본은 삭제합니다.
+실행 실패 시 생성된 로컬 빌드 캐시는
 `$PASEO_HOME/mac-monitor/macmon-helper`(기본 `~/.paseo/mac-monitor/`)에 있을 수 있습니다.
-다른 Mac에는 사용자 승인 후 각 Mac에서 소스를 복사하거나 Git 저장소를 설치하세요.
+다른 Mac에서도 해당 Mac의 데몬에 별도로 설치해야 합니다.
 원격 관리 명령의 예시는 `paseo plugin install <소스> --host <해당 Mac 연결 주소>`입니다.
-이 구현 작업에서는 다른 Mac을 설치하거나 조작하지 않았습니다.
 
 ## 화면과 측정 주기
 
