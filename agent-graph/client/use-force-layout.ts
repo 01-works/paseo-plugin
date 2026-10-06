@@ -10,9 +10,11 @@ export function useForceLayout(forest: Forest, collapsed: ReadonlySet<AgentKey>,
     const cached = store.forceCache.get(key);
     if (cached) { store.forceCache.delete(key); store.forceCache.set(key, cached); }
     const previous = [...store.forceCache.values()].at(-1);
-    const work = cached ? null : createForceLayout(forest, collapsed, previous);
-    return { key, cached, work, seed: cached ?? work!.result() };
-  }, [key, store]);
+    const work = cached || !enabled ? null : createForceLayout(forest, collapsed, previous);
+    return { key, cached, work, seed: cached ?? work?.result() ?? {
+      positions: new Map(), edges: [], width: 0, height: 0, truncated: false, direction: 'force' as const,
+    } };
+  }, [key, store, enabled]);
   const [finished, setFinished] = useState<{ key: string; layout: GraphLayout } | null>(null);
   const ready = job.cached ?? (finished?.key === key ? finished.layout : null);
   useEffect(() => {

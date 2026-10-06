@@ -19,7 +19,7 @@ export function createGraphViewState(forceCache = new Map<string, GraphLayout>()
     if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
     set({ collapsed });
   };
-  const zoomTo = (value: number) => set({ zoom: Math.max(0.03, Math.min(1.5, value)) });
+  const zoomTo = (value: number) => set({ zoom: Math.max(0.03, Math.min(1.5, value)), forceFitted: true });
   return { forceCache, scroll, scrollInitialized, getSnapshot, subscribe, set, toggle, zoomTo };
 }
 export type GraphViewState = ReturnType< typeof createGraphViewState>;

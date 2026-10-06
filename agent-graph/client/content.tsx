@@ -28,9 +28,11 @@ export function GraphContent(props: GraphContentProps) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const origin = agentKey(directory.hostId, agentId);
   const forest = useMemo(() => scopeForest(directory.getForest(), origin, workspaceId, state.scope), [snapshot.agents, origin, workspaceId, state.scope, directory]);
-  const { geometry, arranging } = useForceLayout(forest, state.collapsed, store, !layout.compact && state.mode === 'graph');
+  const { geometry, arranging } = useForceLayout(forest, state.collapsed, store, state.mode === 'graph');
   const [viewport, setViewport] = useState({ width: 0, height: 360 });
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const matches = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
     return term ? [...forest.nodes.values()].filter(node => node.agent &&
@@ -38,7 +40,7 @@ export function GraphContent(props: GraphContentProps) {
   }, [forest, query]);
   const count = countForest(forest);
   const originMissing = state.scope === 'group' && !directory.getForest().nodes.has(origin);
-  const tree = layout.compact || state.mode === 'tree' || geometry.truncated;
+  const tree = state.mode === 'tree' || geometry.truncated;
   useEffect(() => {
     if (!tree && !arranging && !state.forceFitted && viewport.width > 0) {
       store.set({ zoom: fitZoom(geometry, viewport.width, viewport.height), forceFitted: true, focus: state.focus + 1 });
@@ -58,14 +60,26 @@ export function GraphContent(props: GraphContentProps) {
     let node = forest.nodes.get(key);
     while (node) { collapsed.delete(node.key); node = node.parent ? forest.nodes.get(node.parent) : undefined; }
     store.set({ collapsed, selected: key, focus: state.focus + 1, message: null,
-      ...(detail && !tree ? { zoom: Math.max(0.75, state.zoom) } : {}) });
+      ...(detail && !tree ? { zoom: Math.max(0.75, state.zoom), forceFitted: true } : {}) });
   };
   const findMatch = (step: number) => {
     if (!matches.length) return;
     const index = matches.indexOf(state.selected ?? '');
     reveal(matches[index < 0 ? step > 0 ? 0 : matches.length - 1 : (index + step + matches.length) % matches.length], true);
   };
-  return <View style={{ flex: surface === 'panel' ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0 }}>
+  const zoomControls = (zoom: number) => layout.compact && viewport.height < 160 && !zoomOpen ?
+    <View style={{ position: 'absolute', bottom: 8, right: 8, borderWidth: 1, borderColor: c.border, borderRadius: 8, backgroundColor: c.surface1 }}>
+      <Button theme={theme} label="확대 도구 열기" onPress={() => setZoomOpen(true)}>{Math.round(zoom * 100)}%</Button>
+    </View> : <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0,
+    ...(layout.compact ? { position: 'absolute' as const, bottom: 8, left: 8, padding: 2, borderRadius: 8,
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 } : {}) }}>
+    <Button theme={theme} label="축소" disabled={zoom <= 0.03} onPress={() => { store.zoomTo(zoom - 0.25); setZoomOpen(false); }}>−</Button>
+    <Text style={{ color: c.foregroundMuted, minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</Text>
+    <Button theme={theme} label="확대" disabled={zoom >= 1.5} onPress={() => { store.zoomTo(zoom + 0.25); setZoomOpen(false); }}>+</Button>
+    <Button theme={theme} onPress={() => { store.set({ zoom: fitZoom(geometry, viewport.width, viewport.height), forceFitted: true, focus: state.focus + 1 }); setZoomOpen(false); }}>맞춤</Button>
+    {layout.compact && viewport.height < 160 ? <Button theme={theme} label="확대 도구 닫기" onPress={() => setZoomOpen(false)}>×</Button> : null}
+  </View>;
+  return <View style={{ flex: surface === 'panel' || layout.compact ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0 }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4,
       padding: 4, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
       <Button theme={theme} active={state.scope === 'group'} onPress={() => store.set({ scope: 'group', message: null })}>현재 구조</Button>
@@ -73,21 +87,18 @@ export function GraphContent(props: GraphContentProps) {
       {!layout.compact && props.onLarge ? <Button theme={theme} onPress={props.onLarge}>크게 보기</Button> : null}
     </View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
-      {!layout.compact ? <>
-        <Button theme={theme} disabled={geometry.truncated && state.mode === 'tree'}
-          onPress={() => store.set({ mode: state.mode === 'graph' ? 'tree' : 'graph' })}>{state.mode === 'tree' ? '그래프' : '목록'}</Button>
-        {!tree ? <>
-          <Button theme={theme} label="축소" disabled={state.zoom <= 0.03} onPress={() => store.zoomTo(state.zoom - 0.25)}>−</Button>
-          <Text style={{ color: c.foregroundMuted, minWidth: 42, textAlign: 'center' }}>{Math.round(state.zoom * 100)}%</Text>
-          <Button theme={theme} label="확대" disabled={state.zoom >= 1.5} onPress={() => store.zoomTo(state.zoom + 0.25)}>+</Button>
-          <Button theme={theme} onPress={() => store.zoomTo(fitZoom(geometry, viewport.width, viewport.height))}>맞춤</Button>
-        </> : null}
-      </> : null}
-      <Button theme={theme} onPress={() => reveal(origin)}>현재 위치</Button>
-      {state.selected && forest.nodes.get(state.selected)?.children.length ? <Button theme={theme}
+      <View style={{ flexDirection: 'row', borderRadius: 8, backgroundColor: c.surface1 }}>
+        <Button theme={theme} active={!tree} disabled={geometry.truncated} onPress={() => store.set({ mode: 'graph' })}>그래프</Button>
+        <Button theme={theme} active={tree} onPress={() => store.set({ mode: 'tree' })}>목록</Button>
+      </View>
+      {!tree && !layout.compact ? zoomControls(state.zoom) : null}
+      <Button theme={theme} onPress={() => reveal(origin, true)}>현재 위치</Button>
+      {layout.compact ? <Button theme={theme} active={searchOpen} label={searchOpen ? '검색 닫기' : '에이전트 검색'}
+        onPress={() => { setSearchOpen(!searchOpen); if (searchOpen) setQuery(''); }}>찾기</Button> : null}
+      {!layout.compact && state.selected && forest.nodes.get(state.selected)?.children.length ? <Button theme={theme}
         onPress={() => store.toggle(state.selected!)}>{state.collapsed.has(state.selected) ? '펼치기' : '접기'}</Button> : null}
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+    {!layout.compact || searchOpen ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
       <TextInput accessibilityLabel="에이전트 이름 또는 ID 검색" placeholder="이름 또는 ID 찾기" value={query}
         onChangeText={setQuery} onSubmitEditing={() => findMatch(1)} returnKeyType="search" autoCorrect={false} autoCapitalize="none"
         placeholderTextColor={c.foregroundMuted} selectionColor={c.accent}
@@ -100,8 +111,8 @@ export function GraphContent(props: GraphContentProps) {
         <Button theme={theme} label="다음 검색 결과" disabled={!matches.length} onPress={() => findMatch(1)}>›</Button>
         <Button theme={theme} label="검색 지우기" onPress={() => setQuery('')}>×</Button>
       </> : null}
-    </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, minHeight: 28 }}>
+    </View> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, minHeight: 24 }}>
       <Text style={{ flex: 1, color: c.foregroundMuted }}>
         {snapshot.loaded ? originMissing ? '현재 에이전트 확인 불가' :
           (snapshot.partial ? '확인한 에이전트 ' : '에이전트 ') + count.total + ' · 실행 ' + (snapshot.stale ? '—' : count.running) : snapshot.error ? '구조 확인 불가' : '구조 불러오는 중'}
@@ -113,7 +124,8 @@ export function GraphContent(props: GraphContentProps) {
       {snapshot.error ? snapshot.error + (snapshot.stale && snapshot.loaded ? ' · 마지막 구조' : '') : snapshot.stale ? '연결 끊김 · 마지막 구조' : snapshot.loading ? '목록 불러오는 중' : '일부만 표시'}
     </Text> : null}
     {geometry.truncated ? <Text style={{ color: c.foregroundMuted, paddingHorizontal: 10 }}>큰 구조는 목록으로 표시합니다.</Text> : null}
-    <View style={{ flex: surface === 'panel' ? 1 : undefined, height: surface === 'modal' ? layout.compact ? 300 : 360 : undefined, minHeight: 200,
+    <View style={{ flex: surface === 'panel' || layout.compact ? 1 : undefined, height: surface === 'modal' && !layout.compact ? 360 : undefined,
+      minHeight: layout.compact ? 0 : 200,
       borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: 'hidden' }}
       onLayout={event => {
         const { width, height } = event.nativeEvent.layout;
@@ -122,10 +134,14 @@ export function GraphContent(props: GraphContentProps) {
       {!forest.nodes.size ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
         <Text style={{ color: c.foregroundMuted }}>{snapshot.loaded ? '이 범위에서 확인한 에이전트가 없습니다' : snapshot.error ? '구조를 읽지 못했습니다' : '구조 불러오는 중'}</Text>
       </View> : tree ? <Tree forest={forest} state={state} store={store} origin={origin} theme={theme} stale={snapshot.stale} onCopyId={copyId} />
-        : viewport.width > 0 ? <Graph forest={forest} geometry={geometry} state={state} store={store} origin={origin} theme={theme} stale={snapshot.stale} surface={surface} viewport={viewport} onCopyId={copyId} /> : null}
+        : viewport.width > 0 ? <Graph forest={forest} geometry={geometry} state={state} store={store} origin={origin} theme={theme} stale={snapshot.stale}
+          surface={surface} viewport={viewport} onCopyId={copyId} controls={layout.compact ? zoom => viewport.height >= 64 ? zoomControls(zoom) : null : undefined} /> : null}
     </View>
     {state.message ? <Text style={{ color: c.foregroundMuted, paddingHorizontal: 12 }}>{state.message}</Text> : null}
+    {layout.compact ? <View style={{ height: 76, flexShrink: 0 }} /> : null}
     <Details node={forest.nodes.get(state.selected ?? '')} forest={forest} theme={theme} stale={snapshot.stale}
-      compact={layout.compact} onNavigate={props.onNavigate} onCopyId={copyId} />
+      compact={layout.compact} onNavigate={props.onNavigate} onCopyId={copyId} onFocus={() => reveal(state.selected!, true)}
+      onToggle={state.selected && forest.nodes.get(state.selected)?.children.length ? () => store.toggle(state.selected!) : undefined}
+      collapsed={state.selected ? state.collapsed.has(state.selected) : false} />
   </View>;
 }

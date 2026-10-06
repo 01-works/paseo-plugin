@@ -6,17 +6,22 @@ import type { PaseoApi, PaseoAgentListResult, SubscriptionObserver } from '@getp
 import { createAgentDirectory } from '../client/directory';
 import { createGraphViews } from '../client/view-state';
 import { page, raw } from './fixtures';
+const testViewport = vi.hoisted(() => ({ width: 320, height: 360 }));
 
 vi.mock('react-native', async () => {
-  const { createElement, useLayoutEffect } = await import('react');
-  return { View: (props: { children?: React.ReactNode; onLayout?: (event: unknown) => void }) => {
-    useLayoutEffect(() => { props.onLayout?.({ nativeEvent: { layout: { width: 320, height: 360 } } }); }, []);
+  const { createElement, forwardRef, useImperativeHandle, useLayoutEffect } = await import('react');
+  return { View: forwardRef((props: { children?: React.ReactNode; onLayout?: (event: unknown) => void }, ref) => {
+    useImperativeHandle(ref, () => ({ measureInWindow: (callback: (x: number, y: number) => void) => callback(0, 0) }));
+    useLayoutEffect(() => { props.onLayout?.({ nativeEvent: { layout: { ...testViewport } } }); }, []);
     return createElement('View', props, props.children);
-  }, Text: 'Text', Pressable: 'Pressable', Platform: { OS: 'web' },
+  }), Text: 'Text', Pressable: 'Pressable', Platform: { OS: 'web' },
     PanResponder: { create: (handlers: Record<string, unknown>) => ({ panHandlers: {
+      onStartShouldSetResponder: handlers.onStartShouldSetPanResponder,
       onMoveShouldSetResponderCapture: handlers.onMoveShouldSetPanResponderCapture,
       onResponderGrant: handlers.onPanResponderGrant, onResponderMove: handlers.onPanResponderMove,
       onResponderRelease: handlers.onPanResponderRelease,
+      onResponderStart: handlers.onPanResponderStart, onResponderEnd: handlers.onPanResponderEnd,
+      onResponderTerminate: handlers.onPanResponderTerminate,
     } }) } };
 });
 vi.mock('@getpaseo/plugin/client/react-native', async () => {
@@ -48,6 +53,7 @@ const cleanups: (() => unknown)[] = [];
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   Platform.OS = 'web'; vi.useFakeTimers();
+  testViewport.width = 320; testViewport.height = 360;
 });
 afterEach(async () => {
   await act(async () => renderer?.unmount()); renderer = undefined;
@@ -123,17 +129,25 @@ it('크게 보기는 현재 context로 패널을 열고 표시 상태를 넘김'
   expect(h.openPanel).toHaveBeenCalledWith('graph', { workspaceId: 'w', agentId: 'a', location: 'workspace' });
   expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(0);
 });
-it('compact는 확대 도구 없이 트리와 기본 텍스트를 표시', async () => {
+it('compact는 그래프·목록을 선택하고 확대 도구와 기본 텍스트를 표시', async () => {
+  Platform.OS = 'ios';
   const h = await setup();
   await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
     directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  expect(renderer!.root.findAllByType(Graph)).toHaveLength(1);
+  const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name));
+  await act(async () => press('목록').props.onPress());
   expect(renderer!.root.findAllByType(Graph)).toHaveLength(0);
+  expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(1);
+  await act(async () => press('그래프').props.onPress());
+  expect(renderer!.root.findAllByType(Graph)).toHaveLength(1);
+  expect(renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === '확대').props.disabled).toBe(false);
   const texts = renderer!.root.findAll(n => n.type === ('Text' as React.ElementType));
   for (const text of texts) {
     expect(text.props.style.color).toBeTruthy(); expect(text.props.style.fontSize).toBeUndefined();
   }
 });
-it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 목록을 표시', async () => {
+it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 그래프를 표시', async () => {
   Platform.OS = 'ios';
   const h = await setup(), registration = h.buttons.get('a')!;
   const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
@@ -144,8 +158,9 @@ it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 목록을 표�
   const action = registration.button.behavior;
   await act(async () => { await action.onPress(); });
   expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(1);
-  expect(renderer!.root.findAllByType(Graph)).toHaveLength(0);
-  expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(1);
+  expect(renderer!.root.findAllByType(Graph)).toHaveLength(1);
+  expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(0);
+  expect(renderer!.root.findByType('ModalContent' as React.ElementType).props.scrollable).toBe(false);
   expect(h.list).toHaveBeenCalledOnce();
 });
 it('뷰 상태는 호스트·workspace·에이전트별로 구분하며 접기와 배율을 보존', () => {
@@ -262,4 +277,128 @@ it('목록 전환·닫기는 진행 중 배치 작업을 멈추고 타이머를 
   expect(store.forceCache.size).toBe(1);
   await act(async () => { renderer!.unmount(); renderer = undefined; await vi.advanceTimersByTimeAsync(1000); });
   expect(vi.getTimerCount()).toBe(0); expect(h.list).toHaveBeenCalledOnce();
+});
+
+it('iOS 한 손가락 이동과 핀치는 선택·캐시를 유지하고 끝에 배율을 저장', async () => {
+  Platform.OS = 'ios';
+  const h = await setup([raw('a'), ...Array.from({ length: 30 }, (_, i) => raw('child' + i, { labels: { 'paseo.parent-agent-id': 'a' } }))]);
+  await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  const store = h.views.forAgent('h', 'w', 'a');
+  await act(async () => store.zoomTo(0.8));
+  const geometry = renderer!.root.findByType(Graph).props.geometry, selected = store.getSnapshot().selected;
+  const area = () => renderer!.root.find(n => n.type === ('View' as React.ElementType) && n.props.accessibilityLabel === '에이전트 그래프 이동 영역');
+  const touch = (...points: [number, number][]) => ({ nativeEvent: { touches: points.map(([pageX, pageY]) => ({ pageX, pageY })) } });
+  expect(area().props.onStartShouldSetResponder(touch([100, 100]))).toBe(false);
+  expect(area().props.onStartShouldSetResponder(touch([100, 100], [200, 100]))).toBe(true);
+  expect(area().props.onMoveShouldSetResponderCapture(touch([100, 100]), { dx: 3, dy: 3 })).toBe(false);
+  expect(area().props.onMoveShouldSetResponderCapture(touch([100, 100]), { dx: 20, dy: 20 })).toBe(true);
+  const start = { ...store.scroll.modal };
+  await act(async () => {
+    area().props.onResponderGrant(touch([160, 180]));
+    area().props.onResponderMove(touch([60, 80]), { dx: -100, dy: -100 });
+    await vi.advanceTimersByTimeAsync(16);
+  });
+  expect(store.scroll.modal.x).toBeCloseTo(Math.min(start.x + 100, geometry.width * 0.8 - 320));
+  expect(store.scroll.modal.y).toBeCloseTo(Math.min(start.y + 100, geometry.height * 0.8 - 360));
+  const beforePinch = { ...store.scroll.modal };
+  await act(async () => {
+    area().props.onResponderStart(touch([100, 140], [180, 140]));
+    area().props.onResponderMove(touch([100, 140], [220, 140]), { dx: 0, dy: 0 });
+    await vi.advanceTimersByTimeAsync(16);
+  });
+  expect(store.getSnapshot().zoom).toBe(0.8);
+  const point = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'a · 현재 대화');
+  await act(async () => point.props.onPress());
+  expect(store.getSnapshot().selected).toBe(selected);
+  const pinched = { ...store.scroll.modal };
+  expect(pinched.x).toBeCloseTo((beforePinch.x + 140) * 1.5 - 160);
+  expect(pinched.y).toBeCloseTo((beforePinch.y + 140) * 1.5 - 140);
+  await act(async () => {
+    area().props.onResponderEnd(touch([160, 140]));
+    area().props.onResponderMove(touch([140, 120]), { dx: -20, dy: -20 });
+    area().props.onResponderRelease();
+  });
+  expect(store.getSnapshot().zoom).toBeCloseTo(1.2);
+  expect(store.scroll.modal.x).toBeCloseTo(pinched.x + 20);
+  expect(store.scroll.modal.y).toBeCloseTo(pinched.y + 20);
+  const offset = { ...store.scroll.modal };
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('a', { status: 'running' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  expect(renderer!.root.findByType(Graph).props.geometry).toBe(geometry);
+  expect(store.scroll.modal).toEqual(offset); expect(h.list).toHaveBeenCalledOnce();
+  await act(async () => { renderer!.unmount(); renderer = undefined; await vi.advanceTimersByTimeAsync(1000); });
+  expect(vi.getTimerCount()).toBe(0);
+});
+it('compact 정보는 작게 시작하고 검색·상세·이름 확대·ID 복사를 따로 실행', async () => {
+  Platform.OS = 'ios'; const h = await setup();
+  await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  expect(renderer!.root.findAllByType('TextInput' as React.ElementType)).toHaveLength(0);
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  await act(async () => button('에이전트 검색').props.onPress());
+  expect(renderer!.root.findAllByType('TextInput' as React.ElementType)).toHaveLength(1);
+  await act(async () => button('검색 닫기').props.onPress());
+  expect(renderer!.root.findAllByType('TextInput' as React.ElementType)).toHaveLength(0);
+  await act(async () => button('에이전트 상세 펼치기').props.onPress());
+  expect(renderer!.root.findAllByType('Text' as React.ElementType).some(text => [text.props.children].flat().join('') === 'ID · a')).toBe(true);
+  await act(async () => button('a ID 복사').props.onPress());
+  expect(copyText).toHaveBeenLastCalledWith('a');
+  const store = h.views.forAgent('h', 'w', 'a'), focus = store.getSnapshot().focus;
+  await act(async () => { store.zoomTo(0.2); button('a 위치로 확대').props.onPress(); });
+  expect(store.getSnapshot().zoom).toBeGreaterThanOrEqual(0.75);
+  expect(store.getSnapshot().focus).toBe(focus + 1);
+});
+it('낮은 compact 화면에서는 확대 도구를 펼칠 때만 표시하고 버튼 뒤 다시 접음', async () => {
+  Platform.OS = 'ios'; testViewport.height = 120; const h = await setup();
+  await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  const buttons = (label: string) => renderer!.root.findAll(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  expect(buttons('확대')).toHaveLength(0); expect(buttons('확대 도구 열기')).toHaveLength(1);
+  await act(async () => buttons('확대 도구 열기')[0].props.onPress());
+  expect(buttons('확대')).toHaveLength(1);
+  await act(async () => buttons('확대')[0].props.onPress());
+  expect(buttons('확대')).toHaveLength(0); expect(buttons('확대 도구 열기')).toHaveLength(1);
+  const frame = renderer!.root.find(n => n.type === ('View' as React.ElementType) && n.props.onLayout && n.props.style?.borderRadius === 10);
+  await act(async () => frame.props.onLayout({ nativeEvent: { layout: { width: 320, height: 44 } } }));
+  expect(buttons('확대 도구 열기')).toHaveLength(0);
+  expect(buttons('a ID 복사')).toHaveLength(1);
+});
+it('초기 배치 완료가 사용자가 정한 확대율을 덮어쓰지 않음', async () => {
+  const h = await setup([raw('a'), ...Array.from({ length: 208 }, (_, i) => raw('child' + i, { labels: { 'paseo.parent-agent-id': 'a' } }))]);
+  await act(async () => { renderer = create(<GraphContent {...props} directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  const store = h.views.forAgent('h', 'w', 'a');
+  expect(store.forceCache.size).toBe(0);
+  await act(async () => store.zoomTo(0.9));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(store.forceCache.size).toBe(1); expect(store.getSnapshot().zoom).toBe(0.9);
+});
+it('초기 배치가 핀치 도중 완료되어도 현재 배율을 유지하고 이어서 확대', async () => {
+  Platform.OS = 'ios';
+  const h = await setup([raw('a'), ...Array.from({ length: 208 }, (_, i) => raw('child' + i, { labels: { 'paseo.parent-agent-id': 'a' } }))]);
+  await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
+  const store = h.views.forAgent('h', 'w', 'a');
+  await act(async () => store.zoomTo(0.8));
+  expect(store.forceCache.size).toBe(0);
+  const area = () => renderer!.root.find(n => n.type === ('View' as React.ElementType) && n.props.accessibilityLabel === '에이전트 그래프 이동 영역');
+  const touch = (distance: number) => ({ nativeEvent: { touches: [{ pageX: 160 - distance / 2, pageY: 180 }, { pageX: 160 + distance / 2, pageY: 180 }] } });
+  await act(async () => {
+    area().props.onResponderGrant(touch(80));
+    area().props.onResponderMove(touch(120), { dx: 0, dy: 0 });
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(store.forceCache.size).toBe(1);
+  const layer = () => renderer!.root.find(n => n.type === ('View' as React.ElementType) && n.props.style?.transformOrigin === 'top left');
+  expect(layer().props.style.transform[0].scale).toBeCloseTo(1.2);
+  expect(store.getSnapshot().zoom).toBe(0.8);
+  await act(async () => {
+    area().props.onResponderMove(touch(140), { dx: 0, dy: 0 });
+    await vi.advanceTimersByTimeAsync(16);
+    area().props.onResponderRelease();
+  });
+  expect(store.getSnapshot().zoom).toBeCloseTo(1.4);
 });

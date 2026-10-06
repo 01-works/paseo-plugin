@@ -1,22 +1,23 @@
 # 검증 기록
 
-검증일: 2026-10-06 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.2이며, 이전 결과는 아래에 이력으로 유지한다.
+검증일: 2026-10-06~07 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.3이며, 이전 결과는 아래에 이력으로 유지한다.
 
 ## 자동 검증
 
-최종 결과: `npm run typecheck` 통과, `npm test` **7개 파일·49개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 0.1.0의 테스트는 38개, 0.1.1은 46개였다.
+최종 결과: `npm run typecheck` 통과, `npm test` **8개 파일·59개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 0.1.0의 테스트는 38개, 0.1.1은 46개, 0.1.2는 49개였다.
 
 | 범위 | 확인 내용 |
 |---|---|
 | 모델 | label 폴백·first-class null 우선, 없는 부모·여러 루트·workspace 자손/조상 문맥, 순환·자기 참조, 깊이 2,000, 상태 우선순위 |
 | 배치 | 상태·긴 제목 변경 시 좌표 유지, 형제 간 겹침 없음, 명시적 상한·부분 결과, 209개 구조의 전체 배치, 현재 경로 초기 펼침 |
 | directory | 단일 lease/single-flight, 200개 밖 update, 페이지/update/remove 경합, reconnect 캐시·세대 검사, 2,000 상한, 알림 묶기, stale·타이머 정리, 늦은 lease release, 실패 뒤 삭제 유지, 연속 재시도 |
-| React 상호작용 | pill 3개도 공유 조회, 모달·선택·배율·geometry 유지, 큰 보기 context, compact 트리, 기본 Text 크기·색, host/workspace별 뷰 상태, ID 복사와 길게 누르기 |
+| React 상호작용 | pill 3개도 공유 조회, 모달·선택·배율·geometry 유지, 큰 보기 context, compact 그래프/목록, 기본 Text 크기·색, host/workspace별 뷰 상태, ID 복사와 길게 누르기 |
 | React DOM portal | 노드·확대·ID 복사·본문 클릭 후 바깥 pill action 1회 유지, 배율·선택·모달 유지 |
-| 모바일 번들 | 이전 클래스 문법의 Hermes 오류 재현, 제품 entry 전체의 Hermes 컴파일, iOS pill 등록·탭·compact 목록 표시 |
+| 모바일 번들 | 이전 클래스 문법의 Hermes 오류 재현, 제품 entry 전체의 Hermes 컴파일, iOS pill 등록·탭·compact 그래프 표시 |
+| 이동·확대 | 좌표 경계·중앙 배치·핀치 중심·가까운 점 선택, iOS 한 손가락→두 손가락→한 손가락 전환, 배율 저장·갱신 안정성·타이머 정리 |
 
 UI 단위 테스트는 React Native·Paseo 호스트 요소를 mock한다. portal 검증은 JSDOM에서 실제 React DOM portal의 이벤트 경계를 확인한다. 실제 Paseo UI 전체의 대체 검증은 아니다.
-제품 client에는 DOM/HTML·Canvas/SVG·React Flow·직접 clipboard 접근이 없다. DOM은 portal 테스트 파일에서만 사용한다. TypeScript lib에는 DOM이 없다.
+제품 client에는 DOM/HTML·Canvas/SVG·React Flow·직접 clipboard 접근이 없다. DOM은 portal 테스트와 브라우저 미리보기의 대역에서만 사용한다. TypeScript lib에는 DOM이 없다.
 
 ## 실제 로컬 API
 
@@ -136,3 +137,47 @@ React Native 0.81.5에 포함된 `sdks/hermesc/osx-bin/hermesc`(HBC 96)의 `-emi
 - 실화면 확인을 위한 CUA의 Paseo 선택이 시간 초과됐다. 실제 iPhone pill 표시·터치와 새 버전의 데스크톱 실화면은 미검증이다.
 
 데몬 재시작·다른 플러그인 반영·원격 호스트 조작·GitHub push는 수행하지 않았다.
+
+## 0.1.3 모바일 그래프와 UI/UX 리뷰 — 2026-10-07
+
+모바일의 목록 강제를 해제하고 정적 그래프·목록 전환, 한 손가락 이동·핀치, 작은 선택 요약과 펼치는 상세를 추가했다.
+
+### 자동 검증
+
+- 카메라의 확대 경계·양축 여백·드래그 제한·핀치 중심 유지·가까운 점 선택을 순수 계산 테스트로 확인했다.
+- iOS 플랫폼 mock에서 한 손가락 이동→핀치→한 손가락 이동을 수행했다. 핀치 종료 시에만 배율을 저장하고 손가락 전환·상태 갱신 후에도 선택과 위치가 유지됐다. 일반 이동에서는 브라우저 preventDefault를 요구하지 않는다.
+- compact pill은 그래프 모달을 열고 목록으로 전환할 수 있다. 검색·상세·이름 확대·ID 복사, 작은 화면의 확대 도구와 공간 부족 시 숨김, 초기 배치 완료가 수동 확대를 덮어쓰지 않는 처리를 확인했다. 핀치 도중 배치가 끝나도 현재 배율을 유지하고 다음 이동의 시작점을 보정한다.
+- 기존 단일 구독·닫기 정리·force 캐시·React portal·Hermes 회귀 검사를 포함해 59개 테스트가 통과했다. 새 런타임 의존성은 없다.
+
+### 실제 컴포넌트의 브라우저 미리보기
+
+`test/manual/ui-preview.mjs`로 제품 GraphContent·directory·뷰 상태를 RN Web에서 실행했다. Paseo Modal·데이터·clipboard·toast는 대역이며 실제 iOS 화면은 아니다. 테스트용 Chromium과 합성 데이터만 사용했다.
+
+| 화면 | 자료 | 직접 확인 |
+|---|---:|---|
+| 390×520 다크 compact | 12개 | 전체 점 보기·확대 도구·요약 정보, 목록에서 선택·ID 복사·그래프 복귀 |
+| 320×400 라이트 compact | 209개 | 작은 배율 버튼·도구 열기/접기, 검색·카드 확대·하단 버튼 유지, 상세 위로 펼치기 |
+| 840×900 다크 데스크톱 | 209개 | 현재 위치의 카드 중앙 배치, 양방향 마우스 드래그와 선택 유지·현재 위치 복귀 |
+
+상세를 열고 닫아도 그래프 영역과 하단 요약 버튼의 좌표가 같았다. 목록에서 `agent-002`를 선택해 복사 대역에 같은 ID가 전달됐고, 그래프로 돌아온 뒤 상태 이벤트로 대기가 실행 중으로 바뀌어도 선택·배율·스크롤·force 캐시 참조가 유지됐다. 브라우저 page errors는 0건이었다.
+
+리뷰 중 발견한 확대 후 스크롤 clamp와 작은 화면 검색창의 도구 가림을 수정한 뒤 다시 확인했다.
+미리보기는 별도 임시 디렉터리의 react-native-web 설치 경로를 `--modules`로 받는다. 제품 의존성에는 추가하지 않았다.
+
+```sh
+# react-native-web가 설치된 검증용 디렉터리를 지정
+node test/manual/ui-preview.mjs --modules=/path/to/preview-modules
+# http://127.0.0.1:49318/?compact=1&theme=light&nodes=209
+```
+
+### 로컬 반영과 실제 번들
+
+`paseo plugin reload agent-graph --json` 뒤 enabled/running이다. 마지막 `Plugin ready`는 2026-10-07 00:59:00 KST이며 로그 62건에 stderr·오류는 0건이다.
+실제 로컬 catalog에서 112,723 bytes의 client bundle을 받아 RN 0.81.5에 포함된 Hermes 컴파일러로 읽었고 종료 코드 0이었다. 검증용 연결과 브라우저·임시 서버는 정리했다.
+데몬 재시작·mac-monitor 수정/반영·다른 호스트 조작·GitHub push는 하지 않았다.
+
+### 검증의 한계
+
+CUA의 Paseo 앱 선택이 시간 초과되어 최신 버전의 실제 Paseo 화면은 직접 확인하지 못했다. iPhone에도 접근하지 못했다. 따라서 네이티브 시트의 드래그와 그래프 제스처 경합, 키보드·safe area·VoiceOver·Dynamic Type, 실제 터치 정확도와 FPS·CPU·배터리는 미검증이다. 웹 미리보기의 마우스 동작을 실기기 핀치 검증으로 표현하지 않는다.
+
+2,000개는 기존 순수 배치·상한 검증 범위이며 이번 화면 검토는 최대 209개다. 사용자가 목록을 선택하면 D3 작업을 만들지 않고 진행 중 계산을 정리한다. 실제 iOS 성능 상한을 보장하지 않는다.

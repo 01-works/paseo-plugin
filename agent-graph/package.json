@@ -1,7 +1,7 @@
 {
   "name": "paseo-agent-graph",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Paseo 에이전트의 부모·자식 구조 보기",
   "files": [
     "paseo-plugin.json",
