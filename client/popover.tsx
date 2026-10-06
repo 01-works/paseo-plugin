@@ -80,9 +80,9 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
       <View style={{ flex: 1, minWidth: 100, gap: 4 }}>
         <Text selectable style={{ color: c.foreground, fontWeight: '600' }}>{name}</Text>
-        <Text selectable accessibilityLabel={s.sampledAt === null ? '아직 샘플 없음' : new Date(s.sampledAt).toLocaleString('ko-KR')} style={{ color: c.foregroundMuted }}>{s.sampledAt === null ? '아직 샘플 없음' : new Date(s.sampledAt).toLocaleTimeString('ko-KR')}</Text>
+        <Text selectable accessibilityLabel={s.sampledAt === null ? '아직 측정값 없음' : new Date(s.sampledAt).toLocaleString('ko-KR')} style={{ color: c.foregroundMuted }}>{s.sampledAt === null ? '측정 중' : new Date(s.sampledAt).toLocaleTimeString('ko-KR')}</Text>
       </View>
-      <Badge theme={theme} label={s.status === 'ok' ? '샘플' : statusLabels[s.status]} />
+      {s.status === 'ok' ? null : <Badge theme={theme} label={statusLabels[s.status]} />}
       <View style={{ flexDirection: 'row', gap: 8 }}>
       {onRefresh ? <Pressable accessibilityRole="button" accessibilityLabel="모니터 새로고침" disabled={refreshing}
         onPress={() => { onRefresh(); setCopyState('idle'); }}

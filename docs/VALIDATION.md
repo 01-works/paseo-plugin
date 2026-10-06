@@ -156,6 +156,20 @@ CLI 실행·3회 출력·종료 정리는 확인했다. 아래는 CLI 값만의 
 
 ## 사용자가 확인할 화면/다른 Mac
 
+2026-10-06 상세 클릭으로 인한 재마운트 수정·“샘플” 제거:
+
+- 정상 상태의 “샘플” 배지를 제거하고 측정 시각만 유지했다. 오류·지연·미지원 표시는 유지한다.
+- typecheck·40개 테스트 통과, client DOM/HTML·커스텀 fontSize audit 0건.
+- 실제 pill/상세 컴포넌트와 React 19.1.0·React Native Web 0.21.0을 사용하는 DOM 실행 회귀 검증을 추가했다.
+  `node test/manual/click-preview.mjs --verify`는 jsdom 26.1.0으로 실행한다. 테스트 의존성은
+  `/tmp/mac-monitor-click-check`에만 설치했고 프로젝트 package.json/lockfile은 변경하지 않았다.
+- 클릭 전파를 차단하지 않은 경로에서 본문 클릭 후 action 실행·Modal mount·상세 RPC 횟수가
+  각각 1→2로 증가함을 재현했다. 수정 경로에서는 본문·탭·복사·닫기 클릭 후 action/mount가
+  각각 1로 유지되고 새로고침 버튼만 상세 RPC를 1→2로 증가시켰다. 복사 호출도 1회를 확인했다.
+- 브라우저 제어는 사용 불가였다(`agent-browser` 미설치, CUA 브라우저 없음).
+  위 검증은 실제 DOM 이벤트 전달 테스트이며, 실제 Paseo·모바일 터치·시스템 클립보드 검증을 대신하지 않는다.
+- 15:56 KST reload 후 running, 서버 로그 오류 없음, 헬퍼 PID 58628 한 개를 확인했다.
+
 2026-10-06 툴팁 축소·수동 갱신·복사:
 
 - pill/모달 제목을 “모니터”로 축소했다. 0.10.2 호스트 API의 제약으로 자동 툴팁 자체는 남는다.

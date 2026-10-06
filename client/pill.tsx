@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Modal } from '@getpaseo/plugin/client/react-native';
 import type { PluginClientContext, PluginButtonIconProps, PluginButtonRegistration } from '@getpaseo/plugin/client';
 import { emptySnapshot } from '../shared/compute';
@@ -57,9 +57,12 @@ export function contributePills(client: PluginClientContext) {
       }, []);
       return <>
         <View accessibilityLabel={`메모리 압력 ${value ? pressureLabels[value.pressure] : '확인 불가'}`} style={{ width: Math.max(6, size / 2), height: Math.max(6, size / 2), borderRadius: size, backgroundColor: pressureColor(value, theme) }} />
-        {opened ? <Modal title="모니터" open onOpenChange={setOpen}>
-          <Modal.Content><MonitorContent {...props} /></Modal.Content>
-        </Modal> : null}
+        {opened ? <Pressable accessible={false} focusable={false} onPress={event => event.stopPropagation()}>
+          {/* 웹 portal의 클릭도 React 부모 pill로 버블링한다. action 재실행은 아이콘/모달을 remount한다. */}
+          <Modal title="모니터" open onOpenChange={setOpen}>
+            <Modal.Content><MonitorContent {...props} /></Modal.Content>
+          </Modal>
+        </Pressable> : null}
       </>;
     }
     const label = pillLabel(snapshot);

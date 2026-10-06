@@ -113,3 +113,24 @@ SDK에 툴팁 비활성화 옵션이 없고 `buttons/validation.ts`는 빈 제�
 별도 RPC 없이 텍스트로 만들며, 누락값·지연·오류를 보존한다. 클립보드 실패는 성공으로 표시하지 않는다.
 반복 타이머·새 측정·DOM 코드는 없다. 자동 갱신이 실제 선택을 끊는 현상과 클라이언트 클립보드의 동작은
 실제 Paseo에서 직접 재현하지 못했으므로 사용자 확인이 필요하다.
+
+## 2026-10-06 · 상세 클릭 버블링 수정과 “샘플” 제거 (PLAN 5.3절 보완)
+
+사용자가 “샘플” 표현과 아무 곳을 클릭해도 새로고침되는 문제를 보고했다. “샘플”은 마지막으로 읽은
+측정값을 뜻하도록 추가했던 용어지만 UI에는 불필요하다. 정상 상태 배지는 제거하고 측정 시각만 유지한다.
+측정 중·지연·오류·미지원 표시는 유지하며 복사 텍스트도 “측정 시각”을 사용한다.
+
+Paseo 0.10.2의 `plugins/buttons/view.tsx`는 action 실행 중 아이콘 대신 spinner를 렌더한다.
+`buttons/model.ts`의 `run()`은 모든 action에 pending을 적용한다. 상세 Modal을 아이콘 안에
+렌더한 구현에서 웹 portal의 클릭은 React 부모 pill Pressable로 전파되어 action을 다시 실행했다.
+그러면 아이콘과 Modal이 unmount/remount되고 상세의 최초 읽기가 반복된다. 이는 폴링과 별개인 결함이다.
+
+Modal 전체를 비포커스 React Native Pressable로 감싸 `onPress`의 `stopPropagation()`으로
+이 전파를 차단한다. 내부 탭·복사·새로고침·닫기 동작은 그대로 실행되고 부모 pill은 재실행되지 않는다.
+DOM 이벤트 API나 호스트 파일 패치는 사용하지 않는다. SDK 및 프로젝트 의존성도 변경하지 않는다.
+
+`test/manual/click-preview.mjs --verify`는 실제 pill/상세 코드와 Paseo와 같은 React 19.1.0,
+React Native Web 0.21.0으로 portal/호스트 pending 동작을 구성해 jsdom에서 실행한다.
+전파 차단을 뺀 경로는 본문 클릭 후 action·Modal mount·상세 RPC가 모두 1→2로 증가했다.
+수정 경로는 본문·탭·복사·닫기에 action/mount 1을 유지하고 새로고침 버튼만 상세 RPC를 증가시켰다.
+브라우저 제어는 사용 불가여서 DOM 실행 테스트로 검증했으며 실제 Paseo/모바일 터치 검증을 대신하지 않는다.

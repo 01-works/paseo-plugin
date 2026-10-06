@@ -5,7 +5,7 @@ import { pressureColor } from '../popover';
 import { gib, percent, pressureLabels, statusLabels } from '../format';
 import { Badge, Bar, barPercent } from '../visuals';
 const weights = [1.4, 0.7, 0.6, 1.8, 0.7, 1.4, 1.3, 1];
-const titles = ['호스트', '상태', 'CPU', '사용 / 전체 메모리', '압력', '사용 / 전체 스왑', '에이전트', '샘플 시각'];
+const titles = ['호스트', '상태', 'CPU', '사용 / 전체 메모리', '압력', '사용 / 전체 스왑', '에이전트', '측정 시각'];
 export function FleetHeader({ theme }: Pick<PluginHostProps, 'theme'>) {
   return <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12 }}>
     {titles.map((title,i) => <Text key={title} style={{ color: theme.colors.foregroundMuted, flex: weights[i] }}>{title}</Text>)}
@@ -14,7 +14,7 @@ export function FleetHeader({ theme }: Pick<PluginHostProps, 'theme'>) {
 export function FleetRow({ snapshot: s, theme, layout, name, error, agentText, onPress }: PluginHostProps & {
   snapshot?: Snapshot; name: string; error?: string; agentText: string; onPress: () => void;
 }) {
-  const values = [name, error ? '연결 오류' : s ? s.status === 'ok' ? '샘플' : statusLabels[s.status] : '측정 중', percent(s?.cpu?.total),
+  const values = [name, error ? '연결 오류' : s ? s.status === 'ok' ? '—' : statusLabels[s.status] : '측정 중', percent(s?.cpu?.total),
     `${gib(s?.memory?.used)} / ${gib(s?.memory?.total)}`, s ? pressureLabels[s.pressure] : '확인 불가',
     `${gib(s?.swap?.used)} / ${gib(s?.swap?.total)}`, agentText, s?.sampledAt == null ? '—' : new Date(s.sampledAt).toLocaleTimeString('ko-KR')];
   return <Pressable accessibilityRole="button" accessibilityLabel={`${name} 상세 보기`} onPress={onPress}
@@ -22,7 +22,7 @@ export function FleetRow({ snapshot: s, theme, layout, name, error, agentText, o
     {layout.compact ? <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <Text style={{ color: theme.colors.foreground, fontWeight: '600', flexShrink: 1 }}>{name}</Text>
-        <Badge theme={theme} label={values[1]} />
+        {values[1] === '—' ? null : <Badge theme={theme} label={values[1]} />}
       </View>
       <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 100, gap: 6 }}>

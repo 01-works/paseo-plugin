@@ -7,7 +7,7 @@ import { emptySnapshot } from '../shared/compute';
 import { computeMemory } from '../shared/compute';
 import { raw } from './fixtures';
 
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
+vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('../client/popover', () => ({ MonitorContent: () => '상세', pressureColor: () => 'theme-color' }));
 vi.mock('@getpaseo/plugin/client/react-native', async () => {
   const { createElement } = await import('react');
@@ -59,6 +59,11 @@ describe('클라이언트 공유 요청 및 표시 수명주기', () => {
     await act(async () => { await behavior.onPress(); });
     expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
     expect(renderers[1].root.findAllByType(Modal)).toHaveLength(0);
+    const stopPropagation = vi.fn();
+    const guard = renderers[0].root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.focusable === false);
+    await act(async () => guard.props.onPress({ stopPropagation }));
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(6000); });expect(rpc).toHaveBeenCalledTimes(4);
     expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
     await act(async () => { renderers[0].root.findByType(Modal).props.onOpenChange(false); });

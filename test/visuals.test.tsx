@@ -43,6 +43,7 @@ it('앱 탭 전환에서 목록과 상대 비교 기준을 유지', async () => 
   expect(bars.find(b => b.props.label.startsWith('Google Chrome'))?.props.value).toBe(100);
   expect(bars.find(b => b.props.label.startsWith('claude'))?.props.value).toBe(25);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('1 GiB =');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('샘플');
 });
 it('RAM 사용률이 높아도 상태 색은 OS 압력만 기준', () => {
   expect(pressureColor(sample, props.theme)).toBe(props.theme.colors.statusSuccess);
