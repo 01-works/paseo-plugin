@@ -1,0 +1,1 @@
+export const GiB = 1024 ** 3;
