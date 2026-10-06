@@ -30,7 +30,7 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
   return <Card theme={theme}>
     <ProcessHeader group={group} theme={theme} onBack={onBack} disabled={pending} />
     <ScrollView accessibilityLabel="개별 프로세스 목록" nestedScrollEnabled showsVerticalScrollIndicator
-      style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, flexGrow: 1 }}>
+      style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, flexGrow: 1, paddingRight: 8 }}>
       {query.error ? <Text selectable style={{ color: c.foregroundMuted }}>연결 오류: {query.error.message}</Text> : null}
       {message ? <Text selectable style={{ color: c.foregroundMuted }}>{message}</Text> : null}
       {chosen ? <View style={{ padding: 12, gap: 8, borderRadius: 6, backgroundColor: c.surface2 }}>
@@ -93,7 +93,7 @@ export function GroupTermination({ group, theme, onBack }: { group: string; them
   return <Card theme={theme}>
     <ProcessHeader group={group} theme={theme} onBack={onBack} disabled={pending} />
     <ScrollView accessibilityLabel="앱 전체 종료 확인" nestedScrollEnabled style={{ height: 320, flexGrow: 0, flexShrink: 0 }}
-      contentContainerStyle={{ gap: 12 }}>
+      contentContainerStyle={{ gap: 12, paddingRight: 8 }}>
       {result ? <>
         <Text style={{ color: c.foreground }}>종료 요청 {result.results.filter(p => p.sent).length}개 · 보내지 못함 {result.results.filter(p => !p.sent).length}개</Text>
         {result.results.filter(p => !p.sent).map(p => <Text key={p.pid} style={{ color: c.foregroundMuted }}>PID {p.pid} · {p.error ?? '종료하지 못했습니다.'}</Text>)}

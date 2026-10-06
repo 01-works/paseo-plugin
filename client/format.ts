@@ -1,6 +1,10 @@
 import type { Snapshot } from '../shared/contracts';
 import { GiB } from '../shared/units';
-export function gib(value: number | null | undefined): string { return value == null ? '—' : `${(value / GiB).toFixed(1)} GiB`; }
+export function gib(value: number | null | undefined): string {
+  if (value == null) return '—';
+  const amount = value / GiB;
+  return amount > 0 && amount < 0.1 ? '<0.1 GiB' : `${amount.toFixed(1)} GiB`;
+}
 export function percent(value: number | null | undefined): string { return value == null ? '—' : `${Math.round(value)}%`; }
 export function appPercent(value: number | null | undefined): string { return value == null ? '—' : value > 0 && value < 0.1 ? '<0.1%' : `${value.toFixed(1)}%`; }
 export function relativeTime(ageMs: number | null): string { return ageMs === null ? '아직 샘플 없음' : ageMs < 1000 ? '방금' : `${Math.floor(Math.max(0, ageMs) / 1000)}초 전`; }

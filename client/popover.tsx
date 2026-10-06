@@ -25,7 +25,7 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
       <Text selectable style={{ color: c.foreground, fontWeight: '600' }}>상위 앱</Text>
       <Badge theme={theme} label={muted && s.processesStatus === 'ok' ? '이전 값' : s.processesStatus === 'ok' ? `${groups.length}개` : processState[s.processesStatus]} />
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.border }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingRight: 8, borderBottomWidth: 1, borderColor: c.border }}>
       <View style={{ flex: 1, minWidth: 0 }}><Text style={{ color: c.foregroundMuted }}>앱</Text></View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
       {(['cpu', 'memory'] as const).map(key => <Pressable key={key} accessibilityRole="button"
@@ -38,7 +38,7 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
       {canInspect && !compact ? <View style={{ width: 68 }} /> : null}
     </View>
     <ScrollView accessibilityLabel="앱 사용 순위 목록" nestedScrollEnabled showsVerticalScrollIndicator
-      style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ flexGrow: 1 }}>
+      style={{ height: 320, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ flexGrow: 1, paddingRight: 8 }}>
     {!groups.length ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <Text selectable style={{ color: c.foregroundMuted }}>{s.processesStatus === 'unsupported' ? '앱 목록 미지원' : s.processesStatus === 'ok' ? '앱 없음' : processState[s.processesStatus]}</Text>
     </View> : null}
