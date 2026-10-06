@@ -279,3 +279,20 @@ Activity Monitor의 총 사용량은 약 0.56 GiB 높았다. Activity Monitor �
 추측으로 보정하거나 기존 금지 방식인 `total − free`로 바꾸지 않는다. 계산식 변경 결정은 하지 않았으며
 관측 사실·시각·남은 한계를 VALIDATION.md와 README에 공개한다.
 따라서 PLAN의 “Activity Monitor 사용된 메모리에 대응”은 의미상의 목표이며 총 수치의 동일성을 보장하지 않는다.
+
+## 2026-10-06 · 메모리 합계 차이 원인 확인 (PLAN 4.1, 9절 보완)
+
+사용자가 원인 조사를 요청했다. 설치된 Activity Monitor와 sysmond의 arm64e·x86_64 실행 파일을
+읽기 전용으로 추적해 이 빌드의 Activity Monitor 합계가
+`hw.memsize − (free_count − speculative_count + external_page_count) × page`임을 확인했다.
+이는 제품의 `앱 + 와이어드 + 압축` 식과 다르다. 같은 원시 카운터 100회에서 차이는 0.538~0.587 GiB였다.
+
+이 Mac의 `hw.memsize − hw.memsize_usable`은 0.510208 GiB이며 해당 XNU 버전의 공식 소스는 이를
+carveout을 제외하기 전후의 차이로 설명한다. Activity Monitor 합계는 이 영역을 포함하며 purgeable을
+추가로 빼지 않는다. usable RAM과 VM 카운터 합의 작은 잔여 차이도 관찰했지만 그 영역까지 특정하지 않았다.
+근거와 재현 방법은 [합계 차이 조사](research/report-memory-accounting.md)에 기록했다.
+
+이번 요청은 원인 조사이며 제품의 계산식 변경 결정은 하지 않았다. PLAN 4.1절의 식을 유지한다.
+이전 절의 “원인 미확정”은 직접 화면 대조 당시의 상태로 남기고 README·VALIDATION의 현재 설명을 갱신했다.
+Activity Monitor 기준으로 전환한다면 구성 바와 합계의 관계, 오류 처리, Node 폴백도 함께 변경해야 한다.
+추가로 필요한 speculative 값은 기존 VM 조회 응답에 있으므로 새 프로세스 스캔이나 비공개 API는 필요 없다.

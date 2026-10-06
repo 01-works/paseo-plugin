@@ -1,5 +1,9 @@
 # macOS 네이티브 통계 수집기 조사 (Paseo 플러그인용)
 
+**후속 정정:** 아래 최초 조사의 `사용 = 앱 + 와이어드 + 압축`은 제품의 승인된 공식이지만,
+이 Mac의 Activity Monitor 총 사용량 식과 같지는 않다. 실행 파일과 원시 카운터로 확인한
+[합계 차이 조사](report-memory-accounting.md)를 함께 읽는다. 아래 최초 측정 기록은 보존한다.
+
 ## 환경 (측정값)
 - `uname -m`: arm64 / macOS 26.5.1 (25F80) / Darwin 25.5.0
 - hw.memsize=17179869184 (16 GiB), hw.pagesize=vm.pagesize=16384, hw.ncpu=10, perflevel0(P)=4, perflevel1(E)=6
