@@ -30,5 +30,5 @@ npm test
 npm run build
 ```
 
-GitHub Actions는 macOS에서 타입 검사·단위 테스트·universal 헬퍼 빌드·서명·JSON 스키마를 확인합니다.
-각 Mac 설치와 Activity Monitor 화면 대조는 별도로 확인해야 합니다.
+GitHub Actions는 arm64·Intel macOS에서 타입 검사·단위 테스트·커밋된 헬퍼 실행·universal 빌드·서명·JSON을 확인합니다.
+로컬 Activity Monitor 대조 결과와 남은 compact·다른 Mac 설치 검증은 [검증 기록](mac-monitor/docs/VALIDATION.md)에 공개합니다.
