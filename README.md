@@ -6,6 +6,11 @@ Paseo용 플러그인을 모은 저장소입니다. 각 플러그인은 독립�
 |---|---|---|
 | [mac-monitor](mac-monitor/README.md) | 저부하 macOS 시스템 모니터. CPU·메모리·압력·스왑·SSD 용량, 상위 앱 10개와 프로세스 종료 | Paseo 0.10.2, arm64 macOS 26.5.1 |
 
+## 구현 계획
+
+[agent-graph](agent-graph/README.md): Paseo 에이전트의 부모·자식 관계를 pill에서 열고 확대하거나 큰 작업 패널로 보는 플러그인입니다.
+현재는 [계획 문서](agent-graph/docs/PLAN.md)와 [레퍼런스 검토](agent-graph/docs/REFERENCES.md)만 있으며, 설치 가능한 구현은 아직 없습니다.
+
 ## 설치
 
 사용할 Mac의 Paseo 데몬에서 플러그인 사용을 활성화한 뒤 설치합니다.
