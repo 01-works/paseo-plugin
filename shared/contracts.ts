@@ -15,7 +15,7 @@ export const rawSchema = z.object({
     pageSize: nullable, memsize: nullable,
     vm: z.object({ internal: number, purgeable: number, wire: number, compressor: number, external: number, free: number }).nullable(),
     cpu: cpuTicksSchema.nullable(), swap: z.object({ total: number, used: number }).nullable(),
-    pressureLevel: nullable, memoryLevel: nullable,
+    pressureLevel: z.number().finite().nullable(), memoryLevel: nullable,
   }),
   procs: processesSchema.nullable(), errors: z.array(z.string()),
 });

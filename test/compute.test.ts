@@ -22,7 +22,7 @@ describe('원시 카운터 계산', () => {
     expect(emptySnapshot('native').status).toBe('warming');
     expect(sampleStatus(0, true, false)).toBe('warming');
   });
-  it.each([[1, 'normal'], [2, 'warning'], [4, 'critical'], [0, 'unknown'], [3, 'unknown'], [null, 'unknown']] as const)('압력 %s → %s', (level, expected) => expect(pressure(level)).toBe(expected));
+  it.each([[1, 'normal'], [2, 'warning'], [4, 'critical'], [0, 'unknown'], [-1, 'unknown'], [3, 'unknown'], [null, 'unknown']] as const)('압력 %s → %s', (level, expected) => expect(pressure(level)).toBe(expected));
   it('5초/15초 경계, 헬퍼 중단, 미지원', () => {
     expect(sampleStatus(5000, true, true)).toBe('ok'); expect(sampleStatus(5001, true, true)).toBe('stale');
     expect(sampleStatus(15000, true, true)).toBe('stale'); expect(sampleStatus(15001, true, true)).toBe('error');
