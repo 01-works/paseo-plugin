@@ -3,11 +3,12 @@ import { z } from 'zod';
 
 const number = z.number().finite().nonnegative();
 const nullable = number.nullable();
+export const TOP_APP_LIMIT = 10;
 export const cpuTicksSchema = z.object({ user: number, system: number, idle: number, nice: number });
 export const groupSchema = z.object({ name: z.string(), memoryBytes: number, processCount: number.int(), cpuPercent: nullable });
 export const processesSchema = z.object({
   ready: z.boolean(), sampledAt: number, excludedPermission: number.int(), excludedRoot: number.int(),
-  otherErrors: number.int(), coreCount: number.int().positive(), topCpu: z.array(groupSchema).max(5), topMemory: z.array(groupSchema).max(5),
+  otherErrors: number.int(), coreCount: number.int().positive(), topCpu: z.array(groupSchema).max(TOP_APP_LIMIT), topMemory: z.array(groupSchema).max(TOP_APP_LIMIT),
 });
 export const rawSchema = z.object({
   v: z.literal(1), seq: number.int(), t: number, mono: number,

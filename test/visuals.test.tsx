@@ -3,10 +3,11 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 import { emptySnapshot } from '../shared/compute';
-import type { Snapshot } from '../shared/contracts';
+import { processesSchema, TOP_APP_LIMIT, type Snapshot } from '../shared/contracts';
 import { GiB } from '../shared/units';
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn() }));
+vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView' }));
 import { Details, pressureColor } from '../client/popover';
 import { Bar, barPercent } from '../client/visuals';
 
@@ -49,4 +50,17 @@ it('연결 실패 시 그래프를 흐리게 표시하고 최신을 표시하지
   const bars = renderer!.root.findAllByType(Bar);
   expect(bars.every(b => b.props.muted)).toBe(true);
   expect(JSON.stringify(renderer!.toJSON())).toContain('마지막 수신 값');
+});
+it('10개 순위를 스크롤 영역에 표시하고 기본 폰트 크기를 유지', async () => {
+  const groups = Array.from({ length: TOP_APP_LIMIT }, (_, i) => ({ name: `앱 ${i + 1}`, processCount: 1, cpuPercent: 10 - i, memoryBytes: (10 - i) * GiB }));
+  const processes = { ...sample.processes!, topCpu: groups, topMemory: groups };
+  expect(processesSchema.safeParse(processes).success).toBe(true);
+  expect(processesSchema.safeParse({ ...processes, topCpu: [...groups, groups[0]] }).success).toBe(false);
+  await act(async () => { renderer = create(<Details {...props} snapshot={{ ...sample, processes }} name="Mac" />); });
+  const scroll = renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록');
+  expect(scroll.props.nestedScrollEnabled).toBe(true);
+  expect(scroll.props.style.maxHeight).toBe(320);
+  const appBars = renderer!.root.findAllByType(Bar).filter(b => b.props.label.startsWith('앱 '));
+  expect(appBars).toHaveLength(TOP_APP_LIMIT);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('fontSize');
 });

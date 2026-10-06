@@ -11,15 +11,15 @@ export function barPercent(value: number | null | undefined, total = 100): numbe
 }
 
 export function Card({ theme, children, style }: { theme: Theme; children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ padding: 16, gap: 12, borderRadius: 16, backgroundColor: theme.colors.surface1,
+  return <View style={[{ padding: 12, gap: 8, borderRadius: 8, backgroundColor: theme.colors.surface1,
     borderWidth: 1, borderColor: theme.colors.border, minWidth: 0 }, style]}>{children}</View>;
 }
 
 export function Badge({ theme, label, color, dot = false }: { theme: Theme; label: string; color?: string; dot?: boolean }) {
   return <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: theme.colors.surface2, maxWidth: '100%' }}>
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: theme.colors.surface2, maxWidth: '100%' }}>
     {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color ?? theme.colors.foregroundMuted }} /> : null}
-    <Text style={{ color: color ?? theme.colors.foregroundMuted, fontSize: 12, fontWeight: '600', flexShrink: 1 }}>{label}</Text>
+    <Text style={{ color: color ?? theme.colors.foregroundMuted, fontWeight: '600', flexShrink: 1 }}>{label}</Text>
   </View>;
 }
 
@@ -35,7 +35,7 @@ export function Bar({ theme, value, label, muted = false, height = 7 }: { theme:
 export function Legend({ theme, label, value, color }: { theme: Theme; label: string; value: string; color: string }) {
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
     <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: color }} />
-    <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{label}</Text>
-    <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
+    <Text style={{ color: theme.colors.foregroundMuted }}>{label}</Text>
+    <Text style={{ color: theme.colors.foreground, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
   </View>;
 }

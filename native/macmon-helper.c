@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#define TOP_GROUPS 10
 
 typedef struct { pid_t pid; uint64_t start, cpu, foot; char name[256]; } Proc;
 typedef struct { char name[256]; double cpu; uint64_t foot; int count, valid_cpu; } Group;
@@ -43,7 +44,7 @@ static void name_of(pid_t pid,char *out) {
   char *base=strrchr(path,'/'); snprintf(out,256,"%s",base?base+1:path);
 }
 static void print_groups(Group *g,size_t n,int ready) {
-  putchar('['); for(size_t i=0;i<n&&i<5;i++) {
+  putchar('['); for(size_t i=0;i<n&&i<TOP_GROUPS;i++) {
     if(i) putchar(','); printf("{\"name\":"); json_string(g[i].name);
     printf(",\"memoryBytes\":%"PRIu64",\"processCount\":%d,\"cpuPercent\":",g[i].foot,g[i].count);
     if(ready&&g[i].valid_cpu) printf("%.6f",g[i].cpu); else printf("null"); putchar('}');

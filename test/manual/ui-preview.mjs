@@ -27,6 +27,9 @@ await build({
         { name: 'Google Chrome', processCount: 24, cpuPercent: 12, memoryBytes: 4.5 * GiB },
         { name: 'codex', processCount: 3, cpuPercent: 7, memoryBytes: 1.2 * GiB }
       ], excludedRoot: 208, excludedPermission: 210, otherErrors: 0 } };
+    const extra = Array.from({ length: 5 }, (_, i) => ({ name: ['Safari','Terminal','Finder','Notes','Xcode'][i], processCount: i+1, cpuPercent: 0.3-i*0.05, memoryBytes: (0.15-i*0.02)*GiB }));
+    s.processes.topCpu.push(...extra);
+    s.processes.topMemory = [...s.processes.topCpu].sort((a,b)=>b.memoryBytes-a.memoryBytes);
     const escape = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
     const flatten = style => Array.isArray(style) ? Object.assign({}, ...style.map(flatten)) : style ?? {};
     const units = new Set(['flex','flexGrow','flexShrink','fontWeight','opacity','zIndex']);
@@ -53,16 +56,17 @@ await build({
       await act(async()=>renderer.unmount());
       const filename = (dark ? 'dark' : 'light') + (compact ? '-compact' : '-desktop');
       const width = compact ? 360 : 520;
-      const page = '<!doctype html><meta charset="utf-8"><title>mac-monitor 구성 검토</title><style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:'+colors.surface0+';color:'+colors.foreground+'}.View,.Pressable{display:flex;flex-direction:column;flex-shrink:0;min-height:0;border-style:solid;border-width:0}.Text{display:block;flex-shrink:0;white-space:pre-wrap;overflow-wrap:break-word;line-height:1.45}main{width:'+width+'px;padding:'+(compact?16:24)+'px}header{font-size:11px;padding-bottom:16px;color:'+colors.foregroundMuted+'}</style><main><header>레이아웃 검토용 · 예시 데이터 / 예시 테마</header>'+content+'</main>';
+      const page = '<!doctype html><meta charset="utf-8"><title>mac-monitor 구성 검토</title><style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;background:'+colors.surface0+';color:'+colors.foreground+'}.View,.Pressable{display:flex;flex-direction:column;flex-shrink:0;min-height:0;border-style:solid;border-width:0}.ScrollView{overflow-y:auto;min-height:0;flex-shrink:1}.Text{display:block;flex-shrink:0;white-space:pre-wrap;overflow-wrap:break-word;line-height:1.45}main{width:'+width+'px;padding:'+(compact?16:24)+'px}header{font-size:11px;padding-bottom:16px;color:'+colors.foregroundMuted+'}</style><main><header>레이아웃 검토용 · 예시 데이터 / 예시 테마</header>'+content+'</main>';
       writeFileSync(${JSON.stringify(directory)}+'/'+filename+'.html', page);
     } })().catch(error => { console.error(error); process.exitCode = 1; });
   `, resolveDir: process.cwd(), loader: 'tsx' },
   outfile: join(directory, 'render.cjs'), bundle: true, platform: 'node', format: 'cjs', packages: 'external',
   plugins: [{ name: 'preview-native-elements', setup(builder) {
     builder.onResolve({ filter: /^react-native$/ }, () => ({ path: 'native', namespace: 'preview' }));
-    builder.onResolve({ filter: /^@getpaseo\/plugin\/client$/ }, () => ({ path: 'sdk', namespace: 'preview' }));
+    builder.onResolve({ filter: /^@getpaseo\/plugin\/client(?:\/react-native)?$/ }, args => ({ path: args.path.endsWith('/react-native') ? 'scroll' : 'sdk', namespace: 'preview' }));
     builder.onLoad({ filter: /.*/, namespace: 'preview' }, args => ({ contents: args.path === 'native'
       ? 'export const View="View", Text="Text", Pressable="Pressable";'
+      : args.path === 'scroll' ? 'export const ScrollView="ScrollView";'
       : 'export function useRpc(){ return ()=>{}; }', loader: 'js' }));
   } }],
 });
