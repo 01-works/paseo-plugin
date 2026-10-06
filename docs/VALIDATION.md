@@ -9,7 +9,7 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·헬퍼·클라이언트/fleet·UI·자동 관리 테스트 | 완료 (0.2.0, 10개 파일, 120개 테스트) |
+| 계산·오류·헬퍼·클라이언트/fleet·UI·자동 관리 테스트 | 완료 (0.2.1, 10개 파일, 135개 테스트) |
 | client DOM/HTML audit | 금지 사용 0건 (`Promise<void>` 타입의 검색 결과 1건은 DOM/HTML 아님) |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
@@ -36,6 +36,47 @@
 compact 실제 배치와 다른 Mac의 Paseo 설치·fleet 집계는 남아 있다.
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
+
+## 최종 후속 검증: 자동 종료 경계의 다각도 리뷰 (0.2.1)
+
+2026-10-06 22:07~22:29 KST. 재현 조건과 우선순위는 [REVIEW.md](REVIEW.md)에 있다.
+
+- 수정 전 회귀 테스트에서 허용 대상 경로/이름 변경·검증 중 변경·CLI 마지막 출력·shutdown 기록 누락이
+  9개 실패로 재현됐다. 네이티브 시험에서도 Codex/Paseo 조상과 분리한 Terminal 자식이 허용되어 실패했다.
+- 수정 후 `npm run typecheck`, `npm test` 10개 파일/135개 통과.
+  확인 화면의 경로/이름 전달, 이전 허용 입력 거절, 검증 전후 대상 대조,
+  개행 없는 CLI 도구/실패/깨진 출력과 정상 출력, 전송 대기·조회 대기·미조회 상태의 shutdown 기록,
+  조회 예외의 unknown 기록 및 shutdown 기록 실패의 cleanup을 확인했다.
+- `npm run build`, `lipo bin/macmon-helper -verify_arch arm64 x86_64`, `codesign --verify --strict` 통과.
+  `./node_modules/.bin/tsx test/manual/automatic-actions.mjs`는 독립 worker만 허용·SIGTERM·직접 종료 조회했다.
+  별도 검증용 Codex·Terminal·iTerm·Warp·일반 `.app` 부모 아래 자식은 허용과 신호 전송 모두 차단됐다.
+  실행 경로/시작 시각 불일치도 차단했고 자체 worker·부모·helper·임시 파일을 정리했다.
+- 실제 로컬 플러그인만 reload했다. `node test/manual/consent-rpc.mjs`로
+  이전 입력 형식과 경로 불일치 거절, 직접 만든 작은 orphan worker만 허용·해제를 확인했다.
+  작업 프로세스는 허용/종료하지 않았고, 자동 리뷰/종료 조건이 될 수 없는 1 GiB 미만 검증용 worker만 사용했다.
+  허용 목록은 0개로 복귀하고 기존 설정/사건 기록은 보존됐다.
+- `node test/manual/live-rpc.mjs --seconds=42`에서 동시 100개 요청은 seq 15 하나였으며,
+  21개 관찰은 seq 15~35, 간격 1996~2003ms, status ok/errors 없음이었다.
+  압력은 normal/warning, 설정은 critical 120초였으므로 앱 스캔은 계속 off였다.
+- 22:25:49 KST enable 전 disable 상태의 helper는 0개였다. enable 뒤 PID 10079 한 개로 복귀했다.
+  자동 관리 enabled/critical 120초/대상 0개/사건 0개가 보존됐다.
+  이후 실제 snapshot seq 95는 ok/normal/off였고 플러그인은 running이었다.
+  서버 로그 142개는 모두 stdout이며 오류·실패·stderr가 없었다.
+- client DOM/HTML/fontSize 금지 패턴 0건, 변경한 Text의 theme 토큰과 DOM 없는 tsconfig 유지,
+  `git diff --check` 통과. 측정 공식·간격·정상 상태의 추가 스캔/AI/기록 구조는 변경하지 않았다.
+- 재로딩 전 실제 다크 화면에서 시스템 수치·기본 폰트·단일 메모리 바·CPU/메모리 열·상위 10개·감시를 직접 관찰했다.
+  0.2.1 재로딩 후 컴퓨터 제어가 시간 초과돼 화면 재확인은 완료하지 못했다.
+  이번 UI 수정은 확인한 경로/이름을 RPC에 전달하는 부분이며 배치 변경은 없다.
+
+0.2.1 헬퍼 부하 (`python3 test/manual/helper-cost.py`): 앱 스캔 활성 helper를 **60.005450초** 관찰했다.
+**30개 샘플**, CPU 시간 **0.255661초**, 코어 하나 **0.426063%**(10코어 환산 **0.042606%**),
+최대 RSS **4.50 MiB**, 간격 **1990.380~2009.616ms**, 디스크 조회 2회, 출력 구성원 최대 354개였다.
+별도 helper의 측정 중 로컬 캐시 RPC 검증도 함께 실행했다. 완료 뒤 별도 helper를 정리하고
+Paseo helper 한 개만 확인했다. Paseo·Node·화면·AI 비용을 포함하지 않으며 이전 측정과 비용 증가율로 비교하지 않는다.
+
+실제 임계 압력과 전체 자동 종료 흐름, 현재 합계의 Activity Monitor 화면 대조,
+자동 관리 라이트/compact/모바일 화면, 다른 Mac 검증은 남아 있다.
+압력을 인위적으로 만들거나 사용자 프로세스를 종료하지 않았으며 데몬과 전역 설정·다른 Mac은 변경하지 않았다.
 
 ## 최종 후속 검증: Luna 리뷰·개별 worker 자동 관리·종료 로그 (0.2.0)
 
