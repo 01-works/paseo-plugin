@@ -1,7 +1,7 @@
 {
   "name": "paseo-agent-graph",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Paseo 에이전트의 부모·자식 구조 보기",
   "files": [
     "paseo-plugin.json",
@@ -14,11 +14,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bench": "tsx test/manual/bench.ts",
+    "bench:force": "tsx test/manual/force-bench.ts",
     "audit": "node test/manual/audit.mjs"
   },
   "devDependencies": {
     "@getpaseo/client": "0.10.2",
     "@getpaseo/plugin": "0.10.2",
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^24.0.0",
     "@types/react": "~19.2.0",
     "@types/react-dom": "19.1.9",
@@ -32,5 +34,8 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "ws": "8.22.0"
+  },
+  "dependencies": {
+    "d3-force": "^3.0.0"
   }
 }

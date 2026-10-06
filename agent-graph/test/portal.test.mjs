@@ -11,6 +11,7 @@ vi.mock('react-native', async () => {
       return createElement('div', {}, props.children);
     },
     Text: props => createElement('span', {}, props.children),
+    Platform: { OS: 'web' }, PanResponder: { create: () => ({ panHandlers: {} }) },
     Pressable: props => createElement('div', { role: props.accessible === false ? undefined : 'button',
       'aria-label': props.accessibilityLabel, onClick: props.disabled ? undefined : props.onPress }, props.children),
   };
@@ -22,7 +23,8 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
     useImperativeHandle(ref, () => ({ scrollTo() {} }));
     return createElement('div', {}, props.children);
   });
-  return { ScrollView, Icon: () => null, copyText: vi.fn(async () => {}), useToast: () => ({ show() {}, error() {} }),
+  return { ScrollView, TextInput: props => createElement('input', { 'aria-label': props.accessibilityLabel }),
+    Icon: () => null, copyText: vi.fn(async () => {}), useToast: () => ({ show() {}, error() {} }),
     Modal: Object.assign(props => props.children, { Content: props => createPortal(props.children, document.getElementById('portal')) }) };
 });
 import { AgentDirectory } from '../client/directory';
@@ -33,8 +35,10 @@ import { copyText } from '@getpaseo/plugin/client/react-native';
 let root, directory, stop;
 afterEach(async () => {
   await act(async () => root?.unmount()); stop?.(); await directory?.dispose(); document.body.innerHTML = '';
+  vi.useRealTimers();
 });
 it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action을 재실행하지 않음', async () => {
+  vi.useFakeTimers();
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   document.body.innerHTML = '<div id="app"></div><div id="portal"></div>';
   const snapshot = page([raw('a'), raw('b', { labels: { 'paseo.parent-agent-id': 'a' } })]);
@@ -54,12 +58,14 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
   await act(async () => root.render(React.createElement('button', { id: 'pill', onClick: press }, React.createElement(Icon, props))));
   const click = async element => { expect(element).toBeTruthy(); await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true }))); };
   await click(document.getElementById('pill'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  const initialZoom = views.forAgent('h', 'w', 'a').getSnapshot().zoom;
   await click(document.querySelector('#portal [aria-label="b"]'));
   await click(document.querySelector('#portal [aria-label="확대"]'));
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
   await click(document.querySelector('#portal span'));
   expect(press).toHaveBeenCalledTimes(1);
   expect(copyText).toHaveBeenLastCalledWith('b');
-  expect(views.forAgent('h', 'w', 'a').getSnapshot().zoom).toBe(1.25);
+  expect(views.forAgent('h', 'w', 'a').getSnapshot().zoom).toBe(initialZoom + 0.25);
   expect(document.getElementById('portal').textContent).toContain('에이전트 2');
 });

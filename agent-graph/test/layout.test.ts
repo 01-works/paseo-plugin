@@ -28,6 +28,15 @@ it('200개가 넘는 관계도 기본 그래프 배치는 전체를 유지', () 
   const f = buildForest([agent('root'), ...Array.from({ length: 208 }, (_, i) => agent(String(i), 'root'))], 'h');
   const l = layoutForest(f, new Set());
   expect(l.positions.size).toBe(209); expect(l.truncated).toBe(false); expect(l.edges.length).toBe(208 + 2);
+  expect(l.direction).toBe('right'); expect(l.width).toBeLessThan(500);
+  const children = [...l.positions.values()].filter(node => node.depth === 1);
+  for (let i = 1; i < children.length; i++) expect(children[i].y - children[i - 1].y).toBeGreaterThanOrEqual(NODE_HEIGHT);
+  expect(children[0].x).toBeGreaterThan(l.positions.get(agentKey('h', 'root'))!.x + NODE_WIDTH);
+});
+it('접힌 가지의 폭과 연결선은 숨겨진 자손을 포함하지 않음', () => {
+  const f = buildForest([agent('root'), ...Array.from({ length: 30 }, (_, i) => agent(String(i), 'root'))], 'h');
+  const layout = layoutForest(f, new Set([agentKey('h', 'root')]));
+  expect(layout.positions.size).toBe(1); expect(layout.width).toBe(NODE_WIDTH + 48); expect(layout.edges).toHaveLength(0);
 });
 it('현재 노드로 이어지는 경로는 초기 접기에서 제외', () => {
   const f = buildForest([agent('a'), agent('b', 'a'), agent('c', 'b'), agent('x', 'a'), agent('y', 'x')], 'h');

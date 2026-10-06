@@ -86,3 +86,11 @@ agent-graph 구현에서 직접 검증해야 한다. 이 문서는 실행 검증
 커뮤니티 소스는 UI·데이터 처리의 참고 자료다. 실제 계약은 설치 대상 Paseo 버전의 공개 타입으로 확인한다.
 관계 표시와 제어 기능, 읽기 쉬운 트리와 고급 그래프 편집기를 구분해 첫 버전 범위를 유지한다.
 참조한 커밋 이후의 변경은 별도로 검토하고, 구현 중 발견한 제약은 DECISIONS와 VALIDATION에 기록한다.
+
+## 6. 정적 D3 배치와 이동 — 0.1.1
+
+- [d3-force simulation](https://d3js.org/d3-force/simulation): 생성 시 자동 타이머가 시작되므로 `stop()` 후 수동 `tick()`으로 정적 좌표를 계산한다. tick은 자동 렌더링 이벤트를 보내지 않는다.
+- [many-body](https://d3js.org/d3-force/many-body), [collide](https://d3js.org/d3-force/collide), [link](https://d3js.org/d3-force/link): 점들의 반발·카드 충돌 회피·실제 부모 링크를 좌표 계산에 사용한다.
+- [React Native PanResponder](https://reactnative.dev/docs/panresponder), [ScrollView](https://reactnative.dev/docs/scrollview): 공개 RN gesture와 scrollTo로 화면 이동을 구현한다.
+
+D3를 DOM·SVG 렌더링 라이브러리로 사용하지 않는다. 플러그인의 관계 모델과 RN 표시 방식은 유지하며, 물리 계산은 종료와 캐시가 있는 초기 작업으로 한정한다.

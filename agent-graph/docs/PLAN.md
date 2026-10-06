@@ -4,7 +4,7 @@
 
 작성일: 2026-10-06
 
-상태: 0.1.0 로컬 구현·검증 완료. 아래는 초기 검토안의 수치와 배치이며, 실제 API·화면 검증에서 확정한 내용은 DECISIONS와 VALIDATION에 기록했다.
+상태: 0.1.1 정적 D3 force 배치와 드래그·검색 개선을 로컬 반영했다. 사용자의 많은 subagent 탐색 불편과 D3 전환 요청에 따라 초기 계층 배치·75% 최소 배율·드래그 제외안을 변경했다. 아래 초기 설계와 달라진 내용은 DECISIONS 6절과 VALIDATION의 후속 검증을 따른다.
 
 위치: `01-works/paseo-plugin/agent-graph/`
 
@@ -207,6 +207,8 @@ flowchart TD
 
 ## 6. 그래프 배치와 성능
 
+**0.1.1 변경:** 아래 계층 배치는 최초 구현의 기준이다. 현재는 `d3-force@3.0.0`을 정적 좌표 계산에만 사용한다. 120 tick을 나누어 실행하고 완료 후 멈추며, 상태·제목 갱신에는 캐시를 사용한다. 전체 보기는 점, 확대는 카드, 이동은 드래그·스크롤·이름/ID 검색이다. 렌더링은 계속 RN View이며 DOM·Canvas·SVG·React Flow를 추가하지 않는다. compact는 목록을 유지한다.
+
 부모가 위, 자식이 아래인 트리를 기본으로 한다. 독립 루트는 가로로 나란히 배치한다.
 형제 순서는 생성 시각과 ID로 고정하며, 실행 상태·updatedAt·선택 변경으로 순서를 바꾸지 않는다.
 노드 폭과 높이는 일정하게 두고 이름은 상세에서 펼쳐 본다.
@@ -251,11 +253,13 @@ agent-graph/
 │   ├── modal.tsx
 │   ├── panel.tsx
 │   ├── graph.tsx
+│   ├── use-force-layout.ts # 제한된 배치 작업·캐시·중단
 │   ├── tree.tsx
 │   └── details.tsx
 ├── shared/
 │   ├── types.ts
 │   ├── forest.ts
+│   ├── force-layout.ts    # 정적 D3 좌표 계산
 │   └── layout.ts
 ├── test/
 │   ├── forest.test.ts
