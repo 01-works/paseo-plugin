@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useRpc, type PluginButtonContentProps, type PluginHostProps } from '@getpaseo/plugin/client';
+import { useRpc, type PluginHostProps } from '@getpaseo/plugin/client';
 import { hostInfoRpc, type Snapshot } from '../shared/contracts';
 import { useSnapshot } from './data';
 import { gib, percent, relativeTime, pressureLabels, statusLabels, displaySnapshot } from './format';
@@ -12,13 +12,14 @@ export function pressureColor(s: Snapshot | null | undefined, theme: PluginHostP
 export function Details({ snapshot, theme, layout, name, error }: PluginHostProps & { snapshot?: Snapshot; name: string; error?: string }) {
   const colors = theme.colors;
   const s = snapshot ? displaySnapshot(snapshot, Boolean(error)) : undefined;
-  const row = (label: string, value: string, key = label) => <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}><Text style={{ color: colors.foregroundMuted }}>{label}</Text><Text style={{ color: colors.foreground, flexShrink: 1 }}>{value}</Text></View>;
+  const row = (label: string, value: string, key = label) => <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><Text style={{ color: colors.foregroundMuted, flexShrink: 1 }}>{label}</Text><Text style={{ color: colors.foreground, flexShrink: 1 }}>{value}</Text></View>;
   if (!s) return <Text style={{ color: colors.foregroundMuted }}>{name} · {error ? `연결 오류: ${error}` : '측정 중'}</Text>;
-  return <View style={{ gap: layout.compact ? 8 : 12, minWidth: layout.compact ? 0 : 320 }}>
+  return <View style={{ gap: layout.compact ? 8 : 12, minWidth: 0, width: '100%' }}>
     <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '600' }}>{name}</Text>
     <Text style={{ color: colors.foregroundMuted }}>{statusLabels[s.status]} · {relativeTime(s.ageMs)}{s.sampledAt !== null ? ` · ${new Date(s.sampledAt).toLocaleString('ko-KR')}` : ''}</Text>
     {error ? <Text style={{ color: colors.foregroundMuted }}>RPC 연결 오류 · 아래는 마지막 수신 값: {error}</Text> : null}
-    {row('CPU (전 코어 0~100%)', `${percent(s.cpu?.total)} · 사용자 ${percent(s.cpu?.user)} / 시스템 ${percent(s.cpu?.system)}`)}
+    {row('CPU (전 코어 0~100%)', percent(s.cpu?.total))}
+    {row('사용자 / 시스템', `${percent(s.cpu?.user)} / ${percent(s.cpu?.system)}`)}
     {row('사용된 메모리 / 전체', `${gib(s.memory?.used)} / ${gib(s.memory?.total)}`)}
     {row('앱 메모리', gib(s.memory?.app))}{row('와이어드', gib(s.memory?.wired))}{row('압축', gib(s.memory?.compressed))}{row('캐시된 파일', gib(s.memory?.cached))}
     <View style={{ flexDirection: 'row', gap: 12 }}><Text style={{ color: colors.foregroundMuted }}>메모리 압력</Text><Text style={{ color: error ? colors.foregroundMuted : pressureColor(s, theme) }}>{pressureLabels[s.pressure]}</Text></View>
@@ -37,7 +38,7 @@ export function Details({ snapshot, theme, layout, name, error }: PluginHostProp
     <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>1 GiB = 1024³ bytes. Activity Monitor의 GB 표시도 같은 기준. 앱 footprint 합은 물리 RAM보다 클 수 있습니다.</Text>
   </View>;
 }
-export function Popover(props: PluginButtonContentProps) {
+export function MonitorContent(props: PluginHostProps) {
   const query = useSnapshot();
   const infoRpc = useRpc(hostInfoRpc);
   const info = useQuery({ queryKey: ['mac-monitor', 'host'], queryFn: () => infoRpc({}), staleTime: 60_000 });

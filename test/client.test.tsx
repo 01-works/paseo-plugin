@@ -2,12 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { PluginClientContext, PluginButtonRegistration, PluginButton, PluginButtonIconProps } from '@getpaseo/plugin/client';
+import { Modal } from '@getpaseo/plugin/client/react-native';
 import { emptySnapshot } from '../shared/compute';
 import { computeMemory } from '../shared/compute';
 import { raw } from './fixtures';
 
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
-vi.mock('../client/popover', () => ({ Popover: () => null, pressureColor: () => 'theme-color' }));
+vi.mock('../client/popover', () => ({ MonitorContent: () => '상세', pressureColor: () => 'theme-color' }));
+vi.mock('@getpaseo/plugin/client/react-native', async () => {
+  const { createElement } = await import('react');
+  return { Modal: Object.assign((props: { children: React.ReactNode }) => createElement('Modal', props, props.children), {
+    Content: (props: { children: React.ReactNode }) => createElement('ModalContent', props, props.children),
+  }) };
+});
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn() }));
 import { configureRequester, createRequester } from '../client/data';
 import { contributePills } from '../client/pill';
@@ -45,7 +52,17 @@ describe('클라이언트 공유 요청 및 표시 수명주기', () => {
       for (const { button } of buttons.values()) { const Icon = button.icon as React.ComponentType<PluginButtonIconProps>; renderers.push(create(<Icon {...props} />)); }
     });
     expect(rpc).toHaveBeenCalledTimes(1);
+    expect(renderers[0].root.findAllByType(Modal)).toHaveLength(0);
+    const behavior = buttons.get('a')!.button.behavior;
+    expect(behavior.kind).toBe('action');
+    if (behavior.kind !== 'action') throw new Error('모달 action이 필요함');
+    await act(async () => { await behavior.onPress(); });
+    expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
+    expect(renderers[1].root.findAllByType(Modal)).toHaveLength(0);
     await act(async () => { await vi.advanceTimersByTimeAsync(6000); });expect(rpc).toHaveBeenCalledTimes(4);
+    expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
+    await act(async () => { renderers[0].root.findByType(Modal).props.onOpenChange(false); });
+    expect(renderers[0].root.findAllByType(Modal)).toHaveLength(0);
     for (const { registration } of buttons.values()) expect(registration.update).toHaveBeenCalledTimes(1);
     for (const renderer of renderers.splice(0)) await act(async () => renderer.unmount());
     await vi.advanceTimersByTimeAsync(6000);expect(rpc).toHaveBeenCalledTimes(4);

@@ -1,13 +1,14 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
+import { Modal } from '@getpaseo/plugin/client/react-native';
 import type { PluginClientContext, PluginButtonIconProps, PluginButtonRegistration } from '@getpaseo/plugin/client';
 import { emptySnapshot } from '../shared/compute';
 import type { Snapshot } from '../shared/contracts';
-import { Popover, pressureColor } from './popover';
+import { MonitorContent, pressureColor } from './popover';
 import { pillLabel, pressureLabels } from './format';
 import { requestSnapshot } from './data';
 
-type Pill = { workspaceId: string; registration: PluginButtonRegistration; mounts: number; compact: boolean; label: string };
+type Pill = { workspaceId: string; registration: PluginButtonRegistration; mounts: number; label: string };
 export function contributePills(client: PluginClientContext) {
   const pills = new Map<string, Pill>();
   const listeners = new Set<() => void>();
@@ -18,7 +19,7 @@ export function contributePills(client: PluginClientContext) {
   const update = () => {
     for (const pill of pills.values()) {
       if (!pill.mounts) continue;
-      const label = pillLabel(snapshot, pill.compact);
+      const label = pillLabel(snapshot);
       if (label !== pill.label) { pill.label = label; pill.registration.update({ label }); }
     }
     broadcast();
@@ -41,19 +42,30 @@ export function contributePills(client: PluginClientContext) {
     if (old && old.workspaceId === agent.workspaceId) return;
     old?.registration.remove(); pills.delete(agent.id);
     if (!agent.workspaceId) { visibility(); return; }
-    function PressureDot({ theme, layout, size }: PluginButtonIconProps) {
+    // 라벨 갱신과 독립적인 상태: update({label})가 열린 상세를 닫지 않는다.
+    let open = false;
+    const dialogListeners = new Set<() => void>();
+    const setOpen = (value: boolean) => { open = value; for (const listener of dialogListeners) listener(); };
+    function PressureDot(props: PluginButtonIconProps) {
+      const { theme, size } = props;
       const value = useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => snapshot);
+      const opened = useSyncExternalStore(listener => { dialogListeners.add(listener); return () => { dialogListeners.delete(listener); }; }, () => open);
       useEffect(() => {
         const pill = pills.get(agent.id); if (!pill) return;
-        pill.mounts++; pill.compact = layout.compact; update(); visibility();
+        pill.mounts++; update(); visibility();
         return () => { pill.mounts = Math.max(0, pill.mounts - 1); visibility(); };
-      }, [layout.compact]);
-      return <View accessibilityLabel={`메모리 압력 ${value ? pressureLabels[value.pressure] : '확인 불가'}`} style={{ width: Math.max(6, size / 2), height: Math.max(6, size / 2), borderRadius: size, backgroundColor: pressureColor(value, theme) }} />;
+      }, []);
+      return <>
+        <View accessibilityLabel={`메모리 압력 ${value ? pressureLabels[value.pressure] : '확인 불가'}`} style={{ width: Math.max(6, size / 2), height: Math.max(6, size / 2), borderRadius: size, backgroundColor: pressureColor(value, theme) }} />
+        {opened ? <Modal title="Mac 시스템 모니터" open onOpenChange={setOpen}>
+          <Modal.Content><MonitorContent {...props} /></Modal.Content>
+        </Modal> : null}
+      </>;
     }
     const label = pillLabel(snapshot);
     const registration = client.addComposerPill({ id: 'monitor', workspaceId: agent.workspaceId, agentId: agent.id,
-      button: { title: 'Mac 시스템 모니터', label, icon: PressureDot, behavior: { kind: 'popover', Content: Popover } } });
-    pills.set(agent.id, { workspaceId: agent.workspaceId, registration, mounts: 0, compact: false, label });
+      button: { title: 'Mac 시스템 모니터 · CPU% / 사용 메모리(GiB) · 눌러 전체 용량과 상세 보기', label, icon: PressureDot, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
+    pills.set(agent.id, { workspaceId: agent.workspaceId, registration, mounts: 0, label });
   };
   const remove = (id: string) => { pills.get(id)?.registration.remove(); pills.delete(id); visibility(); };
   void client.paseo.agents.list({ subscribe: {}, signal: lifetime.signal }).then(({ subscription }) => {
