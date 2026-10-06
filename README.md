@@ -67,7 +67,8 @@ paseo plugin remove mac-monitor
 각 에이전트 composer의 pill은 `23% · 14.1G`(CPU / 사용 메모리)를 표시합니다.
 `G`는 GiB의 축약입니다. Paseo 0.10.2의 pill 최대 폭 160px에 맞춰 전체 용량은 상세에 표시합니다.
 pill을 누르면 데스크톱에서는 중앙 모달, compact 화면에서는 시트로 세부 메모리와 앱 상위 목록을 볼 수 있습니다.
-상세는 기본 글자 크기로 CPU·메모리를 한 카드에 표시하며 메모리 구성·압력·캐시·스왑을 함께 보여줍니다.
+상세는 기본 글자 크기로 CPU·메모리를 한 카드에 표시하며 메모리 구성·압력·캐시·스왑 사용량을 함께 보여줍니다.
+스왑은 보조 수치로 표시합니다. 전체는 현재 할당된 공간이므로 화면에서는 사용량만 보여주며 상태 색은 메모리 압력을 따릅니다.
 상위 앱은 이름·CPU·메모리를 한 행에 표시합니다. CPU/메모리 열 제목을 누르면 해당 기준의 상위 10개로 정렬하며 목록 내부에서 스크롤합니다. 앱 CPU는 소수 첫째 자리까지 표시하며 0보다 크고 0.1% 미만이면 `<0.1%`로 구분합니다.
 열면 pill이 받은 시스템 값을 즉시 표시하고, 앱 목록만 초기 수집 결과를 기다립니다.
 목록은 높이 320을 고정하여 최초 로딩·측정 중·결과 표시·오류에서도 같은 공간을 유지합니다.
@@ -118,7 +119,7 @@ Activity Monitor는 같은 이진 단위를 `GB`라고 표시합니다.
 | CPU 전체 | `Δ(user + nice + system) / Δ전체 tick × 100`, 전 코어 합산 0~100% |
 | 압력 | `kern.memorystatus_vm_pressure_level`: 1 정상 / 2 주의 / 4 위험 / 기타 확인 불가 |
 | 가용 비율 | `kern.memorystatus_level`, 세부 참고값 |
-| 스왑 | `vm.swapusage`의 used / total |
+| 스왑 | `vm.swapusage`의 used. total은 RPC·대조 CLI에서 제공 |
 | 디스크 | Data 볼륨 `statfs`: 전체 `f_blocks × f_bsize`, 사용 `(f_blocks − f_bfree) × f_bsize`, 여유 `f_bavail × f_bsize` |
 | 앱 그룹 메모리 | `proc_pid_rusage(RUSAGE_INFO_V4).ri_phys_footprint` 합계 |
 | 앱 그룹 CPU | 같은 PID·시작 시각의 CPU 누적 차이를 timebase 변환 후 시간·코어 수로 나눔 |

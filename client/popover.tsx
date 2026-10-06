@@ -131,7 +131,7 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           <Text selectable style={{ color: c.foregroundMuted }}>가용 {s.memoryLevel === null ? '—' : `${s.memoryLevel}%`}</Text>
           <Text selectable style={{ color: c.foregroundMuted }}>캐시 {gib(s.memory?.cached)}</Text>
-          <Text selectable style={{ color: c.foregroundMuted }}>스왑 {gib(s.swap?.used)} / {gib(s.swap?.total)}</Text>
+          <Text selectable style={{ color: c.foregroundMuted }}>스왑 {gib(s.swap?.used)}</Text>
         </View>
       </View>
       <View style={{ gap: 8 }}>
