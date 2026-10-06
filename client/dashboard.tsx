@@ -4,8 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useHosts, useRpc, useSettings, type PluginSurfaceProps } from '@getpaseo/plugin/client';
 import { hostInfoRpc, settings, type Snapshot } from '../shared/contracts';
 import { Details } from './popover';
-import { displaySnapshot } from './format';
-import { useSnapshot } from './data';
+import { readAppSample, useManualQuery, useSnapshot } from './data';
 import { useAgentCounts } from './agents';
 import { FleetRow, FleetHeader } from './fleet/row';
 import { registryEntries, fleetSnapshot } from './fleet/registry';
@@ -22,23 +21,24 @@ export function Dashboard(props: PluginSurfaceProps) {
   const [selected, select] = useState<SelectedHost>(null);
   const local = useSnapshot(selected === null);
   const infoRpc = useRpc(hostInfoRpc);
-  const info = useQuery({ queryKey: ['mac-monitor', 'host'], queryFn: () => infoRpc({}), staleTime: 60_000 });
+  const info = useQuery({ queryKey: ['mac-monitor', 'host'], queryFn: () => infoRpc({}), staleTime: 60_000, refetchOnWindowFocus: false, refetchOnReconnect: false });
   const last = useRef<Record<HostId, Snapshot>>({});
-  const fleet = useQuery({
-    queryKey: ['mac-monitor', 'fleet'], refetchInterval: 2000, retry: false, enabled,
-    queryFn: async () => {
+  const fleet = useManualQuery({
+    queryKey: ['mac-monitor', 'fleet'], enabled,
+    queryFn: async signal => {
       const entries = registryEntries();
       if (entries.length < 2) return [];
       return Promise.all(entries.map(async entry => {
         const id = entry.serverId ?? entry.info.hostname;
-        try { const snapshot = await fleetSnapshot(entry, selected === id); last.current[id] = snapshot; return { id, info: entry.info, snapshot, error: undefined as string | undefined }; }
+        try { const snapshot = selected === id ? await readAppSample(signal, () => fleetSnapshot(entry, true)) : await fleetSnapshot(entry, false); last.current[id] = snapshot; return { id, info: entry.info, snapshot, error: undefined as string | undefined }; }
         catch (error) { return { id, info: entry.info, snapshot: last.current[id] as Snapshot | undefined, error: String(error) }; }
       }));
     },
   });
-  const rows = (fleet.data ?? []).map(row => ({ ...row, snapshot: row.snapshot ? displaySnapshot(row.snapshot, Boolean(row.error)) : undefined }));
+  const rows = (fleet.data ?? []);
   const aggregated = enabled && rows.length > 1;
   const chosen = aggregated ? rows.find(row => row.id === selected) : undefined;
+  useEffect(() => { if (selected !== null) void fleet.refetch(); }, [selected, fleet.refetch]);
   useEffect(() => { if (!aggregated || (selected !== null && !rows.some(row => row.id === selected))) select(null); }, [aggregated, selected, rows.map(row => row.id).join('|')]);
   const colors = theme.colors;
   const countText = (id: string) => { const value = counts[id]; return value && !value.error ? `작업 중 ${value.running} · 대기 ${value.idle}${value.other ? ` · 기타 ${value.other}` : ''}` : '에이전트 확인 불가'; };
@@ -57,8 +57,10 @@ export function Dashboard(props: PluginSurfaceProps) {
     </View> : null}
     {chosen ? <>
       <Pressable accessibilityRole="button" onPress={() => select(null)}><Text style={{ color: colors.foreground }}>선택한 호스트로 돌아가기</Text></Pressable>
-      <Details {...props} snapshot={chosen.snapshot} name={chosen.info.hostname} error={chosen.error} />
-    </> : <Details {...props} snapshot={local.data} name={info.data?.hostname ?? host.label} error={local.error?.message} />}
+      <Details key={chosen.id} {...props} snapshot={chosen.snapshot} name={chosen.info.hostname} error={chosen.error}
+        refreshing={fleet.isFetching} onRefresh={() => void fleet.refetch()} />
+    </> : <Details key={host.id} {...props} snapshot={local.data} name={info.data?.hostname ?? host.label} error={local.error?.message}
+      refreshing={local.isFetching || fleet.isFetching} onRefresh={() => { void local.refetch(); if (enabled) void fleet.refetch(); }} />}
     <Card theme={theme}>
       <Text style={{ color: colors.foreground, fontWeight: '600' }}>연결된 호스트 / 에이전트</Text>
       {hosts.map(h => <View key={h.serverId} style={{ paddingVertical: 8, gap: 8 }}>

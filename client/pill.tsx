@@ -57,14 +57,14 @@ export function contributePills(client: PluginClientContext) {
       }, []);
       return <>
         <View accessibilityLabel={`메모리 압력 ${value ? pressureLabels[value.pressure] : '확인 불가'}`} style={{ width: Math.max(6, size / 2), height: Math.max(6, size / 2), borderRadius: size, backgroundColor: pressureColor(value, theme) }} />
-        {opened ? <Modal title="Mac 시스템 모니터" open onOpenChange={setOpen}>
+        {opened ? <Modal title="모니터" open onOpenChange={setOpen}>
           <Modal.Content><MonitorContent {...props} /></Modal.Content>
         </Modal> : null}
       </>;
     }
     const label = pillLabel(snapshot);
     const registration = client.addComposerPill({ id: 'monitor', workspaceId: agent.workspaceId, agentId: agent.id,
-      button: { title: 'Mac 시스템 모니터 · CPU% / 사용 메모리(GiB) · 눌러 전체 용량과 상세 보기', label, icon: PressureDot, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
+      button: { title: '모니터', label, icon: PressureDot, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
     pills.set(agent.id, { workspaceId: agent.workspaceId, registration, mounts: 0, label });
   };
   const remove = (id: string) => { pills.get(id)?.registration.remove(); pills.delete(id); visibility(); };

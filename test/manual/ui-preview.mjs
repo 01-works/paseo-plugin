@@ -51,7 +51,7 @@ await build({
         : { foreground: '#25252b', foregroundMuted: '#71717d', surface0: '#fafafa', surface1: '#ffffff', surface2: '#f0f0f4', border: '#e3e3e9', accent: '#7664d8', statusSuccess: '#268050', statusWarning: '#92720d', statusDanger: '#b83939' };
       const props = { theme: { colors }, layout: { compact, platform: 'web' }, host: { id: 'h', label: 'Mac mini' } };
       let renderer;
-      await act(async()=>{ renderer = create(<Details {...props} snapshot={s} name="Mac mini"/>); });
+      await act(async()=>{ renderer = create(<Details {...props} snapshot={s} name="Mac mini" onRefresh={()=>{}}/>); });
       const content = html(renderer.toJSON());
       await act(async()=>renderer.unmount());
       const filename = (dark ? 'dark' : 'light') + (compact ? '-compact' : '-desktop');
@@ -66,7 +66,7 @@ await build({
     builder.onResolve({ filter: /^@getpaseo\/plugin\/client(?:\/react-native)?$/ }, args => ({ path: args.path.endsWith('/react-native') ? 'scroll' : 'sdk', namespace: 'preview' }));
     builder.onLoad({ filter: /.*/, namespace: 'preview' }, args => ({ contents: args.path === 'native'
       ? 'export const View="View", Text="Text", Pressable="Pressable";'
-      : args.path === 'scroll' ? 'export const ScrollView="ScrollView";'
+      : args.path === 'scroll' ? 'export const ScrollView="ScrollView"; export async function copyText(){}'
       : 'export function useRpc(){ return ()=>{}; }', loader: 'js' }));
   } }],
 });

@@ -9,7 +9,7 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·가짜 헬퍼·클라이언트/fleet 테스트 | 완료 (6개 파일, 31개 테스트) |
+| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (7개 파일, 40개 테스트) |
 | client DOM/HTML audit | 0건 |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
@@ -36,12 +36,13 @@
 ```sh
 npm run typecheck
 npm test
-rg -n 'document\.|window\.|localStorage|navigator\.|<[a-z]+[ >]|className=|onClick=' client/
+rg -n --pcre2 'document\.|window\.|localStorage|navigator\.|<(?!void\b)[a-z]+[ >]|className=|onClick=' client/
 lipo -archs bin/macmon-helper
 codesign --verify --verbose bin/macmon-helper
 ```
 
 audit는 일치 항목이 없어 종료 코드 1을 반환한다(실패가 아닌 0건 결과).
+HTML 패턴에서 TypeScript의 `Promise<void>` 타입 인수는 제외한다.
 React Native 기본 요소만 사용하고, tsconfig의 lib는 `ES2023`이다.
 스캐폴드의 DOM 사용 웹 예제는 제거했다.
 
@@ -154,6 +155,19 @@ CLI 실행·3회 출력·종료 정리는 확인했다. 아래는 CLI 값만의 
 - footprint가 압축/스왑을 포함하므로 앱 합계와 물리 메모리 사용량의 차이.
 
 ## 사용자가 확인할 화면/다른 Mac
+
+2026-10-06 툴팁 축소·수동 갱신·복사:
+
+- pill/모달 제목을 “모니터”로 축소했다. 0.10.2 호스트 API의 제약으로 자동 툴팁 자체는 남는다.
+- typecheck와 40개 테스트 통과, client DOM/HTML·커스텀 fontSize audit 0건.
+- 최초 읽기 뒤 60초 경과·다른 창의 Query 캐시 변경에도 추가 RPC가 없고 화면 수치·순위·시각이
+  유지됨을 검증했다. 새로고침 때만 새 데이터 표시, 새로고침 실패 시 이전 값과 연결 오류 보존,
+  표시 값 복사, Text selectable, 클립보드 실패 처리, 누락값·미지원·오류의 복사도 검증했다.
+- 최초 앱 기준점 대기는 최대 두 주기이며 이후 자동 읽기가 없고 취소 시 타이머가 남지 않음을 검증했다.
+- 정적 컴포넌트 미리보기 HTML을 다시 생성했다. 실제 Paseo의 선택 유지·클립보드·모바일 터치는
+  **사용자 확인 필요**다. 이전 PNG 캡처는 이번 두 버튼을 포함하지 않는다.
+- 15:45 KST 플러그인 reload 후 running, 서버 로그 오류 없음, 헬퍼 PID 23239 한 개를 확인했다.
+  데몬 재시작 명령은 사용하지 않았다. 서버 수집과 2초 측정 간격은 변경하지 않았다.
 
 2026-10-06 안내 문구 제거·목록 높이 고정:
 
