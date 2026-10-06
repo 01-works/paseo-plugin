@@ -262,3 +262,7 @@ Git 설치의 준비 명령은 선택된 플러그인 폴더에서 실행하므�
 기존 `/Users/yw/dev/mac-monitor` 저장소와 설치 경로는 유지한다. 새 모노레포는 `/Users/yw/dev/paseo-plugin`에 준비한다.
 사용자 요청에 따라 이번에는 원격 push를 수행한다. 다른 Mac 설치와 데몬 재시작은 범위에 포함하지 않는다.
 README는 공개 Git 설치·업데이트와 일반적인 로컬 개발 경로로 바꾸며 공개하지 않은 검증은 완료로 쓰지 않는다.
+
+현재 작업 공간에서 후속 수정할 때는 원본에서 검증·커밋한 뒤 배포 저장소에서
+`git subtree pull --prefix=mac-monitor /Users/yw/dev/mac-monitor main`으로 가져와 push한다.
+배포 저장소에서 플러그인 소스를 따로 수정해 두 복사본이 갈라지지 않도록 한다.

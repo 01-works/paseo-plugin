@@ -33,7 +33,24 @@
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: 공개 배포 준비
+## 최종 후속 검증: GitHub 공개 배포
+
+2026-10-06 17:57~18:00 KST, [01-works/paseo-plugin](https://github.com/01-works/paseo-plugin)을
+공개 저장소로 생성하고 `main`에 올렸다. 플러그인은 `mac-monitor/`에 있으며 원본 커밋 이력을 subtree로 보존했다.
+원본 HEAD의 tree와 배포 저장소의 `mac-monitor` tree가 같고 기존 커밋이 배포 HEAD의 조상임을 확인했다.
+
+- [GitHub Actions 검증](https://github.com/01-works/paseo-plugin/actions/runs/37439677680) 성공.
+  macOS 26 arm64 runner의 Node 24에서 의존성 설치·타입 검사·8개 파일/50개 테스트·
+  universal 빌드·arm64/x86_64 슬라이스·서명·네이티브 JSON 스키마를 통과했다.
+- 인증 정보 없이 HTTPS로 새 복사본을 내려받았다. `mac-monitor/`에서 manifest의 준비 명령을 실행하고
+  universal·서명을 확인했다. `--once` 샘플의 `v:1`, errors 빈 배열, 물리 메모리·디스크 값도 확인했다.
+  검증용 복사본은 종료 시 정리했다. 다운로드와 빌드 준비 검증이며 실제 데몬의 Git 설치 전환은 수행하지 않았다.
+- 기존 플러그인은 `/Users/yw/dev/mac-monitor` 설치를 유지한다. 데몬 재시작·전역 설정 변경·다른 Mac 설치는 하지 않았다.
+  공개 문서는 Git 하위 경로 설치와 Git/로컬 설치별 업데이트 방법을 제공한다.
+- Activity Monitor 대조·라이트/compact 실제 화면·여러 pill 실제 동시 화면·다른 Mac/fleet·x86_64 실행은 남아 있다.
+  CI의 arm64 네이티브 스모크를 Intel 실행이나 다른 Mac의 Paseo 설치 검증으로 간주하지 않는다.
+
+## 이전 후속 검증: 공개 배포 준비
 
 2026-10-06 17:48~17:54 KST, GitHub 공개 배포 전 코드·문서·빌드 구성을 검토했다.
 이번 검토 범위에서 배포를 막는 추가 기능 오류는 발견하지 않았다.
