@@ -155,6 +155,22 @@ CLI 실행·3회 출력·종료 정리는 확인했다. 아래는 CLI 값만의 
 
 ## 사용자가 확인할 화면/다른 Mac
 
+2026-10-06 시각적 UI 개선 검증:
+
+- `npm run typecheck` 통과, 테스트 7개 파일/35개 통과, client DOM audit 0건.
+- 누락값과 0의 구별, footprint 상대 비교, 앱 탭 전환, OS 압력만 상태 색으로 사용,
+  RPC 실패 시 이전 값을 흐리게 표시하는 규칙을 추가 검증했다.
+- `node test/manual/ui-preview.mjs`로 실제 컴포넌트 트리를 정적 HTML로 생성하고 Chrome으로 캡처했다.
+  예시 데이터/예시 테마를 사용하는 520px 데스크톱·360px compact, 라이트/다크 배치를 검토했다.
+  출력: `/tmp/mac-monitor-ui/{dark,light}-{desktop,compact}.{html,png}`.
+  이 검토는 RN 요소를 CSS로 옮긴 정적 레이아웃 검토다. 실제 Paseo의 테마·모달 스크롤·터치 동작은 **사용자 확인 필요**다.
+- **이번 변경의 로컬 반영은 미완료다.** `paseo plugin reload mac-monitor`를 두 번 시도했지만
+  `Cannot connect to daemon ... Connection timed out`으로 끝났다. logs도 같은 연결 오류였다.
+  `paseo daemon status`는 기존 PID 63070의 `localDaemon: running`, `connectedDaemon: unreachable`을 반환했다.
+  로컬 `127.0.0.1:6767` HTTP 읽기 확인도 5초 시간 초과였다.
+  기존 헬퍼(PID 52807) 1개가 유지된다. 금지된 데몬 재시작이나 다른 호스트 조작은 하지 않았다.
+  연결이 회복되면 `paseo plugin reload mac-monitor`로 이번 UI를 반영해야 한다.
+
 2026-10-06 UI 후속 수정: pill 폭 160px에 맞춰 라벨을 축약하고 상세를 공식 Modal로 변경했다.
 typecheck, 기존 31개 테스트(모달 열기/닫기·에이전트별 분리 확인 추가), DOM audit 0건을 확인했다.
 14:49 KST 플러그인 reload 후 running, 서버 로그 오류 없음, 헬퍼 1개를 확인했다.
