@@ -1,0 +1,56 @@
+name: 검증
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mac-monitor/**'
+      - '.github/workflows/check.yml'
+  pull_request:
+    paths:
+      - 'mac-monitor/**'
+      - '.github/workflows/check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac-monitor:
+    name: mac-monitor 검사
+    runs-on: macos-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mac-monitor
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Node 24 준비
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: mac-monitor/package-lock.json
+      - name: 개발 의존성 설치
+        run: npm ci --no-audit --no-fund
+      - name: 타입 검사
+        run: npm run typecheck
+      - name: 단위 테스트
+        run: npm test
+      - name: universal 헬퍼 빌드와 서명 확인
+        run: |
+          npm run build
+          lipo bin/macmon-helper -verify_arch arm64 x86_64
+          codesign --verify --strict bin/macmon-helper
+      - name: 네이티브 JSON 스키마 확인
+        run: |
+          bin/macmon-helper --once | node --import tsx --input-type=module -e '
+            import { rawSchema } from "./shared/contracts.ts";
+            let input = "";
+            for await (const chunk of process.stdin) input += chunk;
+            rawSchema.parse(JSON.parse(input));
+            console.log("네이티브 JSON 스키마 확인 완료");
+          '
