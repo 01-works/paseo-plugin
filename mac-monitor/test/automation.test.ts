@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryGuardian, type GuardCollector } from '../server/automation/guardian';
 import { growing, POLICY, type Point } from '../server/automation/policy';
 import { initialState, readAutomation, writeAutomation } from '../server/automation/store';
-import { automaticProtection, processKey, type ReviewResult } from '../shared/automation';
+import { automaticProtection, automationTargetInputSchema, processKey, type ReviewResult } from '../shared/automation';
 import { emptySnapshot } from '../shared/compute';
 import type { ProcessInfo, Snapshot } from '../shared/contracts';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createAuditor, AUDIT_LIMIT, type AuditRecord } from '../server/automation/audit';
+import type { ProcessState } from '../server/helper-process';
 
 const GiB = 1024 ** 3;
 const processInfo: ProcessInfo = { pid: 23456, start: '12345678901234567', group: 'worker', name: 'worker', path: '/opt/dev/worker', memoryBytes: GiB, cpuPercent: 0.1 };
@@ -24,7 +25,7 @@ function setup(options: { allowed?: boolean; result?: ReviewResult; deferred?: b
   let observation = { snapshot: structuredClone(base), members: [{ ...processInfo }] };
   const state = options.state ?? initialState(); state.config.enabled = true;
   if (options.allowed !== false) state.targets = [target];
-  const interest = vi.fn(), terminate = vi.fn(async () => ({ sent: true })), inspect = vi.fn(async () => 'exited' as const), validate = vi.fn(async () => ({ allowed: true, error: undefined as string | undefined }));
+  const interest = vi.fn(), terminate = vi.fn(async () => ({ sent: true })), inspect = vi.fn(async (): Promise<ProcessState> => 'exited'), validate = vi.fn(async () => ({ allowed: true, error: undefined as string | undefined }));
   const collector: GuardCollector = { subscribe: () => () => {}, setAutomaticInterest: interest,
     observeAutomation: () => observation, terminateAutomatically: terminate, inspectAutomatically: inspect, validateAutomatically: validate };
   const result = options.result ?? { decisions: [{ key: processKey(target), decision: 'terminate', reason: '허용한 worker의 지속 증가' }] };
@@ -65,6 +66,11 @@ describe('자동 관리 추세와 보호 규칙', () => {
   });
   it('일반 worker만 허용하며 경로 미확인도 차단', () => {
     expect(automaticProtection(processInfo)).toBeNull(); expect(automaticProtection({ ...processInfo, path: null })).not.toBeNull();
+  });
+  it('경로·이름 없는 이전 허용 요청은 거절하며 해제는 계속 지원', () => {
+    const identity = { pid: target.pid, start: target.start, group: target.group };
+    expect(automationTargetInputSchema.safeParse({ ...identity, allow: true }).success).toBe(false);
+    expect(automationTargetInputSchema.safeParse({ ...identity, allow: false }).success).toBe(true);
   });
   it('정상 압력에서는 스캔·리뷰를 추가하지 않음', async () => {
     const h = setup(); await h.guard.start(); h.observation.snapshot.pressure = 'normal';
@@ -172,6 +178,59 @@ describe('자동 관리 추세와 보호 규칙', () => {
     h.validate.mockResolvedValue({ allowed: true, error: undefined });
     expect((await h.guard.target({ ...target, allow: true })).changed).toBe(true); expect(h.guard.report().targets).toEqual([target]);
     expect(h.terminate).not.toHaveBeenCalled();
+  });
+  it.each(['path', 'name'] as const)('사용자가 확인한 %s가 달라졌으면 허용 대상을 바꾸지 않고 거절', async field => {
+    const h = setup({ allowed: false }); await h.guard.start();
+    h.observation.members[0][field] = field === 'path' ? '/opt/another/worker' : 'other-worker';
+    expect((await h.guard.target({ ...target, allow: true })).changed).toBe(false);
+    expect(h.validate).not.toHaveBeenCalled(); expect(h.guard.report().targets).toHaveLength(0);
+  });
+  it('네이티브 허용 확인을 기다리는 동안 대상이 바뀌면 허용하지 않음', async () => {
+    const h = setup({ allowed: false }); await h.guard.start();
+    h.validate.mockImplementationOnce(async () => { h.observation.members[0].path = '/opt/another/worker'; return { allowed: true, error: undefined }; });
+    expect((await h.guard.target({ ...target, allow: true })).changed).toBe(false);
+    expect(h.guard.report().targets).toHaveLength(0);
+  });
+  it('종료 신호 후 10초 전에 플러그인이 꺼지면 미확인 결과를 기록', async () => {
+    const h = setup(); await h.guard.start(); await h.pressureAndGrowth();
+    await h.guard.stop();
+    expect(h.terminate).toHaveBeenCalledOnce(); expect(h.inspect).not.toHaveBeenCalled();
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'unknown']);
+    expect(h.audit.at(-1)?.reason).toContain('플러그인 종료');
+    expect(h.audit.at(-1)?.after).toBeUndefined();
+  });
+  it('종료 확인 중 플러그인이 꺼져도 조회 결과를 한 번 기록', async () => {
+    const h = setup(); let finish!: (state: 'running') => void;
+    h.inspect.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await h.guard.start(); await h.pressureAndGrowth();
+    for (let i = 0; i < 6; i++) h.tick();
+    const stopping = h.guard.stop(); finish('running'); await stopping;
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'running']);
+    expect(h.terminate).toHaveBeenCalledOnce();
+  });
+  it('신호 전송 응답을 기다리다 플러그인이 꺼져도 전송·미확인 기록을 남김', async () => {
+    const h = setup(); let finish!: (result: { sent: boolean }) => void;
+    h.terminate.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await h.guard.start(); await h.pressureAndGrowth();
+    const stopping = h.guard.stop(); finish({ sent: true }); await stopping;
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'unknown']);
+    expect(h.terminate).toHaveBeenCalledOnce();
+  });
+  it('종료 조회 자체가 실패해도 미확인을 기록하고 재시도하지 않음', async () => {
+    const h = setup(); h.inspect.mockRejectedValueOnce(new Error('헬퍼 조회 실패'));
+    await h.guard.start(); await h.pressureAndGrowth();
+    for (let i = 0; i < 6; i++) h.tick(); await flush();
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'unknown']);
+    expect(h.guard.report().events.at(-1)?.message).toContain('확인하지 못했습니다');
+    expect(h.terminate).toHaveBeenCalledOnce(); expect(h.inspect).toHaveBeenCalledOnce();
+  });
+  it('플러그인 종료 시 로그 실패도 cleanup을 막거나 종료 신호를 재전송하지 않음', async () => {
+    let count = 0;
+    const h = setup({ audit: async () => { if (++count === 4) throw new Error('로그 저장 실패'); } });
+    await h.guard.start(); await h.pressureAndGrowth();
+    await expect(h.guard.stop()).resolves.toBeUndefined();
+    expect(h.guard.status().phase).toBe('error'); expect(h.terminate).toHaveBeenCalledOnce();
+    expect(h.interest.mock.calls.at(-1)).toEqual([false]);
   });
   it('리뷰 결과 뒤 기록 또는 마지막 조건 확인 실패는 신호를 보내지 않음', async () => {
     for (const failure of ['write', 'changed']) {

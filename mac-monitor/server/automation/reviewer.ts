@@ -69,6 +69,19 @@ export function createCodexReviewer(options: { command?: string; prefixArgs?: st
         const abort = () => stop('리뷰 취소');
         signal.addEventListener('abort', abort, { once: true });
         const deadline = setTimeout(() => stop('Luna 리뷰 시간 초과'), options.timeoutMs ?? 45_000);
+        const inspectLine = (line: string) => {
+          try {
+            const event = JSON.parse(line);
+            if (!event || typeof event !== 'object' || Array.isArray(event) || typeof event.type !== 'string') throw new Error('이벤트 형식 오류');
+            if (event.type === 'error' || event.type === 'turn.failed') { stop('Luna 리뷰 요청 실패'); return; }
+            if (event.item?.type === 'error') {
+              // CLI 0.160.0은 비활성화한 Code Mode의 시작 알림도 error item으로 보낸다.
+              if (String(event.item.message ?? '').startsWith('Code Mode is unavailable because code-mode host is disabled.')) return;
+              const detail = String(event.item.message ?? '').replace(/(?:sk-[\w-]+|Bearer\s+\S+)/gi, '[redacted]').slice(0, 240);
+              stop(`Luna 리뷰 요청 실패${detail ? `: ${detail}` : ''}`);
+            } else if (event.item?.type && !['agent_message', 'reasoning'].includes(event.item.type)) stop(`리뷰 도구 사용 감지 (${String(event.item.type).slice(0, 40)}) · 조치 중단`);
+          } catch { stop('리뷰 이벤트 형식 오류'); }
+        };
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', (chunk: string) => {
           outputBytes += Buffer.byteLength(chunk); if (outputBytes > 64 * 1024) { stop('리뷰 출력 한도 초과'); return; }
@@ -76,23 +89,14 @@ export function createCodexReviewer(options: { command?: string; prefixArgs?: st
           let newline: number;
           while ((newline = buffered.indexOf('\n')) >= 0) {
             const line = buffered.slice(0, newline); buffered = buffered.slice(newline + 1);
-            try {
-              const event = JSON.parse(line);
-              if (event.item?.type === 'error') {
-                // CLI 0.160.0은 비활성화한 Code Mode의 시작 알림도 error item으로 보낸다.
-                // 의도적으로 도구를 끈 이 알림만 허용하고, 실제 turn.failed는 아래에서 중단한다.
-                if (String(event.item.message ?? '').startsWith('Code Mode is unavailable because code-mode host is disabled.')) continue;
-                const detail = String(event.item.message ?? '').replace(/(?:sk-[\w-]+|Bearer\s+\S+)/gi, '[redacted]').slice(0, 240);
-                stop(`Luna 리뷰 요청 실패${detail ? `: ${detail}` : ''}`);
-              } else if (event.item?.type && !['agent_message', 'reasoning'].includes(event.item.type)) stop(`리뷰 도구 사용 감지 (${String(event.item.type).slice(0, 40)}) · 조치 중단`);
-              if (event.type === 'error' || event.type === 'turn.failed') stop('Luna 리뷰 요청 실패');
-            } catch { stop('리뷰 이벤트 형식 오류'); }
+            inspectLine(line);
           }
         });
         child.stderr.on('data', chunk => { outputBytes += chunk.length; if (outputBytes > 64 * 1024) stop('리뷰 출력 한도 초과'); });
         child.stdin.on('error', () => {});
         child.once('error', () => { failure ??= new Error('Codex CLI를 실행하지 못했습니다. 0.160.0 이상과 로그인을 확인하세요.'); });
         child.once('close', code => {
+          if (!failure && buffered.length) inspectLine(buffered); // EOF도 마지막 JSON 이벤트의 경계다.
           if (terminating) send('SIGKILL'); // 먼저 종료한 CLI가 남긴 같은 그룹의 자식도 정리한다.
           clearTimeout(deadline); clearTimeout(escalation); signal.removeEventListener('abort', abort);
           if (failure) reject(failure); else if (code !== 0) reject(new Error(`Luna 리뷰 실행 실패 (종료 코드 ${code})`)); else resolve();

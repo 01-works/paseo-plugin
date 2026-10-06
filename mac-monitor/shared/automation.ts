@@ -26,14 +26,19 @@ export const automationReportSchema = z.object({
 });
 export const automationReportRpc = defineRpc({ name: 'mac-monitor.automation.get', input: z.object({}), output: automationReportSchema });
 export const automationConfigureRpc = defineRpc({ name: 'mac-monitor.automation.configure', input: automationConfigSchema, output: automationReportSchema });
+export const automationTargetInputSchema = z.discriminatedUnion('allow', [
+  automaticTargetSchema.extend({ allow: z.literal(true) }),
+  automaticTargetSchema.pick({ pid: true, start: true, group: true }).extend({ allow: z.literal(false) }),
+]);
 export const automationTargetRpc = defineRpc({ name: 'mac-monitor.automation.target',
-  input: z.object({ pid: z.number().int().positive(), start: z.string().max(20).regex(/^\d+$/), group: z.string().max(256), allow: z.boolean() }),
+  input: automationTargetInputSchema,
   output: z.object({ changed: z.boolean(), error: z.string().optional() }) });
 export const reviewResultSchema = z.object({
   decisions: z.array(z.object({ key: z.string().max(80), decision: z.enum(['normal', 'observe', 'terminate']), reason: z.string().min(1).max(240) }).strict()).max(4),
 }).strict();
 export type AutomationConfig = z.infer<typeof automationConfigSchema>;
 export type AutomaticTarget = z.infer<typeof automaticTargetSchema>;
+export type AutomationTargetInput = z.infer<typeof automationTargetInputSchema>;
 export type AutomationEvent = z.infer<typeof automationEventSchema>;
 export type AutomationStatus = z.infer<typeof automationStatusSchema>;
 export type ReviewResult = z.infer<typeof reviewResultSchema>;
