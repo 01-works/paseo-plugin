@@ -1,8 +1,10 @@
 # agent-graph 구현 계획
 
+2026-10-06 구현 요청에 따라 0.1.0을 구현하고 로컬 설치했다. 아래는 최초 설계 기준이며, 확정한 변경과 검증 결과는 [DECISIONS](DECISIONS.md), [VALIDATION](VALIDATION.md)을 따른다.
+
 작성일: 2026-10-06
 
-상태: 구현 전 검토안. 아래 수치와 배치는 제안 기본값이며, 실제 화면·API 검증 뒤 확정한다.
+상태: 0.1.0 로컬 구현·검증 완료. 아래는 초기 검토안의 수치와 배치이며, 실제 API·화면 검증에서 확정한 내용은 DECISIONS와 VALIDATION에 기록했다.
 
 위치: `01-works/paseo-plugin/agent-graph/`
 
@@ -232,7 +234,7 @@ SDK는 초기 개발에서 0.10.2로 고정하고 manifest의 `requirements.pase
 모든 UI는 React Native 기본 요소·Paseo의 Icon/Modal/ScrollView·theme.colors로 구현한다.
 `tsconfig`에 DOM을 넣지 않는다.
 
-아래는 앞으로 구현할 구조다. 현재 작성 범위는 README와 docs뿐이다.
+아래 구조를 기준으로 구현했다. 공통 UI를 위한 `content.tsx`, `controls.tsx`와 portal·수동 검증 파일도 포함한다.
 
 ```text
 agent-graph/
@@ -278,7 +280,7 @@ agent-graph/
 
 작업 중 API 제약으로 계획을 바꾸면 DECISIONS에 근거와 영향 범위를 기록한다.
 서버 추가·provider 내부 수집·제어 기능처럼 범위가 커지는 변경은 구현에 포함하기 전에 사용자와 결정한다.
-현재 요청은 계획 문서화이며, 이 단계에서 설치·enable·reload·GitHub push를 진행하지 않는다.
+후속 구현 요청으로 로컬 설치·reload·disable/enable 검증까지 진행한다. 이 구현의 GitHub push는 아직 요청되지 않았다.
 
 ## 9. 검증과 완료 기준
 

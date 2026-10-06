@@ -71,6 +71,9 @@ navigation은 모든 UI props에 공통으로 제공되지 않는다. 모달에�
 타입에서 API 존재는 확인했지만 **200개 이후 구독 window의 의미, compact의 패널 전환, 확대 후 실제 스크롤**은
 agent-graph 구현에서 직접 검증해야 한다. 이 문서는 실행 검증 완료를 뜻하지 않는다.
 
+구현 후 확인: 전체 filter update와 296개 목록의 단일 lease, 확대·패널·ID 복사는 [DECISIONS](DECISIONS.md), [VALIDATION](VALIDATION.md)에 기록했다.
+실제 compact 패널·라이트 테마·모바일 터치는 미검증이다. 공개 `copyText`와 `useToast`를 ID 복사에 사용하며 공개 context menu는 없어 우클릭 메뉴를 추가하지 않았다.
+
 ## 4. 다른 커뮤니티 후보
 
 초기 조사에서 Agent Monitor·Gas City·Uppidi Fleet 계열도 비교했다.

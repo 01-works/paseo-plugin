@@ -1,0 +1,36 @@
+name: agent-graph 검증
+on:
+  push:
+    branches: [main]
+    paths: ['agent-graph/**', '.github/workflows/agent-graph.yml']
+  pull_request:
+    paths: ['agent-graph/**', '.github/workflows/agent-graph.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  agent-graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agent-graph
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Node 24 준비
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: agent-graph/package-lock.json
+      - name: 의존성 설치
+        run: npm ci --no-audit --no-fund
+      - name: 타입 검사
+        run: npm run typecheck
+      - name: 모델·구독·portal 클릭 검증
+        run: npm test
+      - name: React Native 경계와 기본 폰트 검사
+        run: npm run audit
