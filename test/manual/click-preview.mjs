@@ -99,23 +99,22 @@ if (process.argv.includes('--verify')) {
       } else {
         await delay(100);
         assert.deepEqual(counts(),before);
-        const tabs = [...document.querySelectorAll('[role="tab"]')];
+        const tabs = [...document.querySelectorAll('[role="button"]')].filter(node=>(node.getAttribute('aria-label')??'').endsWith('순위로 정렬'));
         assert.equal(tabs.length,2);
         tabs[1].click();
         await delay(100); assert.deepEqual(counts(),before);
         assert.ok(document.getElementById('overlay').textContent.includes('Google Chrome'));
-        button('모니터 값 복사').click();
-        await until(()=>counts().copies===1);
-        assert.deepEqual(counts(),{...before,copies:1});
+        assert.ok(!button('모니터 값 복사'));
+        assert.ok(!button('모니터 새로고침'));
         assert.ok(!document.getElementById('overlay').textContent.includes('샘플'));
-        button('모니터 새로고침').click();
-        await until(()=>counts().reads===2);
+        await until(()=>counts().reads>=2);
         assert.equal(counts().actions,1); assert.equal(counts().mounts,1);
         button('닫기').click();
         await delay(100);
         assert.equal(document.getElementById('overlay').textContent,'');
         assert.equal(counts().actions,1);
-        console.log(JSON.stringify({mode:'수정 경로',before,after:counts(),result:'본문·탭·복사·닫기 클릭에 재실행/remount 없음; 새로고침만 RPC 재요청'}));
+        const closedReads=counts().reads; await delay(2200); assert.equal(counts().reads,closedReads);
+        console.log(JSON.stringify({mode:'수정 경로',before,after:counts(),result:'본문·정렬·닫기에 재실행/remount 없음; 자동 갱신·닫은 뒤 중단 확인'}));
       }
     } finally { dom.window.close(); }
   }

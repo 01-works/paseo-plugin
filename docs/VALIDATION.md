@@ -9,7 +9,7 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (7개 파일, 40개 테스트) |
+| 계산·오류·가짜 헬퍼·클라이언트/fleet·UI 테스트 | 완료 (8개 파일, 44개 테스트) |
 | client DOM/HTML audit | 0건 |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
@@ -23,30 +23,63 @@
 | 부모 SIGKILL → 고아 헬퍼 방지 | 실제 네이티브 검증 완료 |
 | prebuilt 실패 → 로컬 빌드 → Node 폴백 | 전용 임시 홈에서 실제 검증 완료 |
 | Activity Monitor 화면 대조 | **사용자 대조 필요** |
-| 라이트/다크, compact 실제 화면 | **사용자 확인 필요** |
+| 실제 Paseo 데스크톱 다크 화면 | 완료: 통합 카드·앱 순위·개별 PID·디스크·자동 갱신 확인 |
+| 라이트, compact 실제 화면 | **사용자 확인 필요** |
 | 다른 Mac 설치 / 실제 fleet 집계 | **별도 사용자 승인 및 확인 필요** |
 | x86_64 실행 | Intel/Rosetta 환경에서 확인 필요 |
 
-컴퓨터 제어 도구의 Paseo 앱 접근이 시간 초과되어 실제 화면을 관찰하지 못했다.
-따라서 실제 pill 표시·테마·좁은 화면·Activity Monitor 수치 일치를 확인했다고 표현하지 않는다.
+초기에는 컴퓨터 제어 접근이 시간 초과됐으나, 후속 검증에서 실제 Paseo 앱 화면을 관찰했다.
+데스크톱 다크 화면의 pill·통합 카드·개별 프로세스 목록을 확인했다. 라이트·compact·Activity Monitor 대조는 남아 있다.
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
+아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
+
+## 최종 후속 검증: 통합 화면·자동 갱신·개별 종료·디스크
+
+- `npm run typecheck` 통과, `npm test` 8개 파일/44개 테스트 통과.
+  초기 pill 값 즉시 표시, 2초 자동 읽기 중 ScrollView 인스턴스 유지·닫기 후 중단,
+  확인 전 종료 RPC 없음·확인 대상의 시작 시각 유지·오류 표시를 검증했다.
+- `test/manual/click-preview.mjs --verify`: 본문·정렬 클릭 시 pill action/Modal mount 횟수는 1을 유지한다.
+  자동 읽기는 별도로 1→2로 증가하고 정상 화면에는 복사·새로고침 버튼이 없다. 닫은 뒤 자동 읽기는 멈춘다.
+- 실제 Paseo 데스크톱 다크 화면: 16:29:27에 앱 측정 중에도 pill의 시스템 값이 즉시 표시됨을 관찰했다.
+  16:34:49에는 CPU·메모리·디스크·상위 10개가 보였다. 16:35:13 codex를 눌러 PID별 CPU·메모리·종료 버튼과
+  내부 스크롤 영역을 확인했다. 16:36:05 뒤로 이동해 목록이 복원되고 시스템 시각·수치가 자동으로 바뀌었음을 확인했다.
+  기존 사용자 프로세스의 종료 확인은 실행하지 않았다.
+- `node --import tsx test/manual/native-actions.mjs`: 검증 스크립트가 만든 자식만 SIGTERM으로 종료했다.
+  시작 시각 불일치, 부모, 헬퍼 자신에 대한 요청은 차단됐다. 정상 JSON과 디스크 용량도 확인했다.
+  서버 테스트는 다른 그룹·시작 시각·오래된 값 차단 및 제어 응답과 측정 스트림 분리를 확인한다.
+- 최종 universal 바이너리 빌드·서명 완료. 16:28:17 플러그인 reload 후 running, 서버 로그 오류 없음,
+  별도 검증 헬퍼 종료 뒤 설치 헬퍼 PID 45868 한 개를 확인했다. 데몬 재시작 명령은 사용하지 않았다.
+  16:38 KST 최종 재검사도 typecheck·44개 테스트·DOM/커스텀 fontSize audit 0건,
+  arm64/x86_64 및 서명 검증, running·로그 오류 없음·헬퍼 한 개로 통과했다.
+
+최종 헬퍼 자체 부하 (`python3 test/manual/helper-cost.py`): 앱 관심을 켠 별도 헬퍼를 60.0036초 관찰했다.
+30개 샘플의 CPU 시간 0.066903초, 코어 하나 기준 **0.111498%** (10코어 환산 0.011150%),
+RSS **2.703125 MiB**였다. 간격은 **1990.985~2007.545ms**, 디스크 값의 측정 시각은 2회 바뀌었고
+출력한 개별 프로세스 수의 최대값은 253개였다. 종료 후 추가 헬퍼는 남지 않았다.
+Paseo·Node 서버·RPC·화면 렌더링 비용은 포함하지 않는다. 이전 120초 측정과 작업량이 달라 개선 비율로 비교하지 않는다.
+
+디스크 API 자체 비용 (`test/manual/statfs-cost.c`): 같은 Data 볼륨 statfs를 500회 호출하여
+평균 **0.571µs**, p95 **0.667µs**, 최대 **2.250µs**였다. 제품에서는 30초마다 읽는다.
+파일 트리 순회·SSD 전체 스캔은 없다. [Apple statfs 필드 정의](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/statfs.2.html)를 사용한다.
+APFS 공유 공간, purgeable 및 스냅샷의 처리 기준 때문에 시스템 설정 저장 공간 수치와 차이가 날 수 있다.
+시스템 설정과 디스크 값의 직접 화면 대조는 미완료다.
 
 ## 자동 검사
 
 ```sh
 npm run typecheck
 npm test
-rg -n --pcre2 'document\.|window\.|localStorage|navigator\.|<(?!void\b)[a-z]+[ >]|className=|onClick=' client/
+rg -n --pcre2 'document\.|window\.|localStorage|navigator\.|<(?!void\b|string\b)[a-z]+[ >]|className=|onClick=|fontSize' client/
 lipo -archs bin/macmon-helper
 codesign --verify --verbose bin/macmon-helper
 ```
 
 audit는 일치 항목이 없어 종료 코드 1을 반환한다(실패가 아닌 0건 결과).
-HTML 패턴에서 TypeScript의 `Promise<void>` 타입 인수는 제외한다.
+HTML 패턴에서 TypeScript의 `Promise<void>`와 `useState<string | null>` 타입 인수는 제외한다.
 React Native 기본 요소만 사용하고, tsconfig의 lib는 `ES2023`이다.
 스캐폴드의 DOM 사용 웹 예제는 제거했다.
 
-최종 결과: `npm run typecheck` 통과, `npm test` 6개 파일 / 31개 테스트 통과.
+최종 결과: `npm run typecheck` 통과, `npm test` 8개 파일 / 44개 테스트 통과.
 
 자동 테스트 범위:
 
@@ -154,7 +187,9 @@ CLI 실행·3회 출력·종료 정리는 확인했다. 아래는 CLI 값만의 
 - 권한 제외 프로세스 및 종료/생성 경계 때문에 앱 CPU 합계와 전체 CPU의 차이.
 - footprint가 압축/스왑을 포함하므로 앱 합계와 물리 메모리 사용량의 차이.
 
-## 사용자가 확인할 화면/다른 Mac
+## 이전 UI 검증 기록 및 사용자 확인 항목
+
+아래 기록은 시간순 변경 이력이다. 수동 갱신·복사·제외 통계는 최종 사용자 요청으로 제거됐다.
 
 2026-10-06 상세 클릭으로 인한 재마운트 수정·“샘플” 제거:
 

@@ -18,6 +18,7 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn() }));
 import { configureRequester, createRequester } from '../client/data';
 import { contributePills } from '../client/pill';
+import { MonitorContent } from '../client/popover';
 import { displaySnapshot } from '../client/format';
 
 const sample = { ...emptySnapshot('native'), status: 'ok' as const, seq: 1, sampledAt: Date.now(), cpu: { total: 20, user: 10, system: 10 }, memory: computeMemory(raw.sys), pressure: 'warning' as const };
@@ -59,6 +60,7 @@ describe('클라이언트 공유 요청 및 표시 수명주기', () => {
     await act(async () => { await behavior.onPress(); });
     expect(renderers[0].root.findAllByType(Modal)).toHaveLength(1);
     expect(renderers[1].root.findAllByType(Modal)).toHaveLength(0);
+    expect(renderers[0].root.findByType(MonitorContent).props.initialSnapshot).toBe(sample);
     const stopPropagation = vi.fn();
     const guard = renderers[0].root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.focusable === false);
     await act(async () => guard.props.onPress({ stopPropagation }));

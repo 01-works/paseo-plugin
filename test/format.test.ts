@@ -10,3 +10,9 @@ it('160px pill용 축약 라벨/오류/미지원', () => {
   expect(pillLabel({ ...s, status: 'stale' })).toContain('지연'); expect(pillLabel({ ...s, status: 'error' })).toContain('오류');
   expect(pillLabel(emptySnapshot('unsupported'))).toBe('macOS 미지원');
 });
+
+it('앱 CPU의 작은 사용량과 누락값을 구분', async () => {
+  const { appPercent } = await import('../client/format');
+  expect(appPercent(0.4)).toBe('0.4%'); expect(appPercent(0.03)).toBe('<0.1%');
+  expect(appPercent(0)).toBe('0.0%'); expect(appPercent(null)).toBe('—');
+});

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useHosts, useRpc, useSettings, type PluginSurfaceProps } from '@getpaseo/plugin/client';
 import { hostInfoRpc, settings, type Snapshot } from '../shared/contracts';
 import { Details } from './popover';
-import { readAppSample, useManualQuery, useSnapshot } from './data';
+import { readAppSample, useStableQuery, useSnapshot } from './data';
 import { useAgentCounts } from './agents';
 import { FleetRow, FleetHeader } from './fleet/row';
 import { registryEntries, fleetSnapshot } from './fleet/registry';
@@ -23,8 +23,8 @@ export function Dashboard(props: PluginSurfaceProps) {
   const infoRpc = useRpc(hostInfoRpc);
   const info = useQuery({ queryKey: ['mac-monitor', 'host'], queryFn: () => infoRpc({}), staleTime: 60_000, refetchOnWindowFocus: false, refetchOnReconnect: false });
   const last = useRef<Record<HostId, Snapshot>>({});
-  const fleet = useManualQuery({
-    queryKey: ['mac-monitor', 'fleet'], enabled,
+  const fleet = useStableQuery({
+    queryKey: ['mac-monitor', 'fleet'], enabled, refreshInterval: 2000,
     queryFn: async signal => {
       const entries = registryEntries();
       if (entries.length < 2) return [];
@@ -42,7 +42,8 @@ export function Dashboard(props: PluginSurfaceProps) {
   useEffect(() => { if (!aggregated || (selected !== null && !rows.some(row => row.id === selected))) select(null); }, [aggregated, selected, rows.map(row => row.id).join('|')]);
   const colors = theme.colors;
   const countText = (id: string) => { const value = counts[id]; return value && !value.error ? `작업 중 ${value.running} · 대기 ${value.idle}${value.other ? ` · 기타 ${value.other}` : ''}` : '에이전트 확인 불가'; };
-  return <ScrollView style={{ flex: 1, backgroundColor: colors.surface0 }} contentContainerStyle={{ padding: layout.compact ? 16 : 24, gap: 16 }}>
+  return <ScrollView style={{ flex: 1, backgroundColor: colors.surface0 }} contentContainerStyle={{ padding: layout.compact ? 16 : 24 }}>
+    <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: 16 }}>
     <Text style={{ color: colors.foreground, fontWeight: '600' }}>Mac 시스템 모니터</Text>
     <Badge theme={theme} label={aggregated ? '모든 Mac · 실험적 집계' : '선택한 Mac'} />
     <Text style={{ color: colors.foregroundMuted }}>{aggregated ? '호스트를 눌러 메모리와 상위 앱을 확인하세요.' : '다른 Mac의 지표는 상단 호스트 선택기로 전환하세요.'}</Text>
@@ -57,10 +58,10 @@ export function Dashboard(props: PluginSurfaceProps) {
     </View> : null}
     {chosen ? <>
       <Pressable accessibilityRole="button" onPress={() => select(null)}><Text style={{ color: colors.foreground }}>선택한 호스트로 돌아가기</Text></Pressable>
-      <Details key={chosen.id} {...props} snapshot={chosen.snapshot} name={chosen.info.hostname} error={chosen.error}
-        refreshing={fleet.isFetching} onRefresh={() => void fleet.refetch()} />
+      <Details key={chosen.id} {...props} snapshot={chosen.snapshot} name={chosen.info.hostname} error={chosen.error} canInspect={false}
+        refreshing={fleet.isFetching} onRefresh={chosen.error ? () => void fleet.refetch() : undefined} />
     </> : <Details key={host.id} {...props} snapshot={local.data} name={info.data?.hostname ?? host.label} error={local.error?.message}
-      refreshing={local.isFetching || fleet.isFetching} onRefresh={() => { void local.refetch(); if (enabled) void fleet.refetch(); }} />}
+      refreshing={local.isFetching || fleet.isFetching} onRefresh={local.error ? () => { void local.refetch(); if (enabled) void fleet.refetch(); } : undefined} />}
     <Card theme={theme}>
       <Text style={{ color: colors.foreground, fontWeight: '600' }}>연결된 호스트 / 에이전트</Text>
       {hosts.map(h => <View key={h.serverId} style={{ paddingVertical: 8, gap: 8 }}>
@@ -72,5 +73,6 @@ export function Dashboard(props: PluginSurfaceProps) {
         {!aggregated && h.serverId !== host.id ? <Text style={{ color: colors.foregroundMuted }}>CPU·메모리: 호스트 선택기로 전환</Text> : null}
       </View>)}
     </Card>
+    </View>
   </ScrollView>;
 }

@@ -6,14 +6,12 @@ import { emptySnapshot } from '../shared/compute';
 import { processesSchema, TOP_APP_LIMIT, type Snapshot } from '../shared/contracts';
 import { GiB } from '../shared/units';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { readAppSample, useManualQuery } from '../client/data';
+import { readAppSample, useStableQuery } from '../client/data';
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('@getpaseo/plugin/client', () => ({ useRpc: () => vi.fn() }));
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ ScrollView: 'ScrollView', copyText: vi.fn(async () => {}) }));
-import { copyText } from '@getpaseo/plugin/client/react-native';
 import { Details, pressureColor } from '../client/popover';
 import { Bar, barPercent } from '../client/visuals';
-import { snapshotText } from '../client/copy';
 
 const props = { theme: { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444',
   accent: '#aaf', statusSuccess: '#0a0', statusWarning: '#aa0', statusDanger: '#a00' } },
@@ -25,25 +23,27 @@ const sample: Snapshot = { ...emptySnapshot('native'), status: 'ok', sampledAt: 
     topMemory: [{ name: 'Google Chrome', processCount: 12, cpuPercent: 4, memoryBytes: 32 * GiB },
       { name: 'claude', processCount: 3, cpuPercent: null, memoryBytes: 8 * GiB }] } };
 let renderer: ReactTestRenderer | undefined;
-beforeEach(() => { vi.mocked(copyText).mockReset().mockResolvedValue(undefined); (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
+beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.useRealTimers(); });
 it('누락값을 0%로 바꾸지 않고 footprint 비교를 물리 RAM으로 나누지 않음', () => {
   expect(barPercent(null)).toBeNull(); expect(barPercent(undefined)).toBeNull(); expect(barPercent(NaN)).toBeNull();
   expect(barPercent(0)).toBe(0); expect(barPercent(1, 0)).toBeNull(); expect(barPercent(200)).toBe(100);
   expect(barPercent(8 * GiB, 32 * GiB)).toBe(25);
 });
-it('앱 탭 전환에서 목록과 상대 비교 기준을 유지', async () => {
+it('CPU·메모리를 같은 행에 표시하고 열 제목으로 순위를 전환', async () => {
   await act(async () => { renderer = create(<Details {...props} snapshot={sample} name="Mac" />); });
   expect(JSON.stringify(renderer!.toJSON())).toContain('codex');
-  const tabs = renderer!.root.findAll(node => node.props.accessibilityRole === 'tab');
+  const tabs = renderer!.root.findAll(node => String(node.props.accessibilityLabel).endsWith('순위로 정렬'));
   await act(async () => tabs[1].props.onPress());
   expect(JSON.stringify(renderer!.toJSON())).toContain('Google Chrome');
-  expect(JSON.stringify(renderer!.toJSON())).toContain('앱 간 상대 크기');
-  const bars = renderer!.root.findAllByType(Bar);
-  expect(bars.find(b => b.props.label.startsWith('Google Chrome'))?.props.value).toBe(100);
-  expect(bars.find(b => b.props.label.startsWith('claude'))?.props.value).toBe(25);
+  const row = renderer!.root.find(node => node.props.accessibilityLabel === '1위 Google Chrome, 프로세스 12개');
+  expect(row.findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['Google Chrome', '4.0%', '32.0 GiB']);
+  expect(JSON.stringify(renderer!.toJSON())).toContain('—');
+  expect(tabs[1].props.accessibilityState.selected).toBe(true);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('1 GiB =');
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('샘플');
+  const diskBar = renderer!.root.findAllByType(Bar).find(node => node.props.label.startsWith('디스크'))!;
+  expect(diskBar.props.label).toBe('디스크 — / —'); expect(diskBar.props.value).toBeNull();
 });
 it('RAM 사용률이 높아도 상태 색은 OS 압력만 기준', () => {
   expect(pressureColor(sample, props.theme)).toBe(props.theme.colors.statusSuccess);
@@ -65,8 +65,9 @@ it('10개 순위를 스크롤 영역에 표시하고 기본 폰트 크기를 유
   const scroll = renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록');
   expect(scroll.props.nestedScrollEnabled).toBe(true);
   expect(scroll.props.style.height).toBe(320);
-  const appBars = renderer!.root.findAllByType(Bar).filter(b => b.props.label.startsWith('앱 '));
-  expect(appBars).toHaveLength(TOP_APP_LIMIT);
+  const appRows = renderer!.root.findAll(node => /^\d+위 앱 /.test(node.props.accessibilityLabel ?? ''));
+  expect(appRows).toHaveLength(TOP_APP_LIMIT);
+  expect(appRows[9].findAll(node => String(node.type) === 'Text').map(node => node.children.join(''))).toEqual(['앱 10', '1.0%', '1.0 GiB']);
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('fontSize');
 });
 it('로딩·완료·오류·미지원 모두 같은 높이의 목록을 유지', async () => {
@@ -83,7 +84,7 @@ it('열 때 한 번만 읽고 시간 경과·공유 캐시 변경에도 화면 �
   const rpc = vi.fn(async () => sample);
   const client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   function Monitor() {
-    const query = useManualQuery({ queryKey: ['manual-test'], queryFn: rpc });
+    const query = useStableQuery({ queryKey: ['manual-test'], queryFn: rpc });
     return <Details {...props} snapshot={query.data} name="Mac" error={query.error?.message}
       refreshing={query.isFetching} onRefresh={() => void query.refetch()} />;
   }
@@ -96,11 +97,6 @@ it('열 때 한 번만 읽고 시간 경과·공유 캐시 변경에도 화면 �
   await act(async () => { client.setQueryData(['manual-test'], next); await vi.advanceTimersByTimeAsync(60_000); });
   expect(rpc).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(renderer!.toJSON())).toEqual(fixed);
-  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '모니터 값 복사' }).props.onPress());
-  const copied = vi.mocked(copyText).mock.calls[0][0];
-  expect(copied).toContain('CPU: 23%'); expect(copied).toContain('codex');
-  expect(copied).not.toContain('다른 앱');
-  expect(copied).toContain(new Date(sample.sampledAt!).toLocaleString('ko-KR'));
   rpc.mockResolvedValueOnce({ ...next, sampledAt: Date.now() });
   await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '모니터 새로고침' }).props.onPress(); await vi.advanceTimersByTimeAsync(10); });
   expect(rpc).toHaveBeenCalledTimes(2);
@@ -113,17 +109,6 @@ it('열 때 한 번만 읽고 시간 경과·공유 캐시 변경에도 화면 �
   expect(JSON.stringify(renderer!.toJSON())).toContain('연결 끊김');
   expect(JSON.stringify(renderer!.toJSON())).toContain('67%');
   client.clear();
-});
-it('클립보드 실패를 성공으로 표시하지 않고 누락값·미지원·오류를 그대로 복사', async () => {
-  vi.mocked(copyText).mockRejectedValueOnce(new Error('denied'));
-  await act(async () => { renderer = create(<Details {...props} snapshot={sample} name="Mac" />); });
-  await act(async () => renderer!.root.findByProps({ accessibilityLabel: '모니터 값 복사' }).props.onPress());
-  expect(JSON.stringify(renderer!.toJSON())).toContain('복사하지 못했습니다');
-  expect(JSON.stringify(renderer!.toJSON())).not.toContain('복사됨');
-  const text = snapshotText({ ...emptySnapshot('node'), errors: ['측정 실패'] }, 'Mac', '연결 실패');
-  expect(text).toContain('CPU: —'); expect(text).toContain('메모리: — / —');
-  expect(text).toContain('미지원'); expect(text).toContain('측정 실패'); expect(text).toContain('연결 실패');
-  expect(text).not.toContain('0%'); expect(text).not.toContain('0.0 GiB');
 });
 it('최초 앱 기준점만 최대 두 주기 기다리고 이후 추가 읽기가 없으며 닫으면 대기 취소', async () => {
   vi.useFakeTimers();
@@ -139,4 +124,44 @@ it('최초 앱 기준점만 최대 두 주기 기다리고 이후 추가 읽기�
   const rejection = expect(pending).rejects.toThrow('취소');
   await Promise.resolve(); controller.abort(); await rejection;
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it('pill의 받은 값을 요청 완료 전에 바로 표시하고 이후 pill 갱신은 상세를 바꾸지 않음', async () => {
+  let resolve!: (value: Snapshot) => void;
+  const rpc = vi.fn(() => new Promise<Snapshot>(done => { resolve = done; }));
+  const client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  function Monitor({ seed }: { seed: Snapshot }) {
+    const query = useStableQuery({ queryKey: ['seed-test'], queryFn: rpc, initialData: seed });
+    return <Details {...props} snapshot={query.data} name="Mac" />;
+  }
+  await act(async () => { renderer = create(<QueryClientProvider client={client}><Monitor seed={sample} /></QueryClientProvider>); });
+  expect(JSON.stringify(renderer!.toJSON())).toContain('23%');
+  expect(JSON.stringify(renderer!.toJSON())).toContain('15.0 GiB');
+  const fixed = JSON.stringify(renderer!.toJSON());
+  await act(async () => renderer!.update(<QueryClientProvider client={client}><Monitor seed={{ ...sample, cpu: { total: 99, user: 99, system: 0 } }} /></QueryClientProvider>));
+  expect(JSON.stringify(renderer!.toJSON())).toEqual(fixed);
+  await act(async () => { resolve(sample); });
+  expect(rpc).toHaveBeenCalledOnce();
+  client.clear();
+});
+
+it('자동 갱신은 창·목록 mount를 유지하고 숨기면 RPC를 중단', async () => {
+  vi.useFakeTimers();
+  const rpc = vi.fn(async () => sample);
+  const client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  function Monitor({ enabled = true }: { enabled?: boolean }) {
+    const query = useStableQuery({ queryKey: ['auto-test'], queryFn: rpc, initialData: sample, refreshInterval: 2000, enabled });
+    return <Details {...props} snapshot={query.data} name="Mac" />;
+  }
+  await act(async () => { renderer = create(<QueryClientProvider client={client}><Monitor /></QueryClientProvider>); });
+  const list = renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록');
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(rpc).toHaveBeenCalledTimes(4);
+  expect(renderer!.root.find(node => node.props.accessibilityLabel === '앱 사용 순위 목록')).toBe(list);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('모니터 값 복사');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('제외 root');
+  await act(async () => renderer!.update(<QueryClientProvider client={client}><Monitor enabled={false} /></QueryClientProvider>));
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(rpc).toHaveBeenCalledTimes(4);
+  client.clear();
 });

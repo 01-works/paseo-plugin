@@ -4,6 +4,7 @@
 #include <libproc.h>
 #include <sys/sysctl.h>
 #include <sys/resource.h>
+#include <sys/mount.h>
 #include <sys/select.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -15,11 +16,12 @@
 #include <signal.h>
 #define TOP_GROUPS 10
 
-typedef struct { pid_t pid; uint64_t start, cpu, foot; char name[256]; } Proc;
-typedef struct { char name[256]; double cpu; uint64_t foot; int count, valid_cpu; } Group;
+typedef struct { pid_t pid; uint64_t start, cpu, foot; double percent; int valid_cpu; char name[256], process_name[256]; } Proc;
+typedef struct { char name[256]; double cpu; uint64_t foot; int count, valid_cpu, selected; } Group;
 static Proc *previous; static size_t previous_n; static uint64_t previous_time;
 static mach_timebase_info_data_t tb;
 static mach_port_t host; static int cores=0, active=0; static volatile sig_atomic_t stopped=0;
+static struct statfs disk;static uint64_t disk_next=0;static double disk_time=0;static int disk_ok=0;
 static uint64_t mono_ns(void) { return mach_absolute_time() * (long double)tb.numer / tb.denom; }
 static void stop_signal(int sig) { (void)sig; stopped=1; }
 static void json_string(const char *s) {
@@ -75,11 +77,13 @@ static int print_procs(uint64_t now) {
     Proc *p=&current[n++]; p->pid=pids[i];p->start=ri.ri_proc_start_abstime;
     p->cpu=ri.ri_user_time+ri.ri_system_time;p->foot=ri.ri_phys_footprint;
     Proc *old=previous_n?bsearch(p,previous,previous_n,sizeof(Proc),cmp_pid):NULL;
-    if(old&&old->start==p->start) strcpy(p->name,old->name); else name_of(p->pid,p->name);
+    if(old&&old->start==p->start) { strcpy(p->name,old->name);strcpy(p->process_name,old->process_name); }
+    else { name_of(p->pid,p->name);if(proc_name(p->pid,p->process_name,sizeof p->process_name)<=0) strcpy(p->process_name,p->name); }
     double cpu=0;
     int valid_cpu=ready&&old&&old->start==p->start&&p->cpu>=old->cpu;
     if(valid_cpu)
       cpu=(p->cpu-old->cpu)*(long double)tb.numer/tb.denom/1e9/elapsed*100/cores;
+    p->percent=cpu;p->valid_cpu=valid_cpu;
     size_t j=0; for(;j<ng;j++) if(!strcmp(groups[j].name,p->name)) break;
     if(j==ng) { strcpy(groups[ng].name,p->name);ng++; }
     groups[j].foot+=p->foot;groups[j].cpu+=cpu;groups[j].count++;groups[j].valid_cpu+=valid_cpu;
@@ -87,7 +91,19 @@ static int print_procs(uint64_t now) {
   if(!n) { free(pids);free(current);free(groups);printf("null");return -1; }
   printf("{\"ready\":%s,\"sampledAt\":%.0f,\"excludedPermission\":%d,\"excludedRoot\":%d,\"otherErrors\":%d,\"coreCount\":%d,\"topCpu\":",ready?"true":"false",clock_gettime_nsec_np(CLOCK_REALTIME)/1e6,denied,root,other,cores);
   qsort(groups,ng,sizeof(Group),cmp_cpu); print_groups(groups,ng,ready);
-  printf(",\"topMemory\":"); qsort(groups,ng,sizeof(Group),cmp_mem);print_groups(groups,ng,ready);putchar('}');
+  for(size_t i=0;i<ng&&i<TOP_GROUPS;i++) groups[i].selected=1;
+  printf(",\"topMemory\":"); qsort(groups,ng,sizeof(Group),cmp_mem);print_groups(groups,ng,ready);
+  for(size_t i=0;i<ng&&i<TOP_GROUPS;i++) groups[i].selected=1;
+  printf(",\"members\":[");int first=1;
+  for(size_t i=0;i<n;i++) {
+    Proc *p=&current[i];size_t j=0;for(;j<ng;j++) if(groups[j].selected&&!strcmp(groups[j].name,p->name)) break;
+    if(j==ng) continue;
+    if(!first) putchar(',');first=0;
+    printf("{\"pid\":%d,\"start\":\"%"PRIu64"\",\"group\":",p->pid,p->start);json_string(p->name);
+    printf(",\"name\":");json_string(p->process_name);printf(",\"memoryBytes\":%"PRIu64",\"cpuPercent\":",p->foot);
+    if(p->valid_cpu) printf("%.6f",p->percent);else printf("null");putchar('}');
+  }
+  printf("]}");
   qsort(current,n,sizeof(Proc),cmp_pid);free(previous);previous=current;previous_n=n;previous_time=now;
   free(groups);free(pids);return 0;
 }
@@ -114,8 +130,34 @@ static void sample(uint64_t seq) {
   for(int i=0;i<2;i++) { int value;len=sizeof value;printf(",\"%s\":",fields[i]);
     if(sysctlbyname(keys[i],&value,&len,NULL,0)==0) printf("%d",value);else {printf("null");errors[ne++]=keys[i];}
   }
+  if(mono_ns()>=disk_next) {
+    disk_ok=statfs("/System/Volumes/Data",&disk)==0&&disk.f_bsize>0&&disk.f_blocks>=disk.f_bfree&&disk.f_bavail<=disk.f_bfree;
+    disk_next=mono_ns()+30000000000ULL;disk_time=clock_gettime_nsec_np(CLOCK_REALTIME)/1e6;
+  }
+  printf(",\"disk\":");
+  if(disk_ok) printf("{\"total\":%"PRIu64",\"used\":%"PRIu64",\"available\":%"PRIu64",\"sampledAt\":%.0f}",(uint64_t)disk.f_blocks*disk.f_bsize,(uint64_t)(disk.f_blocks-disk.f_bfree)*disk.f_bsize,(uint64_t)disk.f_bavail*disk.f_bsize,disk_time);
+  else {printf("null");errors[ne++]="Data 볼륨 용량 읽기 실패";}
   printf("},\"procs\":"); if(print_procs(mono_ns())!=0) { errors[ne++]="프로세스 스캔 실패";free(previous);previous=NULL;previous_n=0;previous_time=0; }
   printf(",\"errors\":[");for(int i=0;i<ne;i++) {if(i) putchar(',');json_string(errors[i]);}printf("]}\n");fflush(stdout);
+}
+static const char *terminate_one(pid_t pid,uint64_t start) {
+  if(pid<=1||pid==getpid()) return "보호된 프로세스";
+  for(pid_t parent=getppid();parent>1;) {
+    if(pid==parent) return "Paseo 및 상위 프로세스는 종료할 수 없습니다";
+    struct proc_bsdshortinfo ancestor;
+    if(proc_pidinfo(parent,PROC_PIDT_SHORTBSDINFO,0,&ancestor,sizeof ancestor)!=sizeof ancestor) return "상위 프로세스 확인 실패";
+    if((pid_t)ancestor.pbsi_ppid==parent) return "상위 프로세스 확인 실패";
+    parent=ancestor.pbsi_ppid;
+  }
+  struct proc_bsdshortinfo si;struct rusage_info_v4 ri;
+  if(proc_pidinfo(pid,PROC_PIDT_SHORTBSDINFO,0,&si,sizeof si)!=sizeof si) return "대상 프로세스가 없습니다";
+  if(si.pbsi_uid==0||si.pbsi_uid!=geteuid()) return "현재 사용자 프로세스만 종료할 수 있습니다";
+  Proc key={.pid=pid};Proc *known=previous_n?bsearch(&key,previous,previous_n,sizeof(Proc),cmp_pid):NULL;
+  if(!active||!known||known->start!=start) return "대상 측정값이 변경되었습니다";
+  if(proc_pid_rusage(pid,RUSAGE_INFO_V4,(rusage_info_t*)&ri)!=0) return "대상 확인 권한이 없습니다";
+  if(ri.ri_proc_start_abstime!=start) return "PID가 다른 프로세스로 바뀌었습니다";
+  if(kill(pid,SIGTERM)!=0) return "종료 신호를 보내지 못했습니다";
+  return NULL;
 }
 int main(int argc,char **argv) {
   mach_timebase_info(&tb);host=mach_host_self();size_t len=sizeof cores;
@@ -136,6 +178,12 @@ int main(int argc,char **argv) {
         if(bytes[i]=='\n') {command[used]=0;
           if(!strcmp(command,"procs on")) active=1;
           if(!strcmp(command,"procs off")) {active=0;free(previous);previous=NULL;previous_n=0;previous_time=0;}
+          unsigned id;int pid;uint64_t start;char extra;
+          if(sscanf(command,"terminate %u %d %"SCNu64" %c",&id,&pid,&start,&extra)==3) {
+            const char *error=terminate_one(pid,start);
+            printf("{\"action\":\"terminate\",\"id\":%u,\"sent\":%s",id,error?"false":"true");
+            if(error) {printf(",\"error\":");json_string(error);}printf("}\n");fflush(stdout);
+          }
           used=0;
         } else if(used<sizeof command-1) command[used++]=bytes[i];
       }

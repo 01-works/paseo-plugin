@@ -23,7 +23,7 @@ export function createRequester(call: Call) {
     const current = flight;
     try { return await current; } finally { if (flight === current) flight = undefined; }
   };
-  return request;
+  return Object.assign(request, { peek: () => cached });
 }
 let request: ReturnType<(typeof createRequester)> | undefined;
 export function configureRequester(call: Call): () => void { const own = createRequester(call); request = own; return () => { if (request === own) request = undefined; }; }
@@ -31,11 +31,12 @@ export function requestSnapshot(includeProcesses: boolean, call?: Call): Promise
   if (!request) { if (!call) return Promise.reject(new Error('호스트 RPC 연결 없음')); request = createRequester(call); }
   return request(includeProcesses);
 }
+export function cachedSnapshot(): Snapshot | undefined { return request?.peek(); }
 // Query 캐시가 다른 창에서 바뀌어도 이 화면은 자기 읽기 결과만 표시한다.
-export function useManualQuery<T>(options: { queryKey: readonly unknown[]; queryFn: (signal: AbortSignal) => Promise<T>; enabled?: boolean }) {
+export function useStableQuery<T>(options: { queryKey: readonly unknown[]; queryFn: (signal: AbortSignal) => Promise<T>; enabled?: boolean; initialData?: T; refreshInterval?: number }) {
   const query = useQuery({ queryKey: options.queryKey, queryFn: ({ signal }) => options.queryFn(signal),
     retry: false, enabled: false, refetchOnWindowFocus: false, refetchOnReconnect: false });
-  const [result, setResult] = useState<{ data?: T; error: Error | null; isFetching: boolean }>({ error: null, isFetching: false });
+  const [result, setResult] = useState<{ data?: T; error: Error | null; isFetching: boolean }>(() => ({ data: options.initialData, error: null, isFetching: false }));
   const generation = useRef(0);
   const refresh = query.refetch;
   const refetch = useCallback(async () => {
@@ -49,9 +50,11 @@ export function useManualQuery<T>(options: { queryKey: readonly unknown[]; query
   }, [refresh]);
   useEffect(() => {
     generation.current++;
-    if (options.enabled !== false) void refetch();
-    return () => { generation.current++; };
-  }, [options.enabled, refetch]);
+    if (options.enabled === false) return () => { generation.current++; };
+    void refetch();
+    const timer = options.refreshInterval ? setInterval(() => void refetch(), options.refreshInterval) : undefined;
+    return () => { generation.current++; clearInterval(timer); };
+  }, [options.enabled, options.refreshInterval, refetch]);
   return { ...result, refetch };
 }
 
@@ -68,7 +71,7 @@ export async function readAppSample(signal: AbortSignal, read: () => Promise<Sna
   if (signal.aborted) throw new Error('샘플 읽기 취소');
   let sample = await read();
   // 앱 스캔을 막 켠 경우 첫 CPU 기준점 다음 샘플까지 최초 로딩만 기다린다.
-  // 이후 자동 갱신은 없다. 헬퍼의 고정 측정 간격을 바꾸지 않는다.
+  // RPC는 기존 측정값만 읽는다. 헬퍼의 고정 측정 간격을 바꾸지 않는다.
   for (let attempt = 0; attempt < 2 && (sample.processesStatus === 'off' || sample.processesStatus === 'warming') && sample.status !== 'error'; attempt++) {
     await waitForSample(signal);
     if (signal.aborted) throw new Error('샘플 읽기 취소');
@@ -77,7 +80,8 @@ export async function readAppSample(signal: AbortSignal, read: () => Promise<Sna
   return sample;
 }
 
-export function useSnapshot(enabled = true) {
+export function useSnapshot(enabled = true, initialData = cachedSnapshot()) {
   const rpc = useRpc(snapshotRpc);
-  return useManualQuery({ queryKey: ['mac-monitor', 'snapshot'], queryFn: signal => readAppSample(signal, () => requestSnapshot(true, rpc)), enabled });
+  return useStableQuery({ queryKey: ['mac-monitor', 'snapshot'], queryFn: signal => readAppSample(signal, () => requestSnapshot(true, rpc)), enabled, refreshInterval: 2000, initialData: initialData && { ...initialData,
+    processesStatus: initialData.processesStatus === 'ok' && !initialData.processes ? 'warming' : initialData.processesStatus } });
 }

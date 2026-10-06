@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { rawSchema, type RawSample, type Snapshot, type CpuTicks } from '../shared/contracts';
+import { rawSchema, type RawSample, type Snapshot, type CpuTicks, type ProcessInfo } from '../shared/contracts';
 import { computeCpu, computeMemory, emptySnapshot, pressure, sampleStatus } from '../shared/compute';
 import { buildLocal, spawnSource, type NativeSource } from './helper-process';
 import { nodeSample } from './node-fallback';
@@ -12,6 +12,7 @@ type Options = {
 };
 export class Collector {
   private value: Snapshot;
+  private members: ProcessInfo[] = [];
   private previousCpu: CpuTicks | null = null;
   private source?: NativeSource;
   private started = false;
@@ -98,6 +99,7 @@ export class Collector {
     }
   }
   private accept(raw: RawSample): void {
+    this.members = this.interest ? raw.procs?.members ?? [] : [];
     const first = !this.received;
     const cpu = computeCpu(raw.sys.cpu, this.previousCpu);
     this.previousCpu = raw.sys.cpu;
@@ -108,8 +110,8 @@ export class Collector {
     if (valid && this.mono() - this.sourceStarted > 30_000) this.attempts = 0;
     if (first) this.log(`수집 활성 (${this.mode}, 2초 고정 간격)`);
     this.value = { ...this.value, seq: raw.seq, sampledAt: raw.t, ageMs: 0,
-      cpu, memory, pressure: pressure(raw.sys.pressureLevel), memoryLevel: raw.sys.memoryLevel, swap: raw.sys.swap,
-      processes: this.interest ? raw.procs : null,
+      cpu, memory, pressure: pressure(raw.sys.pressureLevel), memoryLevel: raw.sys.memoryLevel, swap: raw.sys.swap, disk: raw.sys.disk ?? null,
+      processes: this.interest && raw.procs ? (({ members: _members, ...groups }) => groups)(raw.procs) : null,
       processesStatus: this.mode === 'node' ? 'unsupported' : !this.interest ? 'off' : raw.procs ? (raw.procs.ready ? 'ok' : 'warming') : raw.errors.some(e => e.includes('프로세스')) ? 'error' : 'warming',
       errors: [...raw.errors, ...(memory === null && raw.sys.vm ? ['메모리 카운터 조합이 유효하지 않음'] : [])],
       status: valid ? cpu ? 'ok' : 'warming' : 'error' };
@@ -167,6 +169,17 @@ export class Collector {
     clearTimeout(this.interestTimer); clearTimeout(this.restartTimer); clearTimeout(this.nodeTimer); clearInterval(this.watchdog);
     await this.source?.close(); this.source = undefined;
     await Promise.all([this.starting, this.nodeInFlight]);
+  }
+  processList(group: string) {
+    const snapshot = this.snapshot(true);
+    const entries = snapshot.processes ? this.members.filter(p => p.group === group).sort((a, b) => (b.cpuPercent ?? -1) - (a.cpuPercent ?? -1)) : [];
+    return { status: snapshot.processesStatus, sampledAt: snapshot.processes?.sampledAt ?? null, entries };
+  }
+  async terminate(input: { pid: number; start: string; group: string }): Promise<{ sent: boolean; error?: string }> {
+    const list = this.processList(input.group);
+    if (list.status !== 'ok' || !list.entries.some(p => p.pid === input.pid && p.start === input.start)) return { sent: false, error: '대상이 없거나 측정값이 오래되었습니다. 목록을 다시 확인하세요.' };
+    if (!this.source || this.stopped || this.mode !== 'native') return { sent: false, error: '프로세스 종료 미지원' };
+    return this.source.terminate(input.pid, input.start);
   }
 }
 let singleton: Collector | undefined;

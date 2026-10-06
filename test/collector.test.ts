@@ -15,6 +15,25 @@ function fake(code: string, extras: ConstructorParameters<typeof Collector>[0] =
 const sampleCode = `const raw=${JSON.stringify(raw)}; raw.t=Date.now(); console.log(JSON.stringify(raw)); raw.seq++;raw.t=Date.now();raw.sys.cpu.user+=50;raw.sys.cpu.idle+=50;console.log(JSON.stringify(raw));`;
 afterEach(async () => { await Promise.all(collectors.splice(0).map(c => c.stop())); await Promise.all(dirs.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 describe('캐시 및 헬퍼 수명주기', () => {
+  it('프로세스 조회는 캐시만 읽고 종료는 최신 PID·시작 시각·그룹에 한정', async () => {
+    const entry = { pid: 12345, start: '90071992547409999', group: 'codex', name: 'codex', memoryBytes: 100, cpuPercent: 1 };
+    const procs = { ready: true, sampledAt: Date.now(), coreCount: 10, excludedRoot: 1, excludedPermission: 1, otherErrors: 0,
+      topCpu: [{ name: 'codex', memoryBytes: 100, processCount: 1, cpuPercent: 1 }], topMemory: [], members: [entry] };
+    const payload = { ...raw, procs, sys: { ...raw.sys, disk: { total: 1000, used: 400, available: 600, sampledAt: Date.now() } } };
+    const code = `const raw=${JSON.stringify(payload)};raw.t=Date.now();console.log(JSON.stringify(raw));raw.sys.cpu.user+=10;raw.seq++;console.log(JSON.stringify(raw));require('node:readline').createInterface({input:process.stdin}).on('line',line=>{if(line==='procs on'){raw.sys.cpu.user+=10;console.log(JSON.stringify(raw));}if(line.startsWith('terminate ')){const id=Number(line.split(' ')[1]);console.log(JSON.stringify({action:'terminate',id,sent:true}));}});`;
+    let mono = 1000;
+    const c = fake(code, { monotonicNow: () => mono });await c.start();await until(() => c.snapshot().seq === 1);
+    c.processList('codex');await until(() => c.processList('codex').entries.length === 1);
+    expect(c.processList('codex').entries[0].start).toBe(entry.start);
+    expect(c.snapshot(true).processes).not.toHaveProperty('members');
+    expect(c.snapshot().disk?.used).toBe(400);
+    const seq = c.snapshot().seq; for (let i = 0; i < 100; i++) c.processList('codex');expect(c.snapshot().seq).toBe(seq);
+    expect((await c.terminate({ ...entry, start: '1' })).sent).toBe(false);
+    expect((await c.terminate({ ...entry, group: 'other' })).sent).toBe(false);
+    expect((await c.terminate(entry)).sent).toBe(true);
+    expect(c.snapshot().status).toBe('ok');
+    mono += 5001;expect((await c.terminate(entry)).sent).toBe(false);
+  });
   it('정상 스트림: RPC 100개가 새 측정을 만들지 않음', async () => {
     const c = fake(`${sampleCode}setInterval(()=>{},1000);`); await c.start(); await until(() => c.snapshot().seq === 1);
     const replies = await Promise.all(Array.from({ length: 100 }, () => Promise.resolve(c.snapshot(true))));
@@ -37,9 +56,10 @@ describe('캐시 및 헬퍼 수명주기', () => {
     now -= 100_000; mono += 10_000; expect(c.snapshot().status).toBe('error');
   });
   it('핵심 필드 읽기 실패는 null과 오류', async () => {
-    const bad = JSON.stringify({ ...raw, sys: { ...raw.sys, vm: null, cpu: null }, errors: ['VM 실패'] });
+    const bad = JSON.stringify({ ...raw, sys: { ...raw.sys, vm: null, cpu: null, disk: null }, errors: ['VM 실패', 'Data 볼륨 용량 읽기 실패'] });
     const c = fake(`console.log('${bad}');setInterval(()=>{},1000);`);await c.start();await until(() => c.snapshot().seq === 0);
     expect(c.snapshot().status).toBe('error'); expect(c.snapshot().memory).toBeNull();expect(c.snapshot().cpu).toBeNull();
+    expect(c.snapshot().disk).toBeNull(); expect(c.snapshot().errors).toContain('Data 볼륨 용량 읽기 실패');
   });
   it('중단 후 지수 백오프, 동시에 하나만 실행, stop 후 자식 없음', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'mac-monitor-test-'));dirs.push(dir);const file = path.join(dir, 'starts');
