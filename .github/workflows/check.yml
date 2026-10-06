@@ -17,8 +17,16 @@ permissions:
 
 jobs:
   mac-monitor:
-    name: mac-monitor 검사
-    runs-on: macos-latest
+    name: mac-monitor 검사 (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-26-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     defaults:
       run:
@@ -40,6 +48,22 @@ jobs:
         run: npm run typecheck
       - name: 단위 테스트
         run: npm test
+      - name: 커밋된 prebuilt 바이너리 실행
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          bin/macmon-helper --once | node --import tsx --input-type=module -e '
+            import assert from "node:assert/strict";
+            import { rawSchema } from "./shared/contracts.ts";
+            let input = "";
+            for await (const chunk of process.stdin) input += chunk;
+            const sample = rawSchema.parse(JSON.parse(input));
+            assert.ok(sample.sys.pageSize > 0 && sample.sys.memsize > 0);
+            assert.ok(sample.sys.cpu && sample.sys.vm);
+            assert.deepEqual(sample.errors, []);
+            console.log(process.arch + " prebuilt 실행 확인 완료");
+          '
       - name: universal 헬퍼 빌드와 서명 확인
         run: |
           npm run build
