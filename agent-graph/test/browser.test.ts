@@ -26,6 +26,15 @@ it('누락·잘못된 시각은 생성시각으로 폴백하고 동률은 ID로 
   expect(browserTime(0)).toBe('시각 확인 불가');
   expect(browserTime(agentTime(agents[0], 'updated'))).toMatch(/^01\/01 \d\d:\d\d$/);
 });
+it('compact 시각은 오늘의 시간·이전 날짜를 짧게 표시하고 전체 시각은 유지', () => {
+  const today = new Date(2026, 9, 7, 12, 0).getTime();
+  const morning = new Date(2026, 9, 7, 8, 5).getTime();
+  const yesterday = new Date(2026, 9, 6, 23, 59).getTime();
+  expect(browserTime(morning, true, today)).toBe('08:05');
+  expect(browserTime(yesterday, true, today)).toBe('10/06');
+  expect(browserTime(yesterday, false, today)).toBe('10/06 23:59');
+  expect(browserTime(0, true, today)).toBe('시각 확인 불가');
+});
 it('이름·ID 검색은 대소문자와 앞뒤 공백을 무시하고 정렬을 유지', () => {
   const agents = [make('first', { title: 'API 검증', updatedAt: '2026-03-01T00:00:00Z' }),
     make('api-second', { title: '문서 정리' }), make('other', { title: '구현' })];

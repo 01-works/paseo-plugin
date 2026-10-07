@@ -42,7 +42,12 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const release = vi.fn(async () => {});
   const lease = { subscriptionId: 's', subscribe: (value: typeof observer) => { observer = value; value.snapshot({ ...snapshot, subscriptionId: 's' }); return vi.fn(); }, release };
   const list = vi.fn(async () => ({ ...snapshot, subscription: lease }));
-  const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
+  const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
+  const ref = vi.fn((id: string) => ({ refresh: async () => {
+    const agent = entries.find(entry => entry.id === id);
+    return agent ? { agent, project: {} } : null;
+  }, archive }));
+  const directory = createAgentDirectory({ agents: { list, ref } } as unknown as PaseoApi, 'h');
   const views = createBrowserViews();
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
   const openPanel = vi.fn(), openSurface = vi.fn();
@@ -52,7 +57,7 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const agentNavigation = createAgentNavigation(client);
   cleanups.push(contributePills(client, directory, views, agentNavigation)); cleanups.push(() => directory.dispose()); cleanups.push(() => agentNavigation.dispose());
   await directory.start();
-  return { directory, views, buttons, list, openPanel, openSurface, agentNavigation, observer };
+  return { directory, views, buttons, list, openPanel, openSurface, agentNavigation, observer, ref, archive };
 }
 it('보이는 pill 3개도 구독 하나를 공유하고 같은 라벨을 다시 갱신하지 않음', async () => {
   const h = await setup();
@@ -196,6 +201,63 @@ it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우�
   await act(async () => input().props.onSubmitEditing()); expect(onNavigate).toHaveBeenCalledExactlyOnceWith('b');
   await act(async () => button('검색 지우기').props.onPress());
   expect(input().props.value).toBe(''); expect(onNavigate).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
+});
+it('행 닫기는 확인만 열고 취소하면 검색·정렬·스크롤·목록을 유지', async () => {
+  const h = await setup(), onNavigate = vi.fn();
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+  const store = h.views.forAgent('h', 'w', 'a');
+  await act(async () => store.set({ browserQuery: 'b', browserSort: 'created' }));
+  const list = renderer!.root.findByType('FlatList' as React.ElementType);
+  await act(async () => list.props.onScroll({ nativeEvent: { contentOffset: { y: 80 } } }));
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  await act(async () => button('b 대화 닫기').props.onPress());
+  expect(renderer!.root.findByType('Modal' as React.ElementType).props.title).toBe('대화 닫기');
+  expect(h.ref).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
+  const cancel = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
+    n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소'));
+  await act(async () => cancel.props.onPress());
+  expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(0);
+  expect(renderer!.root.findByType('FlatList' as React.ElementType)).toBe(list);
+  expect(store.getSnapshot()).toMatchObject({ browserQuery: 'b', browserSort: 'created' });
+  expect(store.browserScroll.modal).toBe(80); expect(list.props.data.map((agent: { id: string }) => agent.id)).toEqual(['b']);
+  expect(onNavigate).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
+});
+it('닫기 확인의 중복 클릭은 한 번 실행하고 성공 뒤에만 선택한 행을 제거', async () => {
+  const h = await setup(), onNavigate = vi.fn(); let finish!: () => void;
+  h.archive.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ archivedAt: '2026-10-07T07:00:00Z' }); }));
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  await act(async () => button('b 대화 닫기').props.onPress());
+  const confirm = button('선택한 대화 닫기 확인');
+  await act(async () => { confirm.props.onPress(); confirm.props.onPress(); });
+  expect(h.ref).toHaveBeenCalledExactlyOnceWith('b'); expect(h.archive).toHaveBeenCalledOnce();
+  expect(button('선택한 대화 닫기 확인').props.disabled).toBe(true);
+  expect(renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
+    n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소')).props.disabled).toBe(true);
+  await act(async () => renderer!.root.findByType('Modal' as React.ElementType).props.onOpenChange(false));
+  expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(1);
+  expect(h.directory.getSnapshot().agents).toHaveLength(2);
+  await act(async () => finish());
+  expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(0);
+  expect(renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id)).toEqual(['a']);
+  expect(onNavigate).not.toHaveBeenCalled(); expect(h.list).toHaveBeenCalledOnce();
+});
+it('compact 닫기 실패는 목록과 확인창을 유지하고 재시도하며 다른 대화로 이동하지 않음', async () => {
+  const h = await setup(), onNavigate = vi.fn();
+  h.archive.mockRejectedValueOnce(new Error('연결 오류'));
+  await act(async () => { renderer = create(<AgentContent {...props} layout={{ compact: true, platform: 'ios' }}
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  await act(async () => button('b 대화 닫기').props.onPress());
+  await act(async () => button('선택한 대화 닫기 확인').props.onPress());
+  expect(renderer!.root.find(n => n.type === ('Text' as React.ElementType) && n.props.accessibilityRole === 'alert').props.children)
+    .toContain('대화를 닫지 못했습니다');
+  expect(h.directory.getSnapshot().agents).toHaveLength(2); expect(button('선택한 대화 닫기 확인').props.disabled).toBe(false);
+  await act(async () => button('선택한 대화 닫기 확인').props.onPress());
+  expect(h.archive).toHaveBeenCalledTimes(2); expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(0);
+  expect(h.directory.getSnapshot().agents.map(agent => agent.id)).toEqual(['a']); expect(onNavigate).not.toHaveBeenCalled();
 });
 it('첫 목록 조회 실패는 로딩으로 남지 않고 다시 읽기로 복구', async () => {
   const snapshot = page([raw('a')]);

@@ -9,6 +9,7 @@ type Listener = () => void;
 type Delta = Agent | null;
 type StartResult = unknown;
 const MAX_AGENTS = 2000, PAGE_SIZE = 200;
+const actionError = (message: string) => Object.assign(new Error(message), { name: 'AgentActionError' });
 
 /** 페이지 snapshot은 유한하지만 이 버전의 update는 전체 필터를 관찰한다. */
 // 0.10.2의 client 번들은 Babel을 거치지 않는다. iOS Hermes가 읽을 수 있도록 함수로 생성한다.
@@ -30,6 +31,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   let batch: ReturnType<(typeof setTimeout)> | undefined;
   let watchTimer: ReturnType<(typeof setInterval)> | undefined;
   let snapshot: DirectorySnapshot = { agents: [], loaded: false, loading: true, partial: false, stale: false, error: null };
+  const archiving = new Map< string, Promise< void>>();
   const getSnapshot = () => snapshot;
   const subscribe = (listener: Listener) => {
     listeners.add(listener);
@@ -176,6 +178,27 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     })().finally(() => { retrying = undefined; });
     return retrying;
   };
+  // 닫기는 기존 연결의 공개 보관 API를 쓴다. 캐시만 믿고 다른 workspace의 대화를 닫지 않는다.
+  const archive = (id: string, workspaceId: string): Promise< void> => {
+    const active = agents.get(JSON.stringify([hostId, id]));
+    if (disposed || !snapshot.loaded || snapshot.stale) return Promise.reject(actionError('연결 상태를 확인한 뒤 다시 시도해 주세요'));
+    if (!active || active.archived || active.workspaceId !== workspaceId) return Promise.reject(actionError('이 대화는 현재 워크스페이스에 없습니다'));
+    const pending = archiving.get(id);
+    if (pending) return pending;
+    const task = (async () => {
+      const handle = api.agents.ref(id);
+      const result = await handle.refresh();
+      const current = result?.agent;
+      if (disposed || snapshot.stale) throw actionError('연결 상태를 확인한 뒤 다시 시도해 주세요');
+      if (!current || current.id !== id || current.workspaceId !== workspaceId || current.archivedAt) {
+        throw actionError('이 대화는 현재 워크스페이스에 없습니다');
+      }
+      await handle.archive();
+      if (!disposed) { remove(id); clearTimeout(batch); batch = undefined; emit(); }
+    })().finally(() => { archiving.delete(id); });
+    archiving.set(id, task);
+    return task;
+  };
   const dispose = async () => {
     if (disposed) return;
     disposed = true; generation++; lifetime.abort(); pageAbort?.abort();
@@ -185,6 +208,6 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     await retrying?.catch(() => {});
     agents.clear();
   };
-  return { hostId, getSnapshot, subscribe, watch, start, retry, dispose };
+  return { hostId, getSnapshot, subscribe, watch, start, retry, archive, dispose };
 }
 export type AgentDirectory = ReturnType< typeof createAgentDirectory>;

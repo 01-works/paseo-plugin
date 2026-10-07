@@ -38,15 +38,17 @@ afterEach(async () => {
   await act(async () => root?.unmount()); stop?.(); await directory?.dispose(); document.body.innerHTML = '';
   vi.useRealTimers();
 });
-it('React portal 본문·정렬·ID 복사·대화 이동은 바깥 pill action을 재실행하지 않음', async () => {
+it('React portal 본문·정렬·복사·닫기 확인과 취소·대화 이동은 바깥 pill action을 재실행하지 않음', async () => {
   vi.useFakeTimers();
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   document.body.innerHTML = '<div id="app"></div><div id="portal"></div>';
-  const snapshot = page([raw('a'), raw('b', { labels: { 'paseo.parent-agent-id': 'a' } })]);
+  const snapshot = page([raw('a'), raw('b', { labels: { 'paseo.parent-agent-id': 'a' } }), raw('c')]);
   const lease = { subscriptionId: 's', subscribe: observer => {
     observer.snapshot({ ...snapshot, subscriptionId: 's' }); return () => {};
   }, release: async () => {} };
-  directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }) } }, 'h');
+  const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
+  directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }),
+    ref: id => ({ refresh: async () => ({ agent: snapshot.entries.find(entry => entry.agent.id === id).agent, project: {} }), archive }) } }, 'h');
   const views = createBrowserViews(); let button;
   const openSurface = vi.fn();
   const client = { openSurface, addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
@@ -63,11 +65,21 @@ it('React portal 본문·정렬·ID 복사·대화 이동은 바깥 pill action�
   await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
   await click(document.querySelector('#portal [aria-label="최신 생성순"]'));
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
-  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '워크스페이스 · 2개'));
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '3개'));
   expect(press).toHaveBeenCalledTimes(1);
   expect(copyText).toHaveBeenLastCalledWith('b');
   expect(views.forAgent('h', 'w', 'a').getSnapshot().browserSort).toBe('created');
-  expect(document.getElementById('portal').textContent).toContain('워크스페이스 · 2개');
+  expect(document.getElementById('portal').textContent).toContain('3개');
+  await click(document.querySelector('#portal [aria-label="c 대화 닫기"]'));
+  expect(archive).not.toHaveBeenCalled();
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '취소'));
+  expect(document.querySelector('#portal [aria-label="선택한 대화 닫기 확인"]')).toBeNull();
+  await click(document.querySelector('#portal [aria-label="c 대화 닫기"]'));
+  await click(document.querySelector('#portal [aria-label="선택한 대화 닫기 확인"]'));
+  expect(archive).toHaveBeenCalledOnce();
+  expect(document.querySelector('#portal [aria-label="c 대화 닫기"]')).toBeNull();
+  expect(document.getElementById('portal').textContent).toContain('2개');
+  expect(press).toHaveBeenCalledTimes(1); expect(openSurface).not.toHaveBeenCalled();
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
   expect(openSurface).not.toHaveBeenCalled();
   await click(document.querySelector('#portal [aria-label="b"]'));

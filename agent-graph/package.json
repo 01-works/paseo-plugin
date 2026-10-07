@@ -1,7 +1,7 @@
 {
   "name": "paseo-agent-graph",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Paseo 워크스페이스의 최근 에이전트 탐색",
   "files": [
     "paseo-plugin.json",

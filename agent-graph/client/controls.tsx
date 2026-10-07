@@ -9,8 +9,8 @@ const CompactControls = createContext(false);
 export function ControlLayout({ compact, children }: { compact: boolean; children: ReactNode }) {
   return <CompactControls.Provider value={compact}>{children}</CompactControls.Provider>;
 }
-export function Button({ theme, children, onPress, active = false, disabled = false, label }: {
-  theme: PluginTheme; children: ReactNode; onPress: () => void; active?: boolean; disabled?: boolean; label?: string;
+export function Button({ theme, children, onPress, active = false, disabled = false, label, danger = false }: {
+  theme: PluginTheme; children: ReactNode; onPress: () => void; active?: boolean; disabled?: boolean; label?: string; danger?: boolean;
 }) {
   const c = theme.colors;
   const compact = useContext(CompactControls);
@@ -20,7 +20,7 @@ export function Button({ theme, children, onPress, active = false, disabled = fa
       justifyContent: 'center', alignItems: 'center', borderRadius: spacing.gap,
       backgroundColor: active || pressed ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1,
     })}>
-    <Text style={{ color: active ? c.accent : c.foreground }}>{children}</Text>
+    <Text style={{ color: danger ? c.statusDanger : active ? c.accent : c.foreground }}>{children}</Text>
   </Pressable>;
 }
 export function IconButton({ theme, name, label, onPress, active = false, disabled = false }: {
