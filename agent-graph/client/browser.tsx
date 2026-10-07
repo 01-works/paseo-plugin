@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { copyText, FlatList, Icon, Modal, TextInput, useToast } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 import { agentTime, browserTime, workspaceAgents } from '../shared/browser';
 import type { AgentDirectory } from './directory';
 import type { BrowserViewState } from './view-state';
 import type { Agent } from '../shared/types';
-import { Button, ControlLayout, IconButton, Status } from './controls';
+import { Button, ControlLayout, IconButton, RowButton, Status } from './controls';
 import { spacing } from './spacing';
 export function AgentBrowser(props: PluginHostProps & {
   directory: AgentDirectory; store: BrowserViewState; workspaceId: string; agentId: string;
@@ -19,6 +19,7 @@ export function AgentBrowser(props: PluginHostProps & {
   const [closeTarget, setCloseTarget] = useState<Agent | null>(null);
   const [closingId, setClosingId] = useState< string | null>(null);
   const [closeError, setCloseError] = useState< string | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
   const closeBusy = useRef(false), mounted = useRef(true);
   const all = useMemo(() => workspaceAgents(snapshot.agents, workspaceId, state.browserSort),
     [snapshot.agents, workspaceId, state.browserSort]);
@@ -61,13 +62,15 @@ export function AgentBrowser(props: PluginHostProps & {
     <View style={{ gap: spacing.gap }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset,
-          borderWidth: 1, borderColor: c.border, borderRadius: spacing.gap }}>
+          borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, borderRadius: spacing.gap }}>
           <Icon name="Search" size={16} color={c.foregroundMuted} />
           <TextInput accessibilityLabel="워크스페이스 에이전트 검색" placeholder="이름 또는 ID 검색" value={state.browserQuery}
             onChangeText={browserQuery => store.set({ browserQuery })} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
+            onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
             onSubmitEditing={() => { if (rows.length === 1) navigate(rows[0].id); }}
             placeholderTextColor={c.foregroundMuted} selectionColor={c.accent}
-            style={{ flex: 1, minWidth: 0, minHeight: layout.compact ? 44 : 40, padding: 0, color: c.foreground }} />
+            style={{ flex: 1, minWidth: 0, minHeight: layout.compact ? 44 : 40, padding: 0, color: c.foreground,
+              outlineWidth: layout.platform === 'web' && searchFocused ? 0 : undefined }} />
           {state.browserQuery ? <IconButton theme={theme} name="X" label="검색 지우기" onPress={() => store.set({ browserQuery: '' })} /> : null}
         </View>
         {onLarge ? <IconButton theme={theme} name="Maximize2" label="크게 보기" onPress={onLarge} /> : null}
@@ -107,11 +110,10 @@ export function AgentBrowser(props: PluginHostProps & {
       renderItem={({ item }) => <View style={{ height: 80, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.inset,
         borderBottomWidth: 1, borderColor: c.border, backgroundColor: item.id === agentId ? c.surface1 : c.surface0 }}>
         <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, backgroundColor: item.id === agentId ? c.accent : 'transparent' }} />
-        <Pressable accessibilityRole="button" accessibilityLabel={item.title + (item.id === agentId ? ' · 현재 대화' : '')}
-          accessibilityHint="대화를 엽니다. 길게 누르면 에이전트 ID를 복사합니다" disabled={!onNavigate}
+        <RowButton theme={theme} label={item.title + (item.id === agentId ? ' · 현재 대화' : '')}
+          hint="대화를 엽니다. 길게 누르면 에이전트 ID를 복사합니다" disabled={!onNavigate}
           onPress={() => navigate(item.id)} onLongPress={() => { void copyId(item.id); }}
-          style={({ pressed }) => ({ flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center', gap: spacing.small,
-            paddingRight: spacing.gap, paddingVertical: spacing.gap, backgroundColor: pressed ? c.surface2 : 'transparent' })}>
+        >
           <Text numberOfLines={2} style={{ color: c.foreground, fontWeight: item.id === agentId ? '600' : '400' }}>{item.title}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
             <Status state={item.state} theme={theme} stale={snapshot.stale} />
@@ -119,11 +121,11 @@ export function AgentBrowser(props: PluginHostProps & {
             <Text numberOfLines={1} accessibilityLabel={browserTime(agentTime(item, state.browserSort))}
               style={{ flex: 1, minWidth: 0, textAlign: 'right', color: c.foregroundMuted }}>{browserTime(agentTime(item, state.browserSort), layout.compact)}</Text>
           </View>
-        </Pressable>
-        <View style={{ flexDirection: 'row' }}>
+        </RowButton>
+        <View style={{ flexDirection: 'row', gap: spacing.small }}>
           <IconButton theme={theme} name="Copy" label={item.id + ' ID 복사'} onPress={() => { void copyId(item.id); }} />
           <IconButton theme={theme} name={closingId === item.id ? 'LoaderCircle' : 'X'} label={item.title + ' 대화 닫기'}
-            disabled={snapshot.stale || closingId !== null} onPress={() => requestClose(item)} />
+            danger hint="확인 후 대화를 보관함으로 이동합니다" disabled={snapshot.stale || closingId !== null} onPress={() => requestClose(item)} />
         </View>
       </View>}
     />

@@ -23,6 +23,7 @@ import { AgentSurface } from '../client/surface';
 import { createAgentNavigation, browserSurfaceId } from '../client/navigation';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 import { Platform } from 'react-native';
+import { IconButton } from '../client/controls';
 const palette = { foreground: '#eee', foregroundMuted: '#aaa', surface0: '#111', surface1: '#222', surface2: '#333', border: '#444',
   accent: '#88c', statusSuccess: '#0a0', statusWarning: '#aa0', statusDanger: '#a00' };
 const props = { theme: { colors: palette }, host: { id: 'h', label: '호스트' }, layout: { compact: false, platform: 'web' }, size: 14, color: '#aaa' } as PluginButtonIconProps;
@@ -201,6 +202,45 @@ it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우�
   await act(async () => input().props.onSubmitEditing()); expect(onNavigate).toHaveBeenCalledExactlyOnceWith('b');
   await act(async () => button('검색 지우기').props.onPress());
   expect(input().props.value).toBe(''); expect(onNavigate).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
+});
+it('호버와 포커스는 피드백만 표시하고 이동·복사·닫기·재조회를 실행하지 않음', async () => {
+  const h = await setup(), onNavigate = vi.fn();
+  const copies = vi.mocked(copyText).mock.calls.length;
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  const list = renderer!.root.findByType('FlatList' as React.ElementType);
+  for (const label of ['a ID 복사', 'a 대화 닫기', 'b', '최신 생성순']) {
+    await act(async () => { button(label).props.onHoverIn(); button(label).props.onFocus(); });
+    expect(button(label).props.style({ pressed: false }).backgroundColor).toBe(palette.surface2);
+    await act(async () => { button(label).props.onHoverOut(); button(label).props.onBlur(); });
+    expect(button(label).props.style({ pressed: false }).borderColor).toBe('transparent');
+    // 테마 포커스가 없는 동안은 호스트가 복원하는 기본 포커스를 가리지 않는다.
+    expect(button(label).props.style({ pressed: false }).outlineWidth).toBeUndefined();
+  }
+  const input = renderer!.root.findByType('TextInput' as React.ElementType);
+  await act(async () => input.props.onFocus());
+  await act(async () => input.props.onBlur());
+  expect(renderer!.root.findByType('FlatList' as React.ElementType)).toBe(list);
+  expect(onNavigate).not.toHaveBeenCalled(); expect(h.ref).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
+  expect(copyText).toHaveBeenCalledTimes(copies); expect(h.list).toHaveBeenCalledOnce();
+  expect(h.views.forAgent('h', 'w', 'a').getSnapshot().browserSort).toBe('updated');
+});
+it('닫기가 비활성화되면 호버·포커스 표시를 지우고 다시 활성화해도 남기지 않음', async () => {
+  const onPress = vi.fn();
+  const control = (disabled: boolean) => <IconButton theme={props.theme} name="X" label="대화 닫기" danger disabled={disabled} onPress={onPress} />;
+  await act(async () => { renderer = create(control(false)); });
+  const button = () => renderer!.root.findByType('Pressable' as React.ElementType);
+  await act(async () => { button().props.onHoverIn(); button().props.onFocus(); });
+  expect(renderer!.root.findByType('Icon' as React.ElementType).props.color).toBe(palette.statusDanger);
+  await act(async () => renderer!.update(control(true)));
+  expect(button().props.disabled).toBe(true);
+  await act(async () => { button().props.onHoverIn(); button().props.onFocus(); });
+  expect(renderer!.root.findByType('Icon' as React.ElementType).props.color).toBe(palette.foregroundMuted);
+  await act(async () => renderer!.update(control(false)));
+  expect(button().props.style({ pressed: false }).backgroundColor).toBe('transparent');
+  expect(button().props.style({ pressed: false }).borderColor).toBe('transparent');
+  expect(onPress).not.toHaveBeenCalled();
 });
 it('행 닫기는 확인만 열고 취소하면 검색·정렬·스크롤·목록을 유지', async () => {
   const h = await setup(), onNavigate = vi.fn();
