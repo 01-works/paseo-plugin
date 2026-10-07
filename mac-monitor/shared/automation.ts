@@ -2,6 +2,7 @@ import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 
 export const AUTO_MODEL = 'gpt-6-luna';
+export const REVIEW_MAX_AGE_MS = 15 * 60_000;
 export const automaticTargetSchema = z.object({
   pid: z.number().int().positive(), start: z.string().max(20).regex(/^\d+$/),
   group: z.string().max(256), name: z.string().max(256), path: z.string().max(511),
@@ -18,11 +19,20 @@ export const automationEventSchema = z.object({
 export const automationStatusSchema = z.object({
   enabled: z.boolean(), phase: z.enum(['off', 'idle', 'watching', 'sampling', 'reviewing', 'cooldown', 'error']),
   model: z.literal(AUTO_MODEL), targetCount: z.number().int().nonnegative(),
+  pendingReviewCount: z.number().int().nonnegative().optional(),
   lastEvent: automationEventSchema.nullable(),
+});
+export const reviewDecisionSchema = z.enum(['normal', 'observe', 'terminate']);
+export const reviewedProcessSchema = z.object({
+  at: z.number().finite().nonnegative(), target: automaticTargetSchema.extend({ path: z.string().max(511).nullable() }),
+  decision: reviewDecisionSchema, reason: z.string().min(1).max(240),
+  memoryBytes: z.number().finite().nonnegative(), growthBytes: z.number().finite().nonnegative(),
+  outcome: z.enum(['pending', 'requested', 'sent', 'refused', 'cancelled', 'exited', 'running', 'unknown']),
 });
 export const automationReportSchema = z.object({
   config: automationConfigSchema, targets: z.array(automaticTargetSchema).max(32),
   status: automationStatusSchema, events: z.array(automationEventSchema).max(20),
+  reviews: z.array(reviewedProcessSchema).max(4).default([]),
 });
 export const automationReportRpc = defineRpc({ name: 'mac-monitor.automation.get', input: z.object({}), output: automationReportSchema });
 export const automationConfigureRpc = defineRpc({ name: 'mac-monitor.automation.configure', input: automationConfigSchema, output: automationReportSchema });
@@ -33,8 +43,11 @@ export const automationTargetInputSchema = z.discriminatedUnion('allow', [
 export const automationTargetRpc = defineRpc({ name: 'mac-monitor.automation.target',
   input: automationTargetInputSchema,
   output: z.object({ changed: z.boolean(), error: z.string().optional() }) });
+export const reviewConfirmInputSchema = automaticTargetSchema.extend({ reviewedAt: z.number().finite().nonnegative() }).strict();
+export const reviewConfirmRpc = defineRpc({ name: 'mac-monitor.automation.confirm', input: reviewConfirmInputSchema,
+  output: z.object({ sent: z.boolean(), error: z.string().optional() }) });
 export const reviewResultSchema = z.object({
-  decisions: z.array(z.object({ key: z.string().max(80), decision: z.enum(['normal', 'observe', 'terminate']), reason: z.string().min(1).max(240) }).strict()).max(4),
+  decisions: z.array(z.object({ key: z.string().max(80), decision: reviewDecisionSchema, reason: z.string().min(1).max(240) }).strict()).max(4),
 }).strict();
 export type AutomationConfig = z.infer<typeof automationConfigSchema>;
 export type AutomaticTarget = z.infer<typeof automaticTargetSchema>;
@@ -42,6 +55,8 @@ export type AutomationTargetInput = z.infer<typeof automationTargetInputSchema>;
 export type AutomationEvent = z.infer<typeof automationEventSchema>;
 export type AutomationStatus = z.infer<typeof automationStatusSchema>;
 export type ReviewResult = z.infer<typeof reviewResultSchema>;
+export type ReviewedProcess = z.infer<typeof reviewedProcessSchema>;
+export type ReviewConfirmInput = z.infer<typeof reviewConfirmInputSchema>;
 export const processKey = (p: { pid: number; start: string }) => `${p.pid}:${p.start}`;
 
 export function automaticProtection(p: { group: string; name: string; path?: string | null }): string | null {

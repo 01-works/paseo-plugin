@@ -15,7 +15,14 @@ try {
   if (process.argv.includes('--enable')) report = await client.invokePluginRpc('mac-monitor', 'mac-monitor.automation.configure', { ...report.config, enabled: true });
   const snapshot = await client.invokePluginRpc('mac-monitor', 'mac-monitor.snapshot.get', { includeProcesses: false });
   assert.equal(report.status.model, 'gpt-6-luna'); assert.equal(snapshot.automation.model, 'gpt-6-luna');
-  const result = { config: report.config, status: report.status, targetCount: report.targets.length, events: report.events,
+  assert.ok(Array.isArray(report.reviews) && report.reviews.length <= 4);
+  let confirmation;
+  if (process.argv.includes('--check-confirm')) {
+    confirmation = await client.invokePluginRpc('mac-monitor', 'mac-monitor.automation.confirm', {
+      pid: 2147483647, start: '0', group: 'mac-monitor-validation', name: 'mac-monitor-validation', path: '/nonexistent/mac-monitor-validation-worker', reviewedAt: 0 });
+    assert.equal(confirmation.sent, false); assert.ok(confirmation.error);
+  }
+  const result = { config: report.config, status: report.status, targetCount: report.targets.length, reviewCount: report.reviews.length, events: report.events, confirmation,
     snapshot: { seq: snapshot.seq, status: snapshot.status, pressure: snapshot.pressure, processesStatus: snapshot.processesStatus } };
   writeFileSync('/tmp/mac-monitor-automation-live.json', JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));

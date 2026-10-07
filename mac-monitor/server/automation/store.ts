@@ -1,16 +1,17 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { automationConfigSchema, automaticTargetSchema, automationEventSchema } from '../../shared/automation';
+import { automationConfigSchema, automaticTargetSchema, automationEventSchema, reviewedProcessSchema } from '../../shared/automation';
 import { paseoHome } from '../host-info';
 
 const stateSchema = z.object({
   v: z.literal(1), config: automationConfigSchema,
   targets: z.array(automaticTargetSchema).max(32), events: z.array(automationEventSchema).max(20),
   reviewTimes: z.array(z.number().finite().nonnegative()).max(6), lastReviewAt: z.number().finite().nonnegative().nullable(),
+  reviews: z.array(reviewedProcessSchema).max(4).default([]),
 });
 export type AutomationState = z.infer<typeof stateSchema>;
-export const initialState = (): AutomationState => ({ v: 1, config: automationConfigSchema.parse({}), targets: [], events: [], reviewTimes: [], lastReviewAt: null });
+export const initialState = (): AutomationState => ({ v: 1, config: automationConfigSchema.parse({}), targets: [], events: [], reviewTimes: [], lastReviewAt: null, reviews: [] });
 export function automationFile() { return path.join(paseoHome(), 'mac-monitor', 'automation.json'); }
 export async function readAutomation(file = automationFile()): Promise<AutomationState> {
   try {

@@ -54,15 +54,15 @@ it('worker 자동 관리 선택은 확인 후에만 해당 PID·시작 시각으
   const worker = { ...entry, group: 'worker', name: 'worker', path: '/opt/dev/worker' };
   rpc.list.mockResolvedValue({ status: 'ok', entries: [worker] }); rpc.target.mockResolvedValue({ changed: true });
   await act(async () => { renderer = create(<QueryClientProvider client={client}><ProcessPanel group="worker" theme={theme} onBack={() => {}} /></QueryClientProvider>); });
-  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 선택' }).props.onPress());
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 종료 허용 선택' }).props.onPress());
   expect(rpc.target).not.toHaveBeenCalled(); expect(JSON.stringify(renderer!.toJSON())).toContain('/opt/dev/worker');
-  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 관리 확인' }).props.onPress());
+  await act(async () => renderer!.root.findByProps({ accessibilityLabel: 'PID 123 자동 종료 허용 확인' }).props.onPress());
   expect(rpc.target).toHaveBeenCalledExactlyOnceWith({ pid: entry.pid, start: entry.start, group: 'worker', name: worker.name, path: worker.path, allow: true });
   expect(rpc.terminate).not.toHaveBeenCalled(); client.clear();
 });
 it('보호된 Codex 프로세스에는 자동 관리 허용 버튼을 표시하지 않음', async () => {
   const client = new QueryClient(); rpc.list.mockResolvedValue({ status: 'ok', entries: [{ ...entry, path: '/opt/dev/codex' }] });
   await act(async () => { renderer = create(<QueryClientProvider client={client}><ProcessPanel group="codex" theme={theme} onBack={() => {}} /></QueryClientProvider>); });
-  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'PID 123 자동 관리 선택' })).toHaveLength(0);
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'PID 123 자동 종료 허용 선택' })).toHaveLength(0);
   expect(renderer!.root.findAllByProps({ accessibilityLabel: 'PID 123 종료 선택' })).toHaveLength(1); client.clear();
 });

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryGuardian, type GuardCollector } from '../server/automation/guardian';
 import { growing, POLICY, type Point } from '../server/automation/policy';
 import { initialState, readAutomation, writeAutomation } from '../server/automation/store';
-import { automaticProtection, automationTargetInputSchema, processKey, type ReviewResult } from '../shared/automation';
+import { automaticProtection, automationTargetInputSchema, processKey, REVIEW_MAX_AGE_MS, type ReviewResult } from '../shared/automation';
 import { emptySnapshot } from '../shared/compute';
 import type { ProcessInfo, Snapshot } from '../shared/contracts';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -25,9 +25,9 @@ function setup(options: { allowed?: boolean; result?: ReviewResult; deferred?: b
   let observation = { snapshot: structuredClone(base), members: [{ ...processInfo }] };
   const state = options.state ?? initialState(); state.config.enabled = true;
   if (options.allowed !== false) state.targets = [target];
-  const interest = vi.fn(), terminate = vi.fn(async () => ({ sent: true })), inspect = vi.fn(async (): Promise<ProcessState> => 'exited'), validate = vi.fn(async () => ({ allowed: true, error: undefined as string | undefined }));
+  const interest = vi.fn(), terminate = vi.fn(async () => ({ sent: true })), manual = vi.fn(async () => ({ sent: true })), inspect = vi.fn(async (): Promise<ProcessState> => 'exited'), validate = vi.fn(async () => ({ allowed: true, error: undefined as string | undefined }));
   const collector: GuardCollector = { subscribe: () => () => {}, setAutomaticInterest: interest,
-    observeAutomation: () => observation, terminateAutomatically: terminate, inspectAutomatically: inspect, validateAutomatically: validate };
+    observeAutomation: () => observation, terminateAutomatically: terminate, terminate: manual, inspectAutomatically: inspect, validateAutomatically: validate };
   const result = options.result ?? { decisions: [{ key: processKey(target), decision: 'terminate', reason: '허용한 worker의 지속 증가' }] };
   const reviewer = vi.fn((_input, signal: AbortSignal) => options.deferred ? new Promise<ReviewResult>(r => { finish = r; signal.addEventListener('abort', () => r(result), { once: true }); }) : Promise.resolve(result));
   const writes: ReturnType<typeof initialState>[] = [];
@@ -46,7 +46,7 @@ function setup(options: { allowed?: boolean; result?: ReviewResult; deferred?: b
     for (let i = 0; i < 31; i++) tick(2000, o => { o.members[0].memoryBytes += 8 * 1024 ** 2; });
     await flush();
   };
-  return { guard, tick, pressureAndGrowth, reviewer, terminate, interest, inspect, validate, writes, audit, observation, finish: (r = result) => finish(r) };
+  return { guard, tick, pressureAndGrowth, reviewer, terminate, manual, interest, inspect, validate, writes, audit, observation, finish: (r = result) => finish(r) };
 }
 afterEach(async () => { await Promise.all(guards.splice(0).map(g => g.stop())); await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 describe('자동 관리 추세와 보호 규칙', () => {
@@ -92,6 +92,9 @@ describe('자동 관리 추세와 보호 규칙', () => {
   it('허용 목록이 비어 있으면 리뷰만, 모델의 terminate에도 신호 없음', async () => {
     const h = setup({ allowed: false }); await h.guard.start(); await h.pressureAndGrowth();
     expect(h.reviewer).toHaveBeenCalledOnce(); expect(h.terminate).not.toHaveBeenCalled();
+    expect(h.manual).not.toHaveBeenCalled(); expect(h.guard.report().reviews).toHaveLength(1);
+    expect(h.guard.report().reviews[0]).toMatchObject({ target, decision: 'terminate', outcome: 'pending' });
+    expect(h.guard.status().pendingReviewCount).toBe(1);
   });
   it.each(['normal', 'unknown', 'stale', 'node', 'gap'] as const)('압력·수집 단절 %s는 지속 시간을 초기화', async mode => {
     const h = setup(); await h.guard.start(); h.guard.accept(); for (let i = 0; i < 50; i++) h.tick();
@@ -240,6 +243,102 @@ describe('자동 관리 추세와 보호 규칙', () => {
     }
   });
 });
+describe('리뷰 후보의 사용자 확인 종료', () => {
+  const reviewed = async (decision: 'normal' | 'observe' | 'terminate' = 'terminate') => {
+    const h = setup({ allowed: false, result: { decisions: [{ key: processKey(target), decision, reason: '작업 목적을 확인한 뒤 판단하세요.' }] } });
+    await h.guard.start(); await h.pressureAndGrowth();
+    return { ...h, input: { ...target, reviewedAt: h.guard.report().reviews[0].at } };
+  };
+  it('리뷰·선택만으로 종료하지 않고 확인 후 수동 SIGTERM 한 번, 로그와 10초 후 조회', async () => {
+    const h = await reviewed();
+    expect(h.manual).not.toHaveBeenCalled(); expect(h.terminate).not.toHaveBeenCalled();
+    expect(await h.guard.confirm(h.input)).toEqual({ sent: true });
+    expect(h.manual).toHaveBeenCalledExactlyOnceWith({ pid: target.pid, start: target.start, group: target.group });
+    expect(h.terminate).not.toHaveBeenCalled(); expect(h.guard.report().reviews[0].outcome).toBe('sent');
+    expect(h.guard.status().pendingReviewCount).toBe(0);
+    for (let i = 0; i < 6; i++) h.tick(2000, o => { o.snapshot.pressure = 'normal'; });
+    await flush(); expect(h.inspect).toHaveBeenCalledOnce(); expect(h.guard.report().reviews[0].outcome).toBe('exited');
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'exited']);
+    expect(h.audit.slice(1).every(r => r.mode === 'confirmed' && r.reviewedAt === h.input.reviewedAt)).toBe(true);
+  });
+  it('관찰 후보도 사용자 확인으로 종료 가능하며 정상 판정은 차단', async () => {
+    for (const decision of ['observe', 'normal'] as const) {
+      const h = await reviewed(decision); const result = await h.guard.confirm(h.input);
+      expect(result.sent).toBe(decision === 'observe'); expect(h.manual.mock.calls.length).toBe(decision === 'observe' ? 1 : 0);
+    }
+  });
+  it('압력 회복이나 리뷰 꺼짐 후에도 최신 대상의 명시 확인은 가능', async () => {
+    const h = await reviewed(); h.tick(2000, o => { o.snapshot.pressure = 'normal'; });
+    await h.guard.configure({ ...h.guard.report().config, enabled: false });
+    expect((await h.guard.confirm(h.input)).sent).toBe(true); expect(h.manual).toHaveBeenCalledOnce();
+  });
+  it.each(['start', 'path', 'name', 'group', 'reviewedAt', 'expired', 'future', 'stale', 'processes', 'node', 'missing'] as const)('%s 불일치·실패는 신호 차단', async mode => {
+    const h = await reviewed();
+    if (mode === 'reviewedAt') h.input.reviewedAt--;
+    else if (mode === 'expired') h.tick(REVIEW_MAX_AGE_MS + 1);
+    else if (mode === 'future') h.input.reviewedAt++;
+    else if (mode === 'stale') h.observation.snapshot.ageMs = 6000;
+    else if (mode === 'processes') h.observation.snapshot.processesStatus = 'off';
+    else if (mode === 'node') h.observation.snapshot.helperMode = 'node';
+    else if (mode === 'missing') h.observation.members = [];
+    else h.observation.members[0][mode] = `changed-${mode}`;
+    expect((await h.guard.confirm(h.input)).sent).toBe(false); expect(h.manual).not.toHaveBeenCalled();
+  });
+  it('저장·로그 대기 중 동시 확인이나 완료 후 재확인은 한 번만 전송', async () => {
+    const h = await reviewed();
+    const [first, second] = await Promise.all([h.guard.confirm(h.input), h.guard.confirm(h.input)]);
+    expect(first.sent).toBe(true); expect(second.sent).toBe(false);
+    expect((await h.guard.confirm(h.input)).sent).toBe(false); expect(h.manual).toHaveBeenCalledOnce();
+  });
+  it.each(['write', 'audit', 'changed'] as const)('확인 종료의 %s 실패는 신호를 보내지 않음', async mode => {
+    let fail = false; let h: ReturnType<typeof setup>;
+    h = setup({ allowed: false, write: async () => {
+      if (fail && mode === 'write') throw new Error('기록 실패');
+      if (fail && mode === 'changed') h.observation.members[0].path = '/opt/changed/worker';
+    }, audit: async () => { if (fail && mode === 'audit') throw new Error('로그 실패'); } });
+    await h.guard.start(); await h.pressureAndGrowth(); fail = true;
+    expect((await h.guard.confirm({ ...target, reviewedAt: h.guard.report().reviews[0].at })).sent).toBe(false);
+    expect(h.manual).not.toHaveBeenCalled(); expect(h.terminate).not.toHaveBeenCalled();
+  });
+  it('리뷰 중에는 이전 후보 확인을 거절하며 새 리뷰 시각으로 대상을 바꾸지 않음', async () => {
+    const state = initialState();
+    state.reviews = [{ at: 1_000_000, target, decision: 'observe', reason: '이전 검토', memoryBytes: GiB, growthBytes: GiB, outcome: 'pending' }];
+    const h = setup({ allowed: false, deferred: true, state }); await h.guard.start(); await h.pressureAndGrowth();
+    const input = { ...target, reviewedAt: 1_000_000 };
+    expect(h.reviewer).toHaveBeenCalledOnce(); expect((await h.guard.confirm(input)).sent).toBe(false);
+    h.finish(); await flush(); expect(h.guard.report().reviews[0].at).not.toBe(input.reviewedAt);
+    expect((await h.guard.confirm(input)).sent).toBe(false); expect(h.manual).not.toHaveBeenCalled();
+  });
+  it('네이티브 거절은 실패로 기록하고 종료 확인이나 재시도를 만들지 않음', async () => {
+    const h = await reviewed(); h.manual.mockResolvedValueOnce({ sent: false } as never);
+    expect((await h.guard.confirm(h.input)).sent).toBe(false);
+    for (let i = 0; i < 6; i++) h.tick(); await flush();
+    expect(h.guard.report().reviews[0].outcome).toBe('refused'); expect(h.inspect).not.toHaveBeenCalled();
+    expect(h.audit.at(-1)?.kind).toBe('refused'); expect(h.manual).toHaveBeenCalledOnce();
+  });
+  it('수동 요청의 응답 대기 중 shutdown도 결과·미확인을 기록하고 한 번만 전송', async () => {
+    const h = await reviewed(); let finish!: (result: { sent: boolean }) => void;
+    h.manual.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const action = h.guard.confirm(h.input); await flush();
+    const stopping = h.guard.stop(); finish({ sent: true }); await action; await stopping;
+    expect(h.audit.map(r => r.kind)).toEqual(['review', 'planned', 'sent', 'unknown']);
+    expect(h.guard.report().reviews[0].outcome).toBe('unknown'); expect(h.manual).toHaveBeenCalledOnce();
+  });
+  it('전송 실패는 미확인으로 보존하며 재시도하지 않음', async () => {
+    const h = await reviewed(); h.manual.mockRejectedValueOnce(new Error('헬퍼 응답 실패'));
+    expect((await h.guard.confirm(h.input)).sent).toBe(false);
+    expect(h.guard.report().reviews[0].outcome).toBe('unknown'); expect(h.audit.at(-1)?.kind).toBe('unknown');
+    expect((await h.guard.confirm(h.input)).sent).toBe(false); expect(h.manual).toHaveBeenCalledOnce();
+  });
+  it.each(['requested', 'sent'] as const)('재시작된 %s 시도는 확인 불가로 보존하고 재전송 없음', async outcome => {
+    const state = initialState();
+    state.reviews = [{ at: 1_000_000, target, decision: 'observe', reason: '이전 검토', memoryBytes: GiB, growthBytes: GiB, outcome }];
+    const h = setup({ allowed: false, state }); await h.guard.start();
+    expect(h.guard.report().reviews[0].outcome).toBe('unknown');
+    expect((await h.guard.confirm({ ...target, reviewedAt: 1_000_000 })).sent).toBe(false);
+    expect(h.manual).not.toHaveBeenCalled(); expect(h.terminate).not.toHaveBeenCalled();
+  });
+});
 it('자동 관리 설정은 별도 0600 파일에 보존하고 손상·과대 파일은 중단', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'mac-monitor-automation-')); directories.push(directory);
   const file = path.join(directory, 'automation.json');
@@ -247,6 +346,8 @@ it('자동 관리 설정은 별도 0600 파일에 보존하고 손상·과대 �
   const state = initialState(); state.config.enabled = true; state.targets = [target];
   await writeAutomation(state, file); expect(await readAutomation(file)).toEqual(state);
   expect((await stat(file)).mode & 0o777).toBe(0o600); expect(await readFile(file, 'utf8')).toContain('worker');
+  const { reviews, ...legacy } = state; await writeFile(file, JSON.stringify(legacy));
+  expect((await readAutomation(file)).reviews).toEqual([]); expect((await readAutomation(file)).targets).toEqual(state.targets);
   await writeFile(file, 'broken'); await expect(readAutomation(file)).rejects.toThrow('자동 관리 설정');
   await writeFile(file, ' '.repeat(64 * 1024 + 1)); await expect(readAutomation(file)).rejects.toThrow('자동 관리 설정');
 });

@@ -1,4 +1,4 @@
-import { defineRpc, defineSettings } from '@getpaseo/plugin';
+import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 import { automationStatusSchema } from './automation';
 
@@ -40,7 +40,7 @@ export const snapshotSchema = z.object({
   automation: automationStatusSchema.optional(),
 });
 export const snapshotRpc = defineRpc({ name: 'mac-monitor.snapshot.get', input: z.object({ includeProcesses: z.boolean() }), output: snapshotSchema });
-export const hostInfoSchema = z.object({ hostname: z.string(), serverId: z.string().optional(), platform: z.string(), helperMode: z.enum(['native', 'node', 'unsupported']), version: z.string() });
+export const hostInfoSchema = z.object({ hostname: z.string(), platform: z.string(), helperMode: z.enum(['native', 'node', 'unsupported']), version: z.string() });
 export const hostInfoRpc = defineRpc({ name: 'mac-monitor.host.info', input: z.object({}), output: hostInfoSchema });
 export const processListRpc = defineRpc({ name: 'mac-monitor.processes.list', input: z.object({ group: z.string().max(256) }),
   output: z.object({ status: snapshotSchema.shape.processesStatus, sampledAt: nullable, entries: z.array(processSchema) }) });
@@ -50,8 +50,7 @@ export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate'
   input: z.object({ group: z.string().max(256), targets: z.array(processSchema.pick({ pid: true, start: true })).min(1).max(4096)
     .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
   output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
-export const settings = defineSettings({ id: 'monitor', scope: 'host', version: 1, schema: z.object({ experimentalFleet: z.boolean().default(true) }) });
-export const VERSION = '0.2.1';
+export const VERSION = '0.3.0';
 export type RawSample = z.infer<typeof rawSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type HostInfo = z.infer<typeof hostInfoSchema>;
