@@ -38,6 +38,8 @@ export class Observation {
 export function eligibleMetadata(m: ProcessMetadata): boolean {
   if (m.protected || !m.path || !m.args || m.cpuPercent === null || m.cpuPercent > MAX_CPU_PERCENT) return false;
   if (/^(?:\/System\/|\/usr\/(?:libexec|sbin)\/)/.test(m.path)) return false;
+  // Claude의 네이티브 설치는 실행 파일명이 버전 번호일 수 있다.
+  if (/^(?:paseo|codex|claude)$/i.test(m.group) || /(?:^|\/)\.?claude\/versions\//i.test(m.path)) return false;
   return !/^(?:macmon-helper|codex|claude|paseo|login|launchd)$/i.test(path.basename(m.path))
     && !/(?:^|\/)(?:Paseo|Codex|Claude|Terminal|iTerm|iTerm2)\.app\//i.test(m.path);
 }

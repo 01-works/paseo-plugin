@@ -147,10 +147,28 @@ describe('캐시 및 헬퍼 수명주기', () => {
       await vi.advanceTimersByTimeAsync(29_999);expect(c.snapshot().processesStatus).toBe('warming');
       await vi.advanceTimersByTimeAsync(1);expect(c.snapshot().processesStatus).toBe('off');
     } finally { vi.useRealTimers(); }
-    await pause(40);expect(await readFile(file,'utf8')).toBe('procs on\nprocs off\n');
+    await pause(40);expect(await readFile(file,'utf8')).toBe('history on\nprocs on\nprocs off\n');
     expect(c.snapshot(true).processesStatus).toBe('warming');
   });
   it('macOS 아닌 경우 자식 실행 없음', async () => {
     const c = fake('throw Error("실행하면 안 됨")', { platform: 'linux' });await c.start();expect(c.snapshot().status).toBe('unsupported');expect(c.mode).toBe('unsupported');
+  });
+  it('숫자 이력은 서버 캐시만 읽고 부분 파싱 실패가 시스템 수치를 훼손하지 않음', async () => {
+    let wall = 1_790_000_000_000, mono = 0;
+    const history = { entries: [{ pid: 123, start: '12345678901234567', cpuTimeMs: 1000, memoryBytes: 16 * 1024 ** 2, readBytes: 10, writtenBytes: 20 }], coreCount: 10, truncated: false };
+    const payload = { ...raw, t: wall, mono, history };
+    const code = `const raw=${JSON.stringify(payload)};console.log(JSON.stringify(raw));require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+      if(line==='procs on'){raw.seq++;raw.t+=60000;raw.mono+=60000;raw.sys.cpu.user+=10;raw.history.entries[0].cpuTimeMs+=600;console.log(JSON.stringify(raw));}
+      if(line==='inspection on'){raw.seq++;raw.sys.cpu.user+=10;raw.history.entries[0].start='invalid';console.log(JSON.stringify(raw));}
+    });`;
+    const c = fake(code, { now: () => wall, monotonicNow: () => mono }); await c.start(); await until(() => c.snapshot().seq === 0);
+    expect(c.processHistory(123, history.entries[0].start)).toBeNull();
+    wall += 60_000; mono += 60_000; c.snapshot(true); await until(() => c.snapshot().seq === 1);
+    const summary = c.processHistory(123, history.entries[0].start); expect(summary?.observedSeconds).toBe(60); expect(summary?.averageCpuPercent).toBe(0.1);
+    for (let i = 0; i < 100; i++) expect(c.processHistory(123, history.entries[0].start)).toEqual(summary);
+    expect(c.snapshot().seq).toBe(1); expect(c.snapshot()).not.toHaveProperty('history');
+    const release = c.observeInspection(() => {}); await until(() => c.snapshot().seq === 2); release();
+    expect(c.processHistory(123, history.entries[0].start)).toBeNull(); expect(c.snapshot().status).toBe('ok');
+    expect(c.snapshot().memory).not.toBeNull(); await c.stop(); expect(c.processHistory(123, history.entries[0].start)).toBeNull();
   });
 });

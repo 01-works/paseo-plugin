@@ -42,6 +42,13 @@ it('종료 대조는 가리지 않은 전체 인자와 실행 정체성·현재 
     { parentPid: 2 }, { group: 'chrome' }, { name: 'other' }, { cpuPercent: 1 }])
     expect(sameMetadata(metadata, { ...metadata, ...change })).toBe(false);
 });
+it('버전 번호로 실행되는 Claude와 보호 그룹도 검토/확인 종료에서 제외', () => {
+  for (const change of [{ path: '/Users/test/.local/share/claude/versions/2.1.286', name: '2.1.286' },
+    { path: '/Users/test/.claude/versions/2.1.286' }, { group: 'claude' }, { group: 'Codex' }, { group: 'Paseo' }]) {
+    const current = { ...metadata, ...change };
+    expect(eligibleMetadata(current)).toBe(false); expect(sameMetadata(current, current)).toBe(false);
+  }
+});
 it('모델/UI 사본에서 홈 경로와 흔한 비밀 인자를 가리고 원본은 유지', () => {
   const args = ['/opt/homebrew/bin/node', `${homedir()}/test.js`, '--access-token', 'super-secret-value',
     '--api-key=sk-123456789abcdef', 'redis://user:password@example.com', 'Authorization: Bearer abcdef'];

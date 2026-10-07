@@ -5,7 +5,7 @@ import type { Collector } from './collector';
 import { Observation, eligibleMetadata, publicCommand, redact, sameMetadata } from './cleanup-policy';
 import { createCodexReviewer, validateReview, type Reviewer } from './cleanup-reviewer';
 
-type Source = Pick<Collector, 'observeInspection' | 'inspectProcess' | 'terminateInspected'>;
+type Source = Pick<Collector, 'observeInspection' | 'inspectProcess' | 'terminateInspected' | 'processHistory'>;
 type Job = { state: CleanupState; abort: AbortController; metadata: Map<string, ProcessMetadata>; attempted: Set<string>;
   task?: Promise<void>; terminating?: Promise<unknown>; expiresMono?: number; running: boolean };
 export class Cleanup {
@@ -73,7 +73,8 @@ export class Cleanup {
           if (!eligibleMetadata(metadata) || metadata.group !== p.group || metadata.name !== p.name) continue;
           job.metadata.set(processKey(p), metadata);
           items.push({ ...p, name: redact(p.name), group: redact(p.group), parentPid: metadata.parentPid, parentName: metadata.parentName ? redact(metadata.parentName) : null,
-            command: publicCommand(metadata), cwd: metadata.cwd ? redact(metadata.cwd) : null, decision: 'uncertain', reason: '' });
+            command: publicCommand(metadata), cwd: metadata.cwd ? redact(metadata.cwd) : null,
+            history: this.source.processHistory(p.pid, p.start), decision: 'uncertain', reason: '' });
         } catch { unread++; }
       }
       if (signal.aborted) return;

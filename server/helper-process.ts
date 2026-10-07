@@ -11,6 +11,7 @@ export type NativeSource = {
   close(): Promise<void>;
   setProcesses(on: boolean): void;
   setInspection(on: boolean): void;
+  setHistory(on: boolean): void;
   inspect(pid: number, start: string): Promise<ProcessMetadata>;
   terminate(pid: number, start: string): Promise<{ sent: boolean; error?: string }>;
 };
@@ -46,6 +47,7 @@ export function spawnSource(command: string, args: string[], onLine: (line: stri
     child,
     setProcesses(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`procs ${on ? 'on' : 'off'}\n`); },
     setInspection(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`inspection ${on ? 'on' : 'off'}\n`); },
+    setHistory(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`history ${on ? 'on' : 'off'}\n`); },
     async inspect(pid, start) {
       const result = await request(`inspect $id ${pid} ${start}`, '실행 정보 응답 시간 초과');
       if (!result.ok) throw new Error(result.error ?? '실행 정보 확인 불가');

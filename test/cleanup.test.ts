@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { Cleanup } from '../server/cleanup';
 import { processKey, RESULT_TTL_MS, type Inspection, type ProcessMetadata } from '../shared/cleanup';
-import { observed, metadata } from './cleanup-fixtures';
+import { observed, metadata, history } from './cleanup-fixtures';
 import type { Reviewer } from '../server/cleanup-reviewer';
 
 const managers: Cleanup[] = [];
@@ -10,6 +10,7 @@ function harness(review?: Reviewer) {
   let now = 0, listener: ((s: Inspection | null, t: number, issue?: string) => void) | undefined;
   const release = vi.fn(() => { listener = undefined; });
   const source = { observeInspection: vi.fn((fn: typeof listener) => { listener = fn; return release; }),
+    processHistory: vi.fn((_pid: number, _start: string): import('../shared/history').HistorySummary | null => null),
     inspectProcess: vi.fn(async (_pid: number, _start: string) => ({ ...metadata })), terminateInspected: vi.fn(async (_pid: number, _start: string) => ({ sent: true })) };
   const reviewer = review ?? vi.fn<Reviewer>(async input => ({ decisions: input.items.map(p => ({ key: processKey(p), decision: 'candidate', reason: '테스트 잔여 실행 정황으로 선택 검토' })) }));
   const cleanup = new Cleanup(source, reviewer, { now: () => now }); managers.push(cleanup);
@@ -18,6 +19,16 @@ function harness(review?: Reviewer) {
   return { cleanup, source, reviewer, release, emit, observe, advance: (ms: number) => { now += ms; } };
 }
 afterEach(async () => { await Promise.all(managers.splice(0).map(c => c.stop())); vi.useRealTimers(); });
+
+it('최근 숫자 이력은 보조 근거로만 넘기고 이력 부족도 기존 요청형 검사를 유지', async () => {
+  for (const value of [history, null]) {
+    const h = harness(); h.source.processHistory.mockReturnValue(value);
+    const state = h.cleanup.start(); await h.observe();
+    expect(h.reviewer).toHaveBeenCalledOnce(); expect(h.cleanup.get(state.id).items[0].history).toEqual(value);
+    expect(h.source.processHistory).toHaveBeenCalledExactlyOnceWith(observed.pid, observed.start);
+    expect(h.source.terminateInspected).not.toHaveBeenCalled();
+  }
+});
 
 it('요청 때만 관찰·메타데이터·리뷰 1회, 모델 대기 전에 관찰 해제; 선택만으로 종료하지 않음', async () => {
   const h = harness(); expect(h.source.observeInspection).not.toHaveBeenCalled();

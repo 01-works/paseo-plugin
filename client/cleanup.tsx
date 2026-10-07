@@ -102,6 +102,7 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
               <Badge theme={theme} label={labels[p.decision]} />
             </View>
             <Text style={{ color: c.foregroundMuted }}>실행 {elapsedLabel(p.ageSeconds)} · 관찰 {Math.floor(p.observedSeconds)}초 · CPU 최대 {appPercent(p.maxCpuPercent)} · {gib(p.memoryBytes)}</Text>
+            {p.history ? <Text style={{ color: c.foregroundMuted }}>최근 {Math.max(1, Math.round(p.history.observedSeconds / 60))}분 · 평균 CPU {appPercent(p.history.averageCpuPercent)} · 메모리 {p.history.memoryDeltaBytes === 0 ? '유지' : `${gib(Math.abs(p.history.memoryDeltaBytes))} ${p.history.memoryDeltaBytes > 0 ? '증가' : '감소'}`}</Text> : null}
             {p.command ? <Text numberOfLines={2} style={{ color: c.foregroundMuted }}>{p.command}</Text> : null}
             {p.cwd ? <Text numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.cwd}</Text> : null}
             <Text style={{ color: c.foregroundMuted }}>{p.reason}</Text>

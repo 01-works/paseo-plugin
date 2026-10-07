@@ -1,10 +1,11 @@
 import React, { StrictMode } from 'react';
+import { Text } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 import type { CleanupState } from '../shared/cleanup';
-import { item } from './cleanup-fixtures';
+import { item, history } from './cleanup-fixtures';
 
 const rpc = vi.hoisted(() => ({ start: vi.fn(), get: vi.fn(), cancel: vi.fn(), terminate: vi.fn() }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
@@ -44,6 +45,19 @@ it('후보 선택은 신호를 보내지 않고 확인 한 번 뒤 해당 PID·�
   expect(rpc.terminate).not.toHaveBeenCalled(); expect(text()).toContain('저장하지 않은 작업');
   await act(async () => renderer!.root.findByProps({ accessibilityLabel: '선택한 정리 후보 종료 확인' }).props.onPress());
   expect(rpc.terminate).toHaveBeenCalledExactlyOnceWith({ id: initial.id, targets: [{ pid: item.pid, start: item.start }] }); expect(text()).toContain('종료 요청');
+});
+it('이력은 결과에 짧은 한 줄로 표시하고 부족한 대상에 유휴 판정을 만들지 않음', async () => {
+  rpc.get.mockResolvedValue({ ...ready, items: [{ ...ready.items[0], history }, ready.items[1]] });
+  await act(async () => { renderer = create(tree()); await flush(); });
+  const labels = renderer!.root.findAllByType(Text).map(p => p.props.children).flat().join('');
+  expect(labels).toContain('최근 20분'); expect(labels).toContain('평균 CPU <0.1%');
+  expect(labels).not.toContain('이력 부족'); expect(rpc.terminate).not.toHaveBeenCalled();
+});
+it('타이머의 미세한 오차로 2분 이력을 1분으로 내림 표시하지 않음', async () => {
+  rpc.get.mockResolvedValue({ ...ready, items: [{ ...ready.items[0], history: { ...history, observedSeconds: 119.999 } }] });
+  await act(async () => { renderer = create(tree()); await flush(); });
+  const labels = renderer!.root.findAllByType(Text).map(p => p.props.children).flat().join('');
+  expect(labels).toContain('최근 2분'); expect(rpc.terminate).not.toHaveBeenCalled();
 });
 it('StrictMode는 검사 하나만 시작하고 실제 닫기에서만 취소', async () => {
   rpc.get.mockResolvedValue(initial);

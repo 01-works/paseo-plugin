@@ -13,7 +13,8 @@ const client=new DaemonClient({url:'ws://127.0.0.1:6767/ws',clientId:'mac-monito
 const rpc=(method,input)=>client.invokePluginRpc('mac-monitor',`mac-monitor.cleanup.${method}`,input);
 let id;
 try {
-  await client.connect();const host=await client.invokePluginRpc('mac-monitor','mac-monitor.host.info',{});assert.equal(host.version,'0.5.0');
+  await client.connect();const host=await client.invokePluginRpc('mac-monitor','mac-monitor.host.info',{});
+  assert.equal(host.version,JSON.parse(readFileSync(new URL('../../package.json',import.meta.url),'utf8')).version);
   let snapshot;
   for(let attempt=0;attempt<20;attempt++) {
     snapshot=await client.invokePluginRpc('mac-monitor','mac-monitor.snapshot.get',{includeProcesses:false});
@@ -30,5 +31,5 @@ try {
   const catalog=await client.getPluginCatalog(), installed=catalog.find(plugin=>plugin.id==='mac-monitor');assert.ok(installed);
   writeFileSync('/tmp/mac-monitor-installed-client.js',installed.clientBundle);
   const logs=await client.getPluginLogs('mac-monitor');
-  console.log(JSON.stringify({result:'0.5.0 로컬 계약·동시 검사/잘못된 ID/선택 거절·취소 통과',host,bundleBytes:Buffer.byteLength(installed.clientBundle),recentLogs:logs.slice(-6)}));
+  console.log(JSON.stringify({result:`${host.version} 로컬 계약·동시 검사/잘못된 ID/선택 거절·취소 통과`,host,bundleBytes:Buffer.byteLength(installed.clientBundle),recentLogs:logs.slice(-6)}));
 } finally { if(id)await rpc('cancel',{id}).catch(()=>{});await client.close(); }
