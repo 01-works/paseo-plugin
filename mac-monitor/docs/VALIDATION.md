@@ -62,6 +62,8 @@
 - `paseo plugin reload mac-monitor` 후 running.
   `node test/manual/automation-rpc.mjs --check-confirm`에서 새 리뷰 목록 계약과 존재하지 않는 리뷰의 거절을 확인했다.
   호스트 정보는 version 0.3.0이며 serverId를 반환하지 않는다. 기존 설정 enabled/critical 120초와 대상 0개를 보존했다.
+- 설치된 클라이언트 번들 81,307 bytes에서 새 확인 RPC와 실험 설정/레지스트리 제거를 확인했다.
+  React Native 제공 Hermes의 바이트코드 컴파일은 오류 없이 통과했다. 실제 모바일 화면·터치 검증을 대신하지 않는다.
 - 실제 로컬 `node test/manual/live-rpc.mjs --seconds=42`: 동시 100개 요청은 seq 13 하나였다.
   21개 관찰은 seq 13~33, 간격 **1996~2005ms**, status ok/압력 normal/errors 없음이었다.
   닫힌 화면에서는 앱 스캔 off였고 실제 패널을 연 뒤 warming → ok로 전환했다. 별도 측정 헬퍼를 만들지 않았다.
@@ -75,6 +77,9 @@
   색이 없는 Text 0건을 확인했다. 모든 Text 색은 theme 토큰이다.
   단순 `<[a-z]+[ >]` 검색의 `Promise<void>` 한 건은 타입이며 HTML이 아니다.
   `git diff --check`, 기존 universal 바이너리의 arm64/x86_64·엄격한 서명 검증도 통과했다.
+- 코드 반영 공개 main `d4059ef`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37579786607)가 모두 통과했다.
+  두 아키텍처에서 타입·162개 테스트·커밋된 prebuilt 실행·universal 빌드/서명·네이티브 JSON 스키마를 검증했다.
+  로컬 원본과 게시된 mac-monitor 폴더의 git tree가 동일하고 다른 폴더에는 변경이 없음을 확인했다.
 
 0.3.0은 네이티브 소스/바이너리를 변경하지 않았으므로 헬퍼 비용은 아래 0.2.1의 60초 측정을 인용한다.
 이번 변경의 Paseo/Node/UI 전체 부하를 새로 측정한 값은 아니다. 정상 압력에서 추가 앱 스캔·AI 호출·파일 기록은 없다.
