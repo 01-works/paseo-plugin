@@ -43,6 +43,8 @@ import { contributePills } from '../client/pill';
 import { Graph } from '../client/graph';
 import { GraphContent } from '../client/content';
 import { GraphModal } from '../client/modal';
+import { AgentSurface } from '../client/surface';
+import { createAgentNavigation, browserSurfaceId } from '../client/navigation';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 import { Platform } from 'react-native';
 const palette = { foreground: '#eee', foregroundMuted: '#aaa', surface0: '#111', surface1: '#222', surface2: '#333', border: '#444',
@@ -59,7 +61,8 @@ afterEach(async () => {
   await act(async () => renderer?.unmount()); renderer = undefined;
   for (const cleanup of cleanups.splice(0)) await cleanup(); vi.useRealTimers();
 });
-async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-agent-id': 'a' } })]) {
+// 기존 그래프 회귀 사례는 구조 탭을 선택한 상태에서 시작한다. 첫 진입 탐색은 별도 사례로 검증한다.
+async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-agent-id': 'a' } })], view: 'browse' | 'structure' = 'structure') {
   let observer!: SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>;
   const snapshot = page(entries);
   const release = vi.fn(async () => {});
@@ -67,14 +70,16 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const list = vi.fn(async () => ({ ...snapshot, subscription: lease }));
   const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
   const views = createGraphViews();
+  for (const entry of entries) views.forAgent('h', entry.workspaceId ?? 'w', entry.id).set({ view });
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
-  const openPanel = vi.fn();
-  const client = { openPanel, addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
+  const openPanel = vi.fn(), openSurface = vi.fn();
+  const client = { openPanel, openSurface, addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
     const registration = { button, update: vi.fn(), remove: vi.fn() }; buttons.set(agentId, registration); return registration;
   } } as unknown as PluginClientContext;
-  cleanups.push(contributePills(client, directory, views)); cleanups.push(() => directory.dispose());
+  const agentNavigation = createAgentNavigation(client);
+  cleanups.push(contributePills(client, directory, views, agentNavigation)); cleanups.push(() => directory.dispose()); cleanups.push(() => agentNavigation.dispose());
   await directory.start();
-  return { directory, views, buttons, list, openPanel, observer };
+  return { directory, views, buttons, list, openPanel, openSurface, agentNavigation, observer };
 }
 it('보이는 pill 3개도 구독 하나를 공유하고 같은 라벨을 다시 갱신하지 않음', async () => {
   const h = await setup();
@@ -153,7 +158,7 @@ it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 그래프를 �
   const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
   const ios = { ...props, layout: { compact: true, platform: 'ios' as const } };
   await act(async () => { renderer = create(<Icon {...ios} />); });
-  expect(registration.update).toHaveBeenLastCalledWith({ label: '구조 2' });
+  expect(registration.update).toHaveBeenLastCalledWith({ label: '에이전트 2' });
   if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
   const action = registration.button.behavior;
   await act(async () => { await action.onPress(); });
@@ -163,13 +168,121 @@ it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 그래프를 �
   expect(renderer!.root.findByType('ModalContent' as React.ElementType).props.scrollable).toBe(false);
   expect(h.list).toHaveBeenCalledOnce();
 });
+it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를 거쳐 대화 focus를 요청', async () => {
+  Platform.OS = 'ios';
+  const h = await setup([raw('a'), raw('b', { title: '최근 작업', updatedAt: '2026-02-01T00:00:00Z' }),
+    raw('foreign', { workspaceId: 'other', labels: { 'paseo.parent-agent-id': 'a' }, updatedAt: '2026-03-01T00:00:00Z' })], 'browse');
+  const registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  const ios = { ...props, layout: { compact: true, platform: 'ios' as const } };
+  await act(async () => { renderer = create(<Icon {...ios} />); });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); await vi.advanceTimersByTimeAsync(1000); });
+  expect(registration.update).toHaveBeenLastCalledWith({ label: '에이전트 2' });
+  expect(renderer!.root.findAllByType(Graph)).toHaveLength(0);
+  expect(h.views.forAgent('h', 'w', 'a').forceCache.size).toBe(0);
+  expect(renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id)).toEqual(['b', 'a']);
+  const target = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === '최근 작업');
+  await act(async () => target.props.onLongPress()); expect(copyText).toHaveBeenLastCalledWith('b');
+  expect(h.openSurface).not.toHaveBeenCalled();
+  await act(async () => target.props.onPress());
+  expect(h.openSurface).toHaveBeenCalledWith(browserSurfaceId);
+  expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(0);
+  const openAgent = vi.fn();
+  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+  expect(openAgent).toHaveBeenCalledExactlyOnceWith({ agentId: 'b', serverId: 'h' });
+  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+  expect(openAgent).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
+});
+it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동작하고 조회를 늘리지 않음', async () => {
+  const h = await setup([raw('a', { createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z' }), raw('b')], 'browse');
+  await act(async () => { renderer = create(<GraphContent {...props} directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+  const ids = () => renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id);
+  expect(ids()).toEqual(['a', 'b']);
+  const list = renderer!.root.findByType('FlatList' as React.ElementType);
+  await act(async () => list.props.onScroll({ nativeEvent: { contentOffset: { y: 92 } } }));
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('b', { updatedAt: '2026-03-01T00:00:00Z' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  expect(ids()).toEqual(['b', 'a']); expect(h.views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(92);
+  const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name));
+  await act(async () => press('최근 활동 ↓').props.onPress()); expect(ids()).toEqual(['a', 'b']);
+  const input = renderer!.root.findByType('TextInput' as React.ElementType);
+  await act(async () => input.props.onChangeText(' B ')); expect(ids()).toEqual(['b']);
+  await act(async () => press('구조').props.onPress());
+  await act(async () => press('탐색').props.onPress()); expect(ids()).toEqual(['b']);
+  expect(h.list).toHaveBeenCalledOnce();
+});
+it('탐색 크게 보기는 현재 workspace context로 열며 surface 실패는 pill을 닫지 않음', async () => {
+  const h = await setup(undefined, 'browse'), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  await act(async () => { renderer = create(<Icon {...props} />); });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); });
+  const content = renderer!.root.findByType(GraphContent);
+  h.openSurface.mockImplementationOnce(() => { throw new Error('route unavailable'); });
+  await act(async () => content.props.onLarge());
+  expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(1); expect(h.agentNavigation.getSnapshot()).toBeNull();
+  await act(async () => content.props.onLarge());
+  expect(h.agentNavigation.getSnapshot()).toMatchObject({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: null });
+  expect(h.openPanel).not.toHaveBeenCalled(); expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(0);
+});
+it('이동 도중 archive된 에이전트와 다른 호스트 context는 navigation을 호출하지 않음', async () => {
+  const h = await setup(undefined, 'browse'), openAgent = vi.fn(), navigation = { openAgent, openWorkspace: vi.fn() };
+  h.agentNavigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('b', { archivedAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(250);
+    renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={navigation} />);
+  });
+  expect(openAgent).not.toHaveBeenCalled();
+  expect(renderer!.root.findAllByType('Text' as React.ElementType).some(node => node.props.children === '선택한 에이전트가 원래 워크스페이스에 없습니다')).toBe(true);
+  await act(async () => h.agentNavigation.open({ serverId: 'other', workspaceId: 'w', agentId: 'a', targetId: 'a' }));
+  expect(openAgent).not.toHaveBeenCalled();
+});
+it('navigation이 없는 공개 surface는 이동을 가장하지 않고 ID 복사만 제공', async () => {
+  const h = await setup(undefined, 'browse'); h.agentNavigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
+  await act(async () => { renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} />); });
+  const row = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'b');
+  expect(row.props.disabled).toBe(true);
+  const copy = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'b ID 복사');
+  await act(async () => copy.props.onPress()); expect(copyText).toHaveBeenLastCalledWith('b');
+  expect(h.agentNavigation.takeTarget(h.agentNavigation.getSnapshot()!)).toBeNull();
+});
+it('구조에서 선택한 다른 workspace의 자손은 원래 context를 유지하며 실제 대화로 이동', async () => {
+  const h = await setup([raw('a'), raw('foreign', { workspaceId: 'other', labels: { 'paseo.parent-agent-id': 'a' } })]);
+  const registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  await act(async () => { renderer = create(<Icon {...props} />); });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); });
+  await act(async () => renderer!.root.findByType(GraphContent).props.onNavigate('foreign'));
+  expect(h.agentNavigation.getSnapshot()).toMatchObject({ workspaceId: 'w', targetId: 'foreign', targetWorkspaceId: 'other' });
+  const openAgent = vi.fn();
+  await act(async () => renderer!.update(<AgentSurface {...props} directory={h.directory} views={h.views} agentNavigation={h.agentNavigation} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+  expect(openAgent).toHaveBeenCalledExactlyOnceWith({ agentId: 'foreign', serverId: 'h' });
+});
 it('뷰 상태는 호스트·workspace·에이전트별로 구분하며 접기와 배율을 보존', () => {
   const views = createGraphViews(), first = views.forAgent('h', 'w', 'a');
+  expect(first.getSnapshot().view).toBe('browse');
   first.toggle('child'); first.zoomTo(1.25);
   expect(views.forAgent('h', 'w', 'a')).toBe(first);
   expect(views.forAgent('other', 'w', 'a').getSnapshot().collapsed.size).toBe(0);
   expect(views.forAgent('h', 'other', 'a')).not.toBe(first);
   expect(views.forAgent('h', 'w', 'b').forceCache).toBe(first.forceCache);
+});
+it('compact 구조 크게 보기는 작업 패널 대신 공개 전체 화면으로 상태를 유지', async () => {
+  const h = await setup(), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  const ios = { ...props, layout: { compact: true, platform: 'ios' as const } };
+  await act(async () => { renderer = create(<Icon {...ios} />); });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); });
+  await act(async () => renderer!.root.findByType(GraphContent).props.onLarge());
+  expect(h.openSurface).toHaveBeenCalledWith(browserSurfaceId); expect(h.openPanel).not.toHaveBeenCalled();
+  expect(h.views.forAgent('h', 'w', 'a').getSnapshot().view).toBe('structure');
+  expect(h.agentNavigation.getSnapshot()).toMatchObject({ targetId: null, workspaceId: 'w', agentId: 'a' });
 });
 it('상세 복사 버튼과 노드 길게 누르기는 선택한 실제 ID만 복사', async () => {
   const h = await setup();

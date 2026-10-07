@@ -72,10 +72,19 @@ describe('공유 directory', () => {
   it('같은 표시값은 알리지 않고 상태 변경 알림을 묶음', async () => {
     vi.useFakeTimers(); const h = harness(); await h.directory.start();
     const listener = vi.fn(); h.directory.subscribe(listener);
-    h.update(raw('a', { updatedAt: '2026-02-01T00:00:00.000Z' }));
+    h.update(raw('a'));
     await vi.advanceTimersByTimeAsync(300); expect(listener).not.toHaveBeenCalled();
     for (let i=0;i<50;i++) h.update(raw('a', { status: 'running', updatedAt: '2026-03-01T00:00:00.000Z' }));
     await vi.advanceTimersByTimeAsync(250); expect(listener).toHaveBeenCalledOnce();
+  });
+  it('시각만 바뀌어도 최근 목록에 반영하지만 관계 signature는 유지', async () => {
+    vi.useFakeTimers(); const h = harness(); await h.directory.start();
+    const signature = h.directory.getForest().signature, listener = vi.fn(); h.directory.subscribe(listener);
+    h.update(raw('a', { updatedAt: '2026-02-01T00:00:00.000Z' }));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(h.directory.getSnapshot().agents[0].updatedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(listener).toHaveBeenCalledOnce(); expect(h.directory.getForest().signature).toBe(signature);
+    expect(h.list).toHaveBeenCalledOnce();
   });
   it('연결 단절은 0 대신 stale로 표시하고 watch 종료 시 타이머 정리', async () => {
     vi.useFakeTimers(); const h = harness(page([raw('a', { status: 'running' })])); await h.directory.start();

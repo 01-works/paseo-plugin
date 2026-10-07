@@ -1,10 +1,10 @@
 # 검증 기록
 
-검증일: 2026-10-06~07 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.3이며, 이전 결과는 아래에 이력으로 유지한다.
+검증일: 2026-10-06~07 KST. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo CLI/daemon/SDK 0.10.2. 최신 로컬 플러그인은 0.1.4이며, 이전 결과는 아래에 이력으로 유지한다.
 
 ## 자동 검증
 
-최종 결과: `npm run typecheck` 통과, `npm test` **8개 파일·59개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 0.1.0의 테스트는 38개, 0.1.1은 46개, 0.1.2는 49개였다.
+최종 결과: `npm run typecheck` 통과, `npm test` **9개 파일·73개 테스트 통과**, `npm run audit` **0건**. `git diff --check`도 통과했다. 0.1.0의 테스트는 38개, 0.1.1은 46개, 0.1.2는 49개, 0.1.3은 59개였다.
 
 | 범위 | 확인 내용 |
 |---|---|
@@ -15,6 +15,8 @@
 | React DOM portal | 노드·확대·ID 복사·본문 클릭 후 바깥 pill action 1회 유지, 배율·선택·모달 유지 |
 | 모바일 번들 | 이전 클래스 문법의 Hermes 오류 재현, 제품 entry 전체의 Hermes 컴파일, iOS pill 등록·탭·compact 그래프 표시 |
 | 이동·확대 | 좌표 경계·중앙 배치·핀치 중심·가까운 점 선택, iOS 한 손가락→두 손가락→한 손가락 전환, 배율 저장·갱신 안정성·타이머 정리 |
+| 워크스페이스 탐색 | 정확한 workspace/미보관 조건, 최근 활동/생성순·동률·잘못된 시각, 이름·ID 검색, 시각만 바뀐 이벤트·스크롤 유지·D3 작업 없음 |
+| 대화 이동 | pill→공개 surface→정확한 ID/host의 openAgent 1회, 다른 workspace 구조 자손, 제거/보관·host 불일치·navigation 부재·surface 실패, ID 복사와 portal 클릭 분리 |
 
 UI 단위 테스트는 React Native·Paseo 호스트 요소를 mock한다. portal 검증은 JSDOM에서 실제 React DOM portal의 이벤트 경계를 확인한다. 실제 Paseo UI 전체의 대체 검증은 아니다.
 제품 client에는 DOM/HTML·Canvas/SVG·React Flow·직접 clipboard 접근이 없다. DOM은 portal 테스트와 브라우저 미리보기의 대역에서만 사용한다. TypeScript lib에는 DOM이 없다.
@@ -181,3 +183,18 @@ node test/manual/ui-preview.mjs --modules=/path/to/preview-modules
 CUA의 Paseo 앱 선택이 시간 초과되어 최신 버전의 실제 Paseo 화면은 직접 확인하지 못했다. iPhone에도 접근하지 못했다. 따라서 네이티브 시트의 드래그와 그래프 제스처 경합, 키보드·safe area·VoiceOver·Dynamic Type, 실제 터치 정확도와 FPS·CPU·배터리는 미검증이다. 웹 미리보기의 마우스 동작을 실기기 핀치 검증으로 표현하지 않는다.
 
 2,000개는 기존 순수 배치·상한 검증 범위이며 이번 화면 검토는 최대 209개다. 사용자가 목록을 선택하면 D3 작업을 만들지 않고 진행 중 계산을 정리한다. 실제 iOS 성능 상한을 보장하지 않는다.
+
+## 0.1.4 — 현재 워크스페이스 탐색·대화 이동
+
+2026-10-07 14:31 KST 로컬 반영. 사용자 요청에 따라 pill 첫 화면을 탐색 목록으로 바꾸고 기존 그래프를 구조 탭에 유지했다.
+
+- 자동 검증 9개 파일·73개 테스트, 타입 검사, DOM/기본 폰트 audit 0건 통과. 기존 그래프·터치·cache·portal 검증과 새 navigation·정렬·제거·복사 검증을 포함한다.
+- 첫 탐색에서는 force cache가 비어 있고 배치 작업을 시작하지 않는다. 시각 업데이트 후에도 목록 조회는 늘지 않고 그래프 signature는 유지됐다.
+- 실제 로컬 API: 미보관 297개, 초기 목록 조회 2회·owned subscription 1개, 이후 5초 동안 반복 목록 조회 0회. 다른 에이전트를 생성하거나 수정하지 않았다.
+- 실제 제품 컴포넌트를 RN Web으로 묶고 합성 데이터로 320×400 라이트·390×520 다크·840×900 데스크톱을 확인했다. 다른 workspace의 fixture를 포함하되 탐색 개수·검색 결과에서 제외됐다. 이름/ID 검색, 현재 대화 표시, 정렬 전환, ID 복사와 행 이동 콜백의 분리를 확인했다.
+- 209개 탐색에서 스크롤 184를 유지한 채 갱신 이벤트를 적용했다. DOM scrollTop·메모리 오프셋 모두 184를 유지하고 force cache는 0이었다. FlatList의 초기 렌더 행은 12개였다. 구조/탐색 왕복 후 정렬을 유지했다. 브라우저 예외 0건.
+- Node 순수 필터·정렬 비용: 뒤섞인 updatedAt을 가진 합성 모델, 워밍업 5회 제외 뒤 100회. 297개 중앙값 0.097ms/p95 0.115ms, 2,000개 중앙값 0.730ms/p95 0.931ms. 제품의 전체 UI CPU/FPS·iPhone 부하 측정은 아니다.
+- `paseo plugin reload agent-graph --json` 뒤 enabled/running. 로그 66개·stderr/error 0개, 마지막 `Plugin ready` 시각 14:31:19 KST. 실제 catalog의 client bundle 131,967bytes를 받아 Hermes 컴파일 종료 코드 0 확인. SDK/manifest 지원 범위는 0.10.2로 유지했다.
+- mac-monitor·데몬 설정·다른 호스트는 변경하지 않았고, 데몬을 재시작하지 않았다. 원격 GitHub push는 하지 않았다.
+
+미리보기의 대화 이동 콜백은 호스트 대역이다. 공개 navigation 호출의 ID·host·중복 억제는 자동 테스트로 확인했지만 **새 버전의 실제 Paseo/iPhone 대화 전환·기존 탭 focus는 직접 검증하지 못했다**. 0.1.0에서 실제 패널의 동일 공개 openAgent API 이동을 확인한 결과와 새 경로의 검증을 혼동하지 않는다. 실제 iPhone 시트·키보드·스크롤/길게 누르기·화면 복귀와 앱 버전별 navigation 유무는 추가 확인이 필요하다.

@@ -1,24 +1,33 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Icon } from '@getpaseo/plugin/client/react-native';
 import type { PluginButtonIconProps, PluginButtonRegistration, PluginClientContext } from '@getpaseo/plugin/client';
-import { agentKey } from '../shared/types';
-import { countForest, scopeForest } from '../shared/forest';
 import type { AgentDirectory } from './directory';
 import type { GraphViews } from './view-state';
 import { GraphModal } from './modal';
+import { createAgentNavigation, type AgentNavigation } from './navigation';
 type Listener = () => void;
 type Pill = { workspaceId: string; registration: PluginButtonRegistration; mounts: number; label: string };
-export function contributePills(client: PluginClientContext, directory: AgentDirectory, views: GraphViews) {
+export function contributePills(client: PluginClientContext, directory: AgentDirectory, views: GraphViews, agentNavigation: AgentNavigation = createAgentNavigation(client)) {
   const pills = new Map<string, Pill>();
   let stopped = false;
-  const labelFor = (id: string, workspaceId: string, compact = false) => {
+  let counted: ReturnType<AgentDirectory['getSnapshot']>['agents'] | null = null;
+  const counts = new Map<string, { total: number; running: number }>();
+  const labelFor = (workspaceId: string, compact = false) => {
     const snapshot = directory.getSnapshot();
-    if (snapshot.error && !snapshot.loaded) return '구조 · 확인 불가';
-    if (!snapshot.loaded) return '구조 …';
-    if (snapshot.stale) return snapshot.error ? '구조 · 확인 불가' : '구조 · 연결 끊김';
-    const count = countForest(scopeForest(directory.getForest(), agentKey(directory.hostId, id), workspaceId, 'group'));
-    if (snapshot.partial || !count.total) return '구조 ' + (count.total || '…') + ' · 일부';
-    return compact || count.total >= 100 ? '구조 ' + count.total : '구조 ' + count.total + ' · 실행 ' + count.running;
+    if (snapshot.error && !snapshot.loaded) return '에이전트 · 확인 불가';
+    if (!snapshot.loaded) return '에이전트 …';
+    if (snapshot.stale) return snapshot.error ? '에이전트 · 확인 불가' : '에이전트 · 연결 끊김';
+    if (counted !== snapshot.agents) {
+      counted = snapshot.agents; counts.clear();
+      for (const agent of counted) if (agent.workspaceId && !agent.archived) {
+        const count = counts.get(agent.workspaceId) ?? { total: 0, running: 0 };
+        count.total++; if (agent.state === 'running') count.running++;
+        counts.set(agent.workspaceId, count);
+      }
+    }
+    const { total, running } = counts.get(workspaceId) ?? { total: 0, running: 0 };
+    if (snapshot.partial) return '에이전트 ' + total + ' · 일부';
+    return compact || total >= 100 ? '에이전트 ' + total : '에이전트 ' + total + ' · 실행 ' + running;
   };
   const register = (id: string, workspaceId: string) => {
     const old = pills.get(id);
@@ -36,25 +45,38 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
         pill.mounts++; compact = props.layout.compact;
         const unwatch = directory.watch();
         const update = () => {
-          const label = labelFor(id, workspaceId, compact);
+          const label = labelFor(workspaceId, compact);
           if (label !== pill.label) { pill.label = label; pill.registration.update({ label }); }
         };
         update(); const unsubscribe = directory.subscribe(update);
         return () => { pill.mounts--; unsubscribe(); unwatch(); };
       }, [props.layout.compact]);
       const openLarge = () => {
-        try { client.openPanel('graph', { workspaceId, agentId: id, location: 'workspace' }); setOpen(false); }
-        catch { views.forAgent(props.host.id, workspaceId, id).set({ message: '큰 보기를 열지 못했습니다. 현재 창에서 계속 볼 수 있습니다.' }); }
+        const store = views.forAgent(props.host.id, workspaceId, id);
+        store.set({ message: null });
+        try {
+          if (store.getSnapshot().view === 'browse' || props.layout.compact) {
+            agentNavigation.open({ serverId: props.host.id, workspaceId, agentId: id, targetId: null });
+          } else client.openPanel('graph', { workspaceId, agentId: id, location: 'workspace' });
+          setOpen(false);
+        }
+        catch { store.set({ message: '큰 보기를 열지 못했습니다. 현재 창에서 계속 볼 수 있습니다.' }); }
+      };
+      const navigate = (targetId: string) => {
+        const target = directory.getSnapshot().agents.find(agent => agent.id === targetId && !agent.archived);
+        if (!target) throw new Error('에이전트 확인 불가');
+        agentNavigation.open({ serverId: props.host.id, workspaceId, agentId: id, targetId, targetWorkspaceId: target.workspaceId });
+        setOpen(false);
       };
       return <>
         <Icon name="GitFork" size={props.size} color={props.color} />
         {opened ? <GraphModal {...props} agentId={id} workspaceId={workspaceId} directory={directory} views={views}
-          open onOpenChange={setOpen} onLarge={openLarge} /> : null}
+          open onOpenChange={setOpen} onLarge={openLarge} onNavigate={navigate} /> : null}
       </>;
     }
     const registration = client.addComposerPill({ id: 'graph', workspaceId, agentId: id,
-      button: { title: '에이전트 구조', label: '구조 …', icon: GraphIcon, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
-    pills.set(id, { workspaceId, registration, mounts: 0, label: '구조 …' });
+      button: { title: '에이전트', label: '에이전트 …', icon: GraphIcon, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
+    pills.set(id, { workspaceId, registration, mounts: 0, label: '에이전트 …' });
   };
   const sync = () => {
     if (stopped) return;

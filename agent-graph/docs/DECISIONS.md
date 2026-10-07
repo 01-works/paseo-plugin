@@ -104,3 +104,17 @@ mac-monitor의 client 진입 경로에는 해당 클래스 문법이 없다. D3 
 - compact 모달은 `scrollable={false}`로 호스트 시트 안의 남은 높이를 쓴다. 데스크톱의 자연스러운 모달 높이와 스크롤은 유지한다. 기존 4절의 compact 고정 그래프·상세 높이와 6절의 모바일 목록 강제는 이 규칙으로 대체한다.
 
 RN Web 미리보기는 실제 제품 컴포넌트와 합성 데이터를 사용한 레이아웃·마우스 확인이다. iOS 이벤트 모양의 자동 테스트와 Hermes 문법 검사를 함께 수행하지만 실제 iPhone의 시트 제스처 경합·키보드·VoiceOver·FPS를 검증한 것으로 기록하지 않는다. 로컬 agent-graph만 반영하며 GitHub push는 하지 않는다.
+
+## 9. 현재 워크스페이스 탐색과 대화 이동 — 0.1.4
+
+사용자는 그래프 외에도 현재 워크스페이스의 에이전트를 최신순으로 보고 클릭해 대화에 focus하는 탐색 기능을 요청했다. 첫 pill 화면을 `탐색`으로 바꾸고 기존 그래프·트리 목록을 `구조` 탭에 유지한다. 탭·정렬·검색·스크롤은 호스트/workspace/원래 대화별 메모리 상태로 보존한다.
+
+- 탐색 목록은 정확한 `workspaceId` 일치와 미보관 조건으로 필터링한다. 그래프의 workspace 범위와 달리 다른 workspace의 조상·자손을 포함하지 않는다. pill 수치도 이 목록의 총수·실행 수와 일치한다. 기존 그래프 범위와 형제 생성순은 유지한다.
+- 기본 최근 활동순은 유효한 `updatedAt`/`createdAt` 중 최신 시각이다. API의 updatedAt은 이름·상태·설정 갱신도 포함하며 타임라인의 마지막 메시지 시각으로 주장하지 않는다. 정렬 버튼으로 최신 생성순을 선택할 수 있다. 동률은 생성시각·ID로 안정적으로 정렬하며 잘못된 시각은 정상 현재 시각으로 만들지 않는다.
+- 기존 `sameAgent`는 updatedAt만 바뀐 이벤트를 알리지 않아 탐색 정렬이 오래된 상태로 남을 수 있었다. 시각을 표시값에 포함하되 알림은 기존 250ms 배치를 사용한다. 관계 signature는 시각을 포함하지 않으므로 D3 배치를 다시 계산하지 않는다.
+- [0.10.2 공개 navigation 계약](https://github.com/getpaseo/paseo/blob/v0.10.2/public-docs/plugins/reference.md#surfaces-and-sidebar-items)과 설치된 타입에서 `PluginSurfaceProps`/패널만 `navigation.openAgent`를 제공한다. pill/icon props에는 없다. pill의 클릭은 인스턴스 내부 closure에 host/workspace/origin/target을 저장하고 등록한 `agent-browser` surface를 공개 `openSurface`로 연다. surface는 이동 의도를 한 번 소비해 `openAgent({agentId, serverId})`를 호출한다. 재렌더링·다시 방문해도 과거 요청을 반복하지 않는다. private router·전역·DOM·새 RPC로 우회하지 않는다.
+- 클릭 시점과 전달 시점에 대상이 제거·보관되거나 원래 workspace에서 이동했는지 확인한다. 탐색은 현재 workspace만 허용한다. 구조에서 선택한 다른 workspace의 실제 자손은 대상 workspace도 전달해 기존 관계 탐색·대화 이동을 유지한다. 다른 host context·이동 실패·navigation 부재는 안내하며 임의의 대화를 열지 않는다. 이동 API가 없으면 행 이동을 비활성화하고 ID 복사는 유지한다. surface 열기 실패는 pill을 닫지 않고 이전 context로 복구한다.
+- `크게 보기`는 탐색과 compact 구조에서 같은 context의 공개 전체 화면을 연다. 데스크톱 구조는 기존 작업 패널을 유지한다. 일상 탐색은 별도 sidebar 등록 없이 pill에서 접근한다. 실제 대화의 기존 탭 선택·focus·경로 처리는 Paseo에 맡긴다.
+- 목록은 FlatList로 가상화하고 스크롤 오프셋을 유지한다. 시각 문자열은 정렬 때 항목당 계산해 비교마다 파싱하지 않는다. pill의 workspace별 집계는 snapshot당 한 번 만든다. 탐색에서는 D3 작업이 없으며 구독·조회 상한·연결 감시 방식·SDK·런타임 의존성은 그대로다.
+
+행 이동·ID 복사·portal 클릭 경계·정렬·시각 이벤트·host/제거/navigation 실패·요청 중복 실행을 자동 검증한다. RN Web의 실제 컴포넌트 미리보기와 Hermes 검사는 실제 Paseo/iPhone 화면 전환·기존 탭 focus 검증과 구분해 기록한다. 원격 push는 수행하지 않는다.

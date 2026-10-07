@@ -1,6 +1,6 @@
 {
   "id": "agent-graph",
-  "description": "Paseo 에이전트 구조",
+  "description": "Paseo 에이전트 탐색과 구조",
   "requirements": { "paseo": ">=0.10.2 <0.11.0" },
   "build": [["npm", "ci", "--no-audit", "--no-fund"]]
 }

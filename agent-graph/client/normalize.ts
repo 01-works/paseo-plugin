@@ -23,5 +23,5 @@ export function normalizeAgent(raw: PaseoAgent & { parentAgentId?: string | null
 }
 export const sameAgent = (a: Agent | undefined, b: Agent) => a !== undefined &&
   a.key === b.key && a.parentId === b.parentId && a.workspaceId === b.workspaceId && a.title === b.title &&
-  a.provider === b.provider && a.model === b.model && a.cwd === b.cwd && a.createdAt === b.createdAt &&
+  a.provider === b.provider && a.model === b.model && a.cwd === b.cwd && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt &&
   a.state === b.state && a.archived === b.archived;

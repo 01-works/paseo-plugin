@@ -23,7 +23,8 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
     useImperativeHandle(ref, () => ({ scrollTo() {} }));
     return createElement('div', {}, props.children);
   });
-  return { ScrollView, TextInput: props => createElement('input', { 'aria-label': props.accessibilityLabel }),
+  return { ScrollView, FlatList: props => createElement('div', {}, props.data.map(item => createElement('div', { key: item.key }, props.renderItem({ item })))),
+    TextInput: props => createElement('input', { 'aria-label': props.accessibilityLabel }),
     Icon: () => null, copyText: vi.fn(async () => {}), useToast: () => ({ show() {}, error() {} }),
     Modal: Object.assign(props => props.children, { Content: props => createPortal(props.children, document.getElementById('portal')) }) };
 });
@@ -46,8 +47,9 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
     observer.snapshot({ ...snapshot, subscriptionId: 's' }); return () => {};
   }, release: async () => {} };
   directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }) } }, 'h');
-  const views = createGraphViews(); let button;
-  const client = { addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
+  const views = createGraphViews(); views.forAgent('h', 'w', 'a').set({ view: 'structure' }); let button;
+  const openSurface = vi.fn();
+  const client = { openSurface, addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
   stop = contributePills(client, directory, views); await directory.start();
   const Icon = button.icon;
   const palette = { foreground: '#eee', foregroundMuted: '#aaa', surface0: '#111', surface1: '#222', surface2: '#333', border: '#444',
@@ -63,9 +65,14 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
   await click(document.querySelector('#portal [aria-label="b"]'));
   await click(document.querySelector('#portal [aria-label="확대"]'));
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
-  await click(document.querySelector('#portal span'));
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '에이전트 2 · 실행 0'));
   expect(press).toHaveBeenCalledTimes(1);
   expect(copyText).toHaveBeenLastCalledWith('b');
   expect(views.forAgent('h', 'w', 'a').getSnapshot().zoom).toBe(initialZoom + 0.25);
   expect(document.getElementById('portal').textContent).toContain('에이전트 2');
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '탐색'));
+  await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
+  expect(openSurface).not.toHaveBeenCalled();
+  await click(document.querySelector('#portal [aria-label="b"]'));
+  expect(openSurface).toHaveBeenCalledOnce(); expect(press).toHaveBeenCalledTimes(1);
 });

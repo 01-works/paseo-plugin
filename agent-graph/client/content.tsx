@@ -12,11 +12,33 @@ import { Graph } from './graph';
 import { Tree } from './tree';
 import { Details } from './details';
 import { useForceLayout } from './use-force-layout';
+import { AgentBrowser } from './browser';
 export type GraphContentProps = PluginHostProps & {
   directory: AgentDirectory; views: GraphViews; workspaceId: string; agentId: string; surface: 'modal' | 'panel';
   onLarge?: () => void; onNavigate?: (id: string) => void;
 };
 export function GraphContent(props: GraphContentProps) {
+  const toast = useToast();
+  const store = useMemo(() => props.views.forAgent(props.host.id, props.workspaceId, props.agentId),
+    [props.views, props.host.id, props.workspaceId, props.agentId]);
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot), c = props.theme.colors;
+  const navigate = props.onNavigate ? (id: string) => {
+    try { props.onNavigate!(id); }
+    catch { toast.error('대화를 열지 못했습니다. 다시 눌러 주세요'); }
+  } : undefined;
+  return <View style={{ flex: props.surface === 'panel' || props.layout.compact ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <View style={{ flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
+        <Button theme={props.theme} active={state.view === 'browse'} onPress={() => store.set({ view: 'browse', message: null })}>탐색</Button>
+        <Button theme={props.theme} active={state.view === 'structure'} onPress={() => store.set({ view: 'structure', message: null })}>구조</Button>
+      </View>
+      {props.onLarge ? <View style={{ flex: 1, alignItems: 'flex-end' }}><Button theme={props.theme} onPress={props.onLarge}>크게 보기</Button></View> : null}
+    </View>
+    {state.view === 'browse' ? <AgentBrowser {...props} store={store} onNavigate={navigate} /> : <StructureContent {...props} onNavigate={navigate} />}
+    {state.view === 'browse' && state.message ? <Text style={{ color: c.foregroundMuted }}>{state.message}</Text> : null}
+  </View>;
+}
+function StructureContent(props: GraphContentProps) {
   const { directory, views, workspaceId, agentId, surface, layout, theme, host } = props;
   const toast = useToast();
   const copyId = async (id: string) => {
@@ -84,7 +106,6 @@ export function GraphContent(props: GraphContentProps) {
       padding: 4, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
       <Button theme={theme} active={state.scope === 'group'} onPress={() => store.set({ scope: 'group', message: null })}>현재 구조</Button>
       <Button theme={theme} active={state.scope === 'workspace'} onPress={() => store.set({ scope: 'workspace', message: null })}>워크스페이스</Button>
-      {!layout.compact && props.onLarge ? <Button theme={theme} onPress={props.onLarge}>크게 보기</Button> : null}
     </View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
       <View style={{ flexDirection: 'row', borderRadius: 8, backgroundColor: c.surface1 }}>
