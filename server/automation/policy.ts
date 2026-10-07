@@ -17,7 +17,7 @@ export function reviewHeadroom(s: Snapshot, now: number) {
   return Boolean(s.disk && now - s.disk.sampledAt <= 60_000 && s.disk.available >= GiB
     && s.memoryLevel !== null && s.memoryLevel >= 3 && s.cpu && s.cpu.total < 85);
 }
-export function sameTarget(p: ProcessInfo, t: AutomaticTarget) {
+export function sameTarget(p: Pick<ProcessInfo, 'pid' | 'start' | 'path' | 'group' | 'name'>, t: AutomaticTarget) {
   return processKey(p) === processKey(t) && p.path === t.path && p.group === t.group && p.name === t.name;
 }
 export function growing(p: ProcessInfo, points: Point[]) {

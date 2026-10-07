@@ -101,9 +101,9 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
       </View>
       {s.status === 'ok' ? null : <Badge theme={theme} label={statusLabels[s.status]} />}
       <View style={{ flexDirection: 'row', gap: 8 }}>
-      {canInspect && s.automation ? <Pressable accessibilityRole="button" accessibilityLabel="자동 관리 열기" onPress={() => setManaging(true)}
+      {canInspect && s.automation ? <Pressable accessibilityRole="button" accessibilityLabel="자동 리뷰 열기" onPress={() => setManaging(true)}
         style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, backgroundColor: c.surface2 }}>
-        <Text style={{ color: c.foregroundMuted }}>자동 관리 · {automationLabels[s.automation.phase]}</Text>
+        <Text style={{ color: c.foregroundMuted }}>리뷰 · {s.automation.pendingReviewCount ? `후보 ${s.automation.pendingReviewCount}` : automationLabels[s.automation.phase]}</Text>
       </Pressable> : null}
       {onRefresh ? <Pressable accessibilityRole="button" accessibilityLabel="모니터 새로고침" disabled={refreshing}
         onPress={onRefresh}

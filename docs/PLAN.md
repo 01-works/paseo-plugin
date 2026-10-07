@@ -15,7 +15,7 @@
 
 | 항목 | 결정 |
 |---|---|
-| 멀티호스트 | **공식 + 실험 병행.** 기본은 공식 API만으로 동작. 추가로 모든 Mac 지표를 한 표에 모으는 비공식 레지스트리를 넣되, 설정에서 끌 수 있고 실패 시 호스트 선택기 방식으로 자동 폴백 |
+| 멀티호스트 | **공식 호스트 선택기만 사용.** 2026-10-07 사용자가 실험적 집계 제거를 승인했다. 5.4절·14절 참조 |
 | 앱별 상위 목록 | **첫 버전에 포함.** CPU 순·메모리 순 상위 5개 앱 그룹을 팝오버/대시보드에만 표시 |
 | 프로젝트 위치 | `~/dev/mac-monitor` (별도 git 저장소) |
 
@@ -113,7 +113,6 @@
   호스트별 클라이언트 번들 (플러그인이 설치된 호스트마다 따로 평가됨)
     ├─ composer pill (에이전트별) → 그 에이전트의 호스트 RPC
     ├─ 사이드바 대시보드 (호스트 선택기 자동)
-    └─ [실험] globalThis 레지스트리로 모든 호스트 RPC 집계
 ```
 
 ### 5.1 네이티브 헬퍼 (`native/macmon-helper.c`)
@@ -151,8 +150,7 @@
 
 RPC (`shared/contracts.ts`, 모두 zod)
 - `mac-monitor.snapshot.get` `{ includeProcesses: boolean }` → 스냅샷. `includeProcesses: true`면 프로세스 스캔 "관심" 타임스탬프를 갱신(30 s 유지).
-- `mac-monitor.host.info` → `{ hostname, serverId?, platform, helperMode: "native"|"node"|"unsupported", version }`
-  - `serverId`: 데몬 홈의 `server-id` 파일에서 읽기 시도 (실험 레지스트리 키). 경로·환경변수(`PASEO_HOME` 등)는 구현 시 확인할 것.
+- `mac-monitor.host.info` → `{ hostname, platform, helperMode: "native"|"node"|"unsupported", version }`
 
 ### 5.3 클라이언트 (`index.client.tsx`, `client/`)
 
@@ -171,17 +169,13 @@ composer pill (에이전트별)
 
 사이드바 대시보드 (`addSurface` + `addSidebarItem`)
 - 공식 모드: 선택된 호스트의 상세 + `useHosts()` 전체 목록과 각 호스트의 에이전트 작업 중/대기 수 (`getPaseoClient(serverId).agents` 구독). 다른 호스트의 CPU·메모리 칸은 "호스트 선택기로 전환" 안내.
-- 실험 모드 (5.4): 모든 호스트를 한 표에 — 호스트명 · 상태 · CPU · 사용된 메모리/전체 · 압력 · 스왑 · 작업 중 에이전트 수 · 갱신 시각. 행을 누르면 상세(앱 상위 목록 포함).
-- compact 레이아웃에서는 표 대신 카드 목록.
 
-### 5.4 실험: 멀티호스트 레지스트리
+### 5.4 제거된 실험: 멀티호스트 레지스트리
 
-- 근거: 앱은 호스트별 설치 번들을 같은 JS realm에서 평가함 (0.10.2 소스 확인, 문서화되지 않은 동작).
-- 각 설치의 client entry가 로드 시 `globalThis.__pasoMacMonitor ??= { v: 1, hosts: new Map() }`에 `{ serverId, rpc, registeredAt, pluginVersion }`를 등록, cleanup에서 자기 항목 제거.
-- 키(serverId)는 `mac-monitor.host.info` RPC로 얻고 `useHosts()`의 serverId와 매칭. 매칭 실패 시 hostname으로 표시.
-- 대시보드가 보이는 동안에만 등록된 호스트마다 2 s 간격 폴링 (호스트별 single-flight, 타임아웃 3 s).
-- 설정(`defineSettings`) `experimentalFleet` 기본 **켜짐**. 레지스트리가 없거나 자기 호스트만 있으면 공식 모드로 자동 폴백하고 그 사실을 화면에 표시.
-- 스키마 버전(`v`)이 다르면 무시. 이 기능에 의존하는 코드는 `client/fleet/` 한 곳에 격리.
+2026-10-07 후속 사용자 승인으로 비공식 globalThis 레지스트리, 교차 호스트 지표 폴링,
+`client/fleet/`, `experimentalFleet` 설정과 등록을 제거한다. Paseo 기본 호스트 선택기로 선택한
+호스트의 지표만 조회·종료하며 공식 SDK의 연결 호스트/에이전트 수 표시는 유지한다.
+기존 데몬 전역 설정 파일의 남은 설정은 직접 수정하지 않으며 더 이상 읽거나 사용하지 않는다.
 
 ## 6. 오류·상태 표시 규칙
 
@@ -205,7 +199,7 @@ mac-monitor/
   tsconfig.json          (paseo plugin init 스캐폴드 기반, DOM lib 금지)
   index.client.tsx
   index.server.ts
-  client/  pill.tsx, popover.tsx, dashboard.tsx, fleet/registry.ts, format.ts
+  client/  pill.tsx, popover.tsx, dashboard.tsx, format.ts, automation.tsx
   server/  collector.ts, helper-process.ts, node-fallback.ts, host-info.ts
   shared/  contracts.ts, compute.ts (메모리/CPU/상태 계산 순수 함수), units.ts
   native/  macmon-helper.c, build.sh
@@ -236,11 +230,11 @@ mac-monitor/
 4. Activity Monitor 대조: `npm run compare`(같은 시각 값 출력 CLI)와 Activity Monitor 화면을 나란히 놓고 CPU(사용자+시스템), 사용된 메모리·앱·와이어드·압축·캐시, 스왑을 3회 이상 기록. 차이와 원인(샘플링 시각·간격, 단위, 계산 기준)을 `docs/VALIDATION.md`에 기록. 화면 대조는 사용자 확인이 필요할 수 있음 — 확인 전까지 "일치"라고 쓰지 않는다.
 5. 테마 전환(라이트/다크), 좁은 창(compact)에서 pill·팝오버·대시보드 확인.
 6. 플러그인 disable → 헬퍼 프로세스 종료 확인.
-7. 다른 Mac 호스트에 설치 후 실험 레지스트리 집계 / 폴백 동작 확인 (다른 호스트 설치는 사용자 승인 후).
+7. 다른 Mac 호스트에 설치 후 공식 호스트 선택기 동작 확인 (다른 호스트 설치는 사용자 승인 후).
 
 ## 10. README에 쓸 것
 
-설치(로컬 경로, 다른 호스트 `--host`/git), 업데이트(`git pull` + `paseo plugin reload`), 제거(`paseo plugin remove mac-monitor`), 측정 기준과 계산식·출처, 단위(GiB), 상태 규칙, 실험 기능과 끄는 법, 알려진 한계(root 프로세스, Activity Monitor와의 차이, x86_64 미검증), 측정된 자체 부하.
+설치(로컬 경로, 다른 호스트 `--host`/git), 업데이트(`git pull` + `paseo plugin reload`), 제거(`paseo plugin remove mac-monitor`), 측정 기준과 계산식·출처, 단위(GiB), 상태 규칙, 공식 호스트 선택기, 알려진 한계(root 프로세스, Activity Monitor와의 차이), 측정된 자체 부하.
 
 ## 11. 하지 말 것
 
@@ -252,8 +246,7 @@ mac-monitor/
 
 ## 12. 미해결·구현 시 확인할 것
 
-- 플러그인 서버 subprocess에서 데몬 홈(`server-id`) 경로를 얻는 방법
-- 0.10.2 `defineSettings` 정확한 시그니처 (`report-paseo-api.md` 참고, 타입 정의로 확인)
+- 플러그인 서버 subprocess에서 데몬 홈 경로를 얻는 방법 (자동 관리 전용 파일에 사용)
 - pill 아이콘 컴포넌트가 받는 props에서 theme 접근 방식 (타입 정의 `dist/client/buttons.d.ts`)
 - x86_64 슬라이스 실행 검증 (Rosetta 없음 → Intel Mac 호스트가 있으면 그때)
 - 0.11 업그레이드 시 `addScreen` 등 API 변경 대응 (지금은 0.10.2 API만 사용)
@@ -302,3 +295,26 @@ mac-monitor/
 - 검증: 압력/추세/예산/저장 실패/취소/신선도/대상 변경 단위 테스트, CLI 도구·출력·시간 제한·자식 정리,
   직접 만든 네이티브 worker의 허용·보호·SIGTERM·종료 조회, 가상 데이터의 실제 Luna 호출과 비용 측정.
   실제 메모리 압력을 인위적으로 만들거나 사용자 프로세스를 자동 종료하는 실험은 하지 않는다.
+
+## 14. 후속 승인: 리뷰 후보의 확인 종료와 공식 호스트 선택기 (0.3.0)
+
+2026-10-07 사용자가 과도한 작업별 영구 허용 규칙을 추가하지 않고 자동 리뷰·확인 종료로 정리하며,
+실험적 멀티 호스트 집계를 제거하도록 승인했다. 13절의 측정·예산·보호·일회 허용 규칙은 유지한다.
+
+- 정상 시 기존 측정만 수행하며 작업 폴더·명령행 수집, 새 감시 타이머, 재실행 PID에 허용을 이어주는 정책은 추가하지 않는다.
+- 최근 리뷰 후보 최대 4개에 정확한 PID·시작 시각·이름·경로, 리뷰 시 사용량/증가량, 이유·판정·조치 결과를 보관한다.
+  기존 v1 전용 상태 파일은 새 목록 누락을 빈 목록으로 읽는다. 리뷰 화면은 320 높이 스크롤과 기본 폰트를 유지한다.
+- 허용되지 않은 후보도 종료 검토 의견을 받을 수 있다. Luna 판단은 누수·작업 중요도를 확정하지 않으며 신호 권한을 만들지 않는다.
+- 후보의 종료 선택은 신호를 보내지 않는다. 별도 확인 후 `mac-monitor.automation.confirm` RPC로
+  화면에서 확인한 리뷰 시각·전체 대상 식별자를 보낸다. 15분 초과 리뷰, 이전 판정 교체, 대상 변경,
+  측정 실패/지연, 중복 시도는 거절한다. 수동 확인은 압력 회복 후에도 최신 대상이면 가능하다.
+- 확인 종료는 기존 수동 SIGTERM의 현재 UID·시작 시각·Paseo/자신/상위 프로세스 보호를 사용한다.
+  앱 번들·브라우저·터미널의 자동 종료 보호는 계속 유지하며 사용자 명시 확인은 기존 개별 종료와 같은 범위다.
+  최신 캐시의 이름·경로도 기록 저장 전후에 다시 대조한 뒤 신호를 요청한다.
+- 시도 상태를 먼저 저장하고 예정 로그를 디스크에 반영한 뒤 1회 요청한다. 기록 실패면 신호를 보내지 않는다.
+  기존 로그 파일에 자동/확인 조치를 구분하며 10초 후 직접 PID 조회로 결과를 기록한다.
+  플러그인이 먼저 종료되거나 재시작된 미확인 시도는 확인 불가이며 자동으로 다시 시도하지 않는다.
+- 허용한 독립 worker의 자동 종료는 기존대로 선택 사항이다. UI에서 자동 리뷰와 일회 자동 종료 허용을 구분한다.
+- 5.4절의 실험 코드는 완전히 제거하며 기본 호스트 선택기에 맡긴다. 다른 Mac을 설치/조작하거나 데몬 전역 설정을 수정하지 않는다.
+- 검증: 후보 보존·구버전 상태 호환, 확인 전 신호 없음, PID/경로/리뷰 교체·만료·동시 확인·기록 실패·shutdown,
+  자동 종료 보호 회귀, 공식 호스트별 화면 범위, 실제 로컬 RPC의 새 계약/거절과 기존 측정 간격을 확인한다.

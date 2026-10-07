@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import { automaticProtection, automationConfigSchema, processKey, type AutomationConfig, type AutomaticTarget, type AutomationEvent, type AutomationStatus, type AutomationTargetInput } from '../../shared/automation';
+import { automaticProtection, automationConfigSchema, processKey, REVIEW_MAX_AGE_MS, type AutomationConfig, type AutomaticTarget, type AutomationEvent, type AutomationStatus, type AutomationTargetInput, type ReviewedProcess, type ReviewConfirmInput } from '../../shared/automation';
 import type { ProcessInfo, Snapshot } from '../../shared/contracts';
 import { abovePressure, canAutomaticallyTerminate, growing, healthy, POLICY, sameTarget, reviewHeadroom, type Candidate, type Point } from './policy';
 import { createCodexReviewer, validateReview, type Reviewer } from './reviewer';
@@ -14,6 +14,7 @@ export interface GuardCollector {
   terminateAutomatically(target: ProcessInfo & { path: string }): Promise<{ sent: boolean; error?: string }>;
   inspectAutomatically(target: { pid: number; start: string; path: string }): Promise<ProcessState>;
   validateAutomatically(target: { pid: number; start: string; path: string }): Promise<{ allowed: boolean; error?: string }>;
+  terminate(target: { pid: number; start: string; group: string }): Promise<{ sent: boolean; error?: string }>;
 }
 type Options = { reviewer?: Reviewer; read?: () => Promise<AutomationState>; write?: (state: AutomationState) => Promise<void>; audit?: Auditor;
   now?: () => number; mono?: () => number; log?: (message: string) => void };
@@ -34,6 +35,7 @@ export class MemoryGuardian {
   private revision = 0;
   private pendingExit = new Map<string, { record: AuditRecord; at: number }>();
   private confirmations = new Set<Promise<void>>();
+  private actions = new Set<Promise<{ sent: boolean; error?: string }>>();
   private reviewer: Reviewer;
   private auditor: Auditor;
   private now: () => number;
@@ -44,13 +46,23 @@ export class MemoryGuardian {
     this.mono = options.mono ?? (() => performance.now());
   }
   async start() {
-    try { this.state = await (this.options.read ?? readAutomation)(); this.ready = true; this.phase = this.state.config.enabled ? 'idle' : 'off'; }
+    try {
+      this.state = await (this.options.read ?? readAutomation)(); this.ready = true; this.phase = this.state.config.enabled ? 'idle' : 'off';
+      if (this.state.reviews.some(r => r.outcome === 'requested' || r.outcome === 'sent')) {
+        // 이전 실행의 신호 전송 여부를 추측하거나 재시도하지 않는다.
+        this.state.reviews = this.state.reviews.map(r => r.outcome === 'requested' || r.outcome === 'sent' ? { ...r, outcome: 'unknown' } : r);
+        await this.save();
+      }
+    }
     catch (error) { this.fail(String(error)); }
     if (!this.stopped) this.unsubscribe = this.collector.subscribe(() => this.accept());
   }
   status(): AutomationStatus { return { enabled: this.ready && !this.failure && this.state.config.enabled, phase: this.phase,
-    model: 'gpt-6-luna', targetCount: this.state.targets.length, lastEvent: this.state.events.at(-1) ?? null }; }
-  report() { return { config: { ...this.state.config }, targets: [...this.state.targets], status: this.status(), events: [...this.state.events] }; }
+    model: 'gpt-6-luna', targetCount: this.state.targets.length,
+    pendingReviewCount: this.state.reviews.filter(r => r.outcome === 'pending' && r.decision !== 'normal' && r.target.path
+      && this.now() >= r.at && this.now() - r.at <= REVIEW_MAX_AGE_MS).length,
+    lastEvent: this.state.events.at(-1) ?? null }; }
+  report() { return { config: { ...this.state.config }, targets: [...this.state.targets], status: this.status(), events: [...this.state.events], reviews: structuredClone(this.state.reviews) }; }
   isAllowed(p: ProcessInfo) { return this.state.targets.some(t => sameTarget(p, t)); }
   private save() {
     const snapshot = structuredClone(this.state);
@@ -99,6 +111,59 @@ export class MemoryGuardian {
     this.state.targets = [...this.state.targets.filter(t => processKey(t) !== key), target]; this.revision++; this.abort?.abort();
     await this.save(); return { changed: true };
   }
+  confirm(input: ReviewConfirmInput) {
+    const work = this.confirmReview(input);
+    this.actions.add(work); void work.then(() => this.actions.delete(work), () => this.actions.delete(work));
+    return work;
+  }
+  private reviewedTarget(input: ReviewConfirmInput) {
+    const observation = this.collector.observeAutomation();
+    const p = observation.members.find(p => sameTarget(p, input));
+    return healthy(observation.snapshot) && observation.snapshot.processesStatus === 'ok' && p ? { ...observation, process: p } : null;
+  }
+  private outcome(record: AuditRecord, outcome: ReviewedProcess['outcome']) {
+    const review = this.state.reviews.find(r => r.at === record.reviewedAt && processKey(r.target) === processKey(record.target));
+    if (review) review.outcome = outcome;
+  }
+  private async confirmReview(input: ReviewConfirmInput): Promise<{ sent: boolean; error?: string }> {
+    const review = this.state.reviews.find(r => r.at === input.reviewedAt && sameTarget(r.target, input));
+    if (!this.ready || this.failure || this.stopped || this.inFlight || !review || review.decision === 'normal' || review.outcome !== 'pending'
+      || this.now() < review.at || this.now() - review.at > REVIEW_MAX_AGE_MS)
+      return { sent: false, error: '확인할 최신 리뷰가 없거나 이미 처리했습니다. 다시 확인하세요.' };
+    const current = this.reviewedTarget(input);
+    if (!current) return { sent: false, error: '대상이 변경되었거나 측정값이 오래되었습니다. 다시 확인하세요.' };
+    const revision = this.revision;
+    const record: AuditRecord = { v: 1, at: this.now(), model: 'gpt-6-luna', mode: 'confirmed', reviewedAt: review.at,
+      kind: 'planned', target: { ...review.target }, decision: review.decision, reason: review.reason, before: auditMetrics(current.snapshot, current.process) };
+    // 확인한 실행 인스턴스에 한 번만 시도한다. 동시 요청·재시작으로 신호를 재전송하지 않는다.
+    review.outcome = 'requested'; this.state.targets = this.state.targets.filter(t => processKey(t) !== processKey(input));
+    try {
+      await this.save(); await this.audit(record);
+      const fresh = this.reviewedTarget(input);
+      if (this.stopped || this.failure || revision !== this.revision || !fresh || this.now() - review.at > REVIEW_MAX_AGE_MS) {
+        this.outcome(record, 'cancelled');
+        await this.audit({ ...record, at: this.now(), kind: 'cancelled', reason: '종료 확인 도중 대상·측정·설정이 변경되었습니다.' });
+        await this.save(); return { sent: false, error: '종료 확인 도중 상태가 변경되었습니다. 다시 확인하세요.' };
+      }
+      const result = await this.collector.terminate({ pid: input.pid, start: input.start, group: input.group });
+      this.outcome(record, result.sent ? 'sent' : 'refused');
+      this.event(result.sent ? 'sent' : 'skipped', result.sent ? '사용자 확인 후 종료 신호를 보냈습니다.' : result.error ?? '종료 신호 전송 실패', input.pid);
+      if (result.sent) this.pendingExit.set(processKey(input), { record, at: this.mono() });
+      const after = this.collector.observeAutomation();
+      await this.audit({ ...record, at: this.now(), kind: result.sent ? 'sent' : 'refused',
+        reason: result.sent ? review.reason : (result.error ?? '종료 신호 전송 실패').slice(0, 500),
+        after: auditMetrics(after.snapshot, after.members.find(p => sameTarget(p, input))) });
+      await this.save(); return result;
+    } catch {
+      this.outcome(record, 'unknown');
+      if (!this.failure) {
+        this.event('error', '확인 종료의 전송·기록을 완료하지 못했습니다. 다시 신호를 보내지 않습니다.', input.pid);
+        await this.audit({ ...record, at: this.now(), kind: 'unknown', reason: '확인 종료의 전송·기록 실패' }).catch(() => {});
+      }
+      await this.save().catch(() => {});
+      return { sent: false, error: '확인 종료를 완료하지 못했습니다. 기록과 현재 프로세스를 확인하세요.' };
+    }
+  }
   private reset() {
     this.pressureSince = null; this.lastSample = null; this.scanSince = null; this.histories.clear();
     this.collector.setAutomaticInterest(false);
@@ -146,7 +211,7 @@ export class MemoryGuardian {
       if (growing(p, points)) candidates.push({ process: { ...p }, points: [...points], growthBytes: p.memoryBytes - points[0].memoryBytes, approved: this.isAllowed(p) && !automaticProtection(p) });
     }
     // 리뷰 중에도 같은 2초 샘플로 추세를 갱신한다. 오래된 증가 추세로 종료하지 않는다.
-    if (this.inFlight || !this.budgetAvailable()) return;
+    if (this.inFlight || this.actions.size || !this.budgetAvailable()) return;
     const chosen = candidates.sort((a, b) => Number(b.approved) - Number(a.approved) || b.growthBytes - a.growthBytes).slice(0, POLICY.maxCandidates);
     if (!chosen.length) return;
     this.abort = new AbortController(); this.phase = 'reviewing';
@@ -161,18 +226,25 @@ export class MemoryGuardian {
       if (this.stopped || signal.aborted) return;
       const input = { pressure: original.pressure, memoryUsed: original.memory!.used, memoryTotal: original.memory!.total, candidates };
       const result = validateReview(await this.reviewer(input, signal), input);
+      if (this.stopped || signal.aborted || revision !== this.revision || this.failure) return;
+      const reviewedAt = this.now();
+      this.state.reviews = result.decisions.map(d => {
+        const c = candidates.find(c => processKey(c.process) === d.key)!;
+        return { at: reviewedAt, target: { pid: c.process.pid, start: c.process.start, path: c.process.path ?? null, group: c.process.group, name: c.process.name },
+          decision: d.decision, reason: d.reason, memoryBytes: c.process.memoryBytes, growthBytes: c.growthBytes, outcome: 'pending' };
+      });
       let attempted = false;
       for (const decision of result.decisions) {
         if (this.stopped || signal.aborted || revision !== this.revision || this.failure) break;
         const c = candidates.find(c => processKey(c.process) === decision.key)!;
-        const record: AuditRecord = { v: 1, at: this.now(), model: 'gpt-6-luna', kind: 'review',
+        const record: AuditRecord = { v: 1, at: this.now(), model: 'gpt-6-luna', mode: 'automatic', reviewedAt, kind: 'review',
           target: { pid: c.process.pid, start: c.process.start, path: c.process.path ?? null, group: c.process.group, name: c.process.name },
           decision: decision.decision, reason: decision.reason, before: auditMetrics(original, c.process) };
         await this.audit(record);
-        const labels = { normal: '정상', observe: '관찰', terminate: '종료 권고' };
+        const labels = { normal: '정상', observe: '관찰', terminate: '종료 검토' };
         this.event('review', `${c.process.group} · ${labels[decision.decision]}: ${decision.reason}`, c.process.pid);
         if (this.stopped || signal.aborted || revision !== this.revision || this.failure) break;
-        if (decision.decision !== 'terminate') continue;
+        if (decision.decision !== 'terminate' || !c.approved) continue;
         if (attempted) {
           const reason = '한 번의 리뷰에서는 프로세스 하나만 종료를 시도합니다.';
           this.event('skipped', reason, c.process.pid);
@@ -188,22 +260,26 @@ export class MemoryGuardian {
         // 한 번의 시도만 허용한다. 재시작·기록 실패 후 자동으로 다시 신호를 보내지 않는다.
         const permission = this.state.targets.find(t => sameTarget(p, t))!;
         this.state.targets = this.state.targets.filter(t => processKey(t) !== decision.key);
+        this.outcome(record, 'requested');
         attempted = true;
         await this.save();
         const planned = { ...record, at: this.now(), kind: 'planned' as const, before: auditMetrics(current.snapshot, p) };
         await this.audit(planned);
         if (this.stopped || signal.aborted || revision !== this.revision || this.failure) {
+          this.outcome(record, 'cancelled');
           await this.audit({ ...planned, at: this.now(), kind: 'cancelled', reason: '설정 변경·취소로 종료 신호를 보내지 않았습니다.' }); break;
         }
         const fresh = this.collector.observeAutomation(); const target = fresh.members.find(x => processKey(x) === decision.key);
         if (!target?.path || !abovePressure(fresh.snapshot, this.state.config) || !reviewHeadroom(fresh.snapshot, this.now()) || fresh.snapshot.processesStatus !== 'ok'
           || !canAutomaticallyTerminate(target, c, [permission]) || !this.currentlyGrowing(target)) {
           this.event('skipped', '최종 확인 실패 · 종료하지 않았습니다.', c.process.pid);
+          this.outcome(record, 'cancelled');
           await this.audit({ ...planned, at: this.now(), kind: 'cancelled', reason: '최종 확인 실패', after: auditMetrics(fresh.snapshot, target) }); continue;
         }
         const sent = await this.collector.terminateAutomatically({ ...target, path: target.path });
+        this.outcome(record, sent.sent ? 'sent' : 'refused');
         this.event(sent.sent ? 'sent' : 'skipped', sent.sent ? '자동 종료 신호를 보냈습니다.' : sent.error ?? '종료 신호 전송 실패', p.pid);
-        this.pendingExit.set(decision.key, { record: planned, at: this.mono() });
+        if (sent.sent) this.pendingExit.set(decision.key, { record: planned, at: this.mono() });
         const after = this.collector.observeAutomation();
         await this.audit({ ...planned, at: this.now(), kind: sent.sent ? 'sent' : 'refused',
           reason: sent.sent ? decision.reason : (sent.error ?? '종료 신호 전송 실패').slice(0, 500),
@@ -230,6 +306,7 @@ export class MemoryGuardian {
       const work = this.collector.inspectAutomatically({ ...target, path: target.path }).catch(() => 'unknown' as const).then(async state => {
         const observation = this.collector.observeAutomation();
         await this.audit({ ...pending.record, at: this.now(), kind: state, after: auditMetrics(observation.snapshot, observation.members.find(p => processKey(p) === key)) });
+        this.outcome(pending.record, state);
         this.event(state === 'exited' ? 'exited' : 'still-running', state === 'exited' ? '프로세스 종료를 확인했습니다.'
           : state === 'running' ? '종료 요청 후에도 실행 중입니다. 추가 신호는 보내지 않습니다.' : '종료 여부를 확인하지 못했습니다. 추가 신호는 보내지 않습니다.', target.pid);
         return this.save();
@@ -239,11 +316,12 @@ export class MemoryGuardian {
   }
   async stop() {
     this.stopped = true; this.revision++; this.unsubscribe?.(); this.abort?.abort(); this.collector.setAutomaticInterest(false);
-    await this.inFlight; await Promise.all(this.confirmations);
+    await this.inFlight; await Promise.allSettled(this.actions); await Promise.all(this.confirmations);
     const pending = [...this.pendingExit.values()]; this.pendingExit.clear();
     for (const { record } of pending) {
       try {
         await this.audit({ ...record, at: this.now(), kind: 'unknown', reason: '플러그인 종료로 종료 여부를 확인하지 못했습니다.' });
+        this.outcome(record, 'unknown');
         this.event('skipped', '플러그인 종료로 종료 여부를 확인하지 못했습니다.', record.target.pid);
       } catch { break; } // 기록 실패도 헬퍼 정리를 막지 않는다.
     }

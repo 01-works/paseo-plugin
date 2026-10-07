@@ -11,6 +11,7 @@ const metricsSchema = z.object({ pressure: z.enum(['normal', 'warning', 'critica
   processMemoryBytes: z.number().nonnegative().nullable(), processCpuPercent: z.number().nonnegative().nullable(),
   systemMemoryUsed: z.number().nonnegative().nullable(), memoryLevel: z.number().nullable(), sampledAt: z.number().nullable(), seq: z.number().nullable() });
 export const auditSchema = z.object({ v: z.literal(1), at: z.number().finite(), model: z.literal(AUTO_MODEL),
+  mode: z.enum(['automatic', 'confirmed']).optional(), reviewedAt: z.number().finite().nonnegative().optional(),
   kind: z.enum(['review', 'planned', 'sent', 'refused', 'cancelled', 'exited', 'running', 'unknown']),
   target: automaticTargetSchema.extend({ path: z.string().max(511).nullable() }),
   decision: z.enum(['normal', 'observe', 'terminate']), reason: z.string().max(500),
