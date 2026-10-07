@@ -22,7 +22,7 @@
 | disable → 자식 종료 → enable | 완료, 헬퍼 1개로 복귀 |
 | 부모 SIGKILL → 고아 헬퍼 방지 | 실제 네이티브 검증 완료 |
 | prebuilt 실패 → 로컬 빌드 → Node 폴백 | 전용 임시 홈에서 실제 검증 완료 |
-| GitHub main · arm64/Intel CI | 0.5.0 두 아키텍처 통과. 0.6.0은 아래 후속 게시 검증에 기록 |
+| GitHub main · arm64/Intel CI | 완료: 0.6.0 두 아키텍처의 타입·105개 테스트·prebuilt 실행·빌드·서명·스키마 검사 통과 |
 | 자동 감시·압력 기반 Luna 리뷰·자동 종료 제거 | 제거 유지. 0.5.0은 버튼을 누른 경우만 검토하며 사용자 확인 전 신호 없음 |
 | 요청형 정리 검사 | 관찰/모델/정보/취소/만료/확인 재검증 테스트, 실제 Luna·Paseo 후보/확인 취소 완료 |
 | 1분 숫자 이력·최근 1시간 상한 | 완료: 실제 분당 수집, 가상 61회/512개 버퍼·보관 경계. 실제 1시간 연속 관측은 아님 |
@@ -80,6 +80,9 @@
 - 최종 C 코드의 `native-actions.mjs`는 시작 시각 불일치·부모/헬퍼 차단·실행 정보 읽기·직접 만든 Node 자식의
   SIGTERM을 통과했다. `npm run compare -- --samples=3`도 정상 CPU 세 회와 errors=[]를 출력하고 임시 헬퍼를 정리했다.
   **Activity Monitor 현재 합계 화면 대조는 사용자 대조 필요**이며 이번 CLI 실행을 화면 대조라고 쓰지 않는다.
+- 공개 main `d230978`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37607954049)가
+  타입·105개 테스트·커밋된 prebuilt 실행·universal 빌드·서명·네이티브 JSON 스키마 검사를 모두 통과했다.
+  로컬 원본 `03b3d86`과 공개 저장소의 `mac-monitor/` git tree도 같음을 확인했다.
 
 ### C 헬퍼 자체 부하
 

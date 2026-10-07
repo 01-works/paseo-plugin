@@ -27,6 +27,8 @@ null이고 숫자 필드만 있는 것을 확인했다. AST audit는 DOM/HTML·f
 Claude 버전 경로와 Paseo/Codex/Claude 그룹을 보호 조건에 추가하고 검사·확인 종료 회귀를 추가했다.
 당시 판정은 판단 어려움이었고 신호를 보내지 않았다. 119.999초를 1분으로 내리던 화면 표시는 분 단위 반올림으로 수정했다.
 실측 부하·로컬 RPC/화면·수명주기와 남은 확인은 [VALIDATION.md](VALIDATION.md)에 기록한다.
+공개 main `d230978`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37607954049)도
+타입·105개 테스트·prebuilt 실행·빌드·서명·스키마 검사를 모두 통과했다.
 
 ## 이전 0.5.0 · 요청형 정리 검사와 기기 표시
 
