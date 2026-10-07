@@ -60,7 +60,7 @@ export function RowButton({ theme, children, label, hint, disabled, onPress, onL
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint} disabled={disabled}
     onPress={onPress} onLongPress={onLongPress} {...feedback.events}
     style={({ pressed }) => ({ flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center', gap: spacing.small,
-      paddingRight: spacing.gap, paddingVertical: spacing.gap, borderWidth: 1, borderRadius: spacing.gap,
+      paddingHorizontal: spacing.gap, paddingVertical: spacing.small, borderWidth: 1, borderRadius: spacing.gap,
       borderColor: feedback.focused ? c.accent : 'transparent',
       outlineWidth: Platform.OS === 'web' && feedback.focused ? 0 : undefined,
       backgroundColor: !disabled && (pressed || feedback.highlighted) ? c.surface2 : 'transparent' })}>

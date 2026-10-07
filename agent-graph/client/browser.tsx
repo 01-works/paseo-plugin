@@ -107,13 +107,13 @@ export function AgentBrowser(props: PluginHostProps & {
         <Text style={{ color: c.foregroundMuted }}>{!snapshot.loaded ? snapshot.error ? '목록을 읽지 못했습니다' : '목록 불러오는 중' :
           state.browserQuery.trim() ? '검색 결과가 없습니다' : '이 워크스페이스에 에이전트가 없습니다'}</Text>
       </View>}
-      renderItem={({ item }) => <View style={{ height: 80, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.inset,
+      renderItem={({ item }) => <View style={{ height: 80, flexDirection: 'row', alignItems: 'center', gap: spacing.gap,
+        paddingHorizontal: spacing.small, paddingVertical: spacing.small,
         borderBottomWidth: 1, borderColor: c.border, backgroundColor: item.id === agentId ? c.surface1 : c.surface0 }}>
         <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, backgroundColor: item.id === agentId ? c.accent : 'transparent' }} />
         <RowButton theme={theme} label={item.title + (item.id === agentId ? ' · 현재 대화' : '')}
           hint="대화를 엽니다. 길게 누르면 에이전트 ID를 복사합니다" disabled={!onNavigate}
-          onPress={() => navigate(item.id)} onLongPress={() => { void copyId(item.id); }}
-        >
+          onPress={() => navigate(item.id)} onLongPress={() => { void copyId(item.id); }}>
           <Text numberOfLines={2} style={{ color: c.foreground, fontWeight: item.id === agentId ? '600' : '400' }}>{item.title}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
             <Status state={item.state} theme={theme} stale={snapshot.stale} />
