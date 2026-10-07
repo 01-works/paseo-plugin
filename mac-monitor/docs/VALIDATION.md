@@ -22,6 +22,7 @@
 | disable → 자식 종료 → enable | 완료, 헬퍼 1개로 복귀 |
 | 부모 SIGKILL → 고아 헬퍼 방지 | 실제 네이티브 검증 완료 |
 | prebuilt 실패 → 로컬 빌드 → Node 폴백 | 전용 임시 홈에서 실제 검증 완료 |
+| GitHub main · arm64/Intel CI | 0.4.0 코드 게시 및 두 아키텍처 검사 모두 통과 |
 | 자동 감시·Luna 리뷰·자동 종료 제거 | 소스·UI·RPC·native 명령 제거, 설치된 RPC/번들 및 이전 파일 보존 확인 |
 | 개별·전체 수동 종료 | 테스트 자식의 실제 SIGTERM, 시작 시각 불일치·부모/헬퍼 차단 검증 |
 | 실험적 멀티 호스트 집계 제거 | 레지스트리·표·설정·serverId 파일 읽기 제거, 공식 호스트별 화면 및 오프라인 전환 테스트 완료 |
@@ -71,6 +72,9 @@
 - 설치된 클라이언트 번들 **59,711 bytes**에서 자동 관리 RPC·모델·허용 버튼과 실험 집계 문자열이 없다.
   React Native 제공 Hermes의 바이트코드 컴파일을 통과했다. 이는 실제 모바일 화면/터치 확인을 대신하지 않는다.
   client AST의 HTML JSX·DOM API/속성·fontSize·색 없는 Text는 0건이며 Text 색은 모두 theme 토큰이다.
+- 코드 반영 공개 main `e55a60c`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37584476033)가 모두 통과했다.
+  두 아키텍처에서 타입·57개 테스트·새 prebuilt 실행·universal 빌드/서명·네이티브 JSON 스키마를 검증했다.
+  원본 커밋 `58eadab`과 게시된 mac-monitor 폴더의 git tree가 동일하며 다른 폴더에 변경이 없음을 확인했다.
 
 `python3 test/manual/helper-cost.py`는 새 헬퍼의 앱 스캔을 켠 상태로 **60.0025초** 관찰했다.
 CPU 시간 0.206477초, **코어 하나의 0.344114%**(10코어 환산 0.034411%), 최대 RSS **2.765625 MiB**였다.

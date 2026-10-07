@@ -16,6 +16,7 @@
 
 `npm run typecheck`, 8개 파일/57개 테스트, universal 빌드·엄격한 서명 검증을 통과했다.
 client AST의 HTML JSX·DOM API/속성·fontSize·색 없는 Text는 0건이다. Text 색은 theme 토큰이다.
+공개 main의 arm64·Intel CI도 타입·57개 테스트·새 prebuilt 실행·빌드·서명·스키마 검사를 모두 통과했다.
 제거된 자동 관리 테스트를 제외하고 계산·오류·수집 수명주기·화면 갱신·호스트 전환·수동 종료 회귀를 유지했다.
 기존 조치 기록을 삭제하거나 사용자 작업에 종료 신호를 보내지 않았다.
 
