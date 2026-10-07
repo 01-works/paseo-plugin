@@ -1,7 +1,6 @@
 import type { OwnedSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } from '@getpaseo/client';
 import { normalizeAgent, sameAgent } from './normalize';
 import type { Agent, AgentKey } from '../shared/types';
-import { buildForest } from '../shared/forest';
 
 export type DirectorySnapshot = {
   agents: readonly Agent[]; loaded: boolean; loading: boolean; partial: boolean; stale: boolean; error: string | null;
@@ -31,15 +30,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   let batch: ReturnType<(typeof setTimeout)> | undefined;
   let watchTimer: ReturnType<(typeof setInterval)> | undefined;
   let snapshot: DirectorySnapshot = { agents: [], loaded: false, loading: true, partial: false, stale: false, error: null };
-  let forestAgents: readonly Agent[] | undefined;
-  let forest = buildForest([], '');
   const getSnapshot = () => snapshot;
-  const getForest = () => {
-    if (forestAgents !== snapshot.agents) {
-      forestAgents = snapshot.agents; forest = buildForest(snapshot.agents, hostId);
-    }
-    return forest;
-  };
   const subscribe = (listener: Listener) => {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
@@ -194,6 +185,6 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     await retrying?.catch(() => {});
     agents.clear();
   };
-  return { hostId, getSnapshot, getForest, subscribe, watch, start, retry, dispose };
+  return { hostId, getSnapshot, subscribe, watch, start, retry, dispose };
 }
 export type AgentDirectory = ReturnType< typeof createAgentDirectory>;

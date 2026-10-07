@@ -11,7 +11,7 @@ it('탐색은 현재 workspace만 포함하며 다른 workspace의 자손·조�
   expect(workspaceAgents(agents, 'w', 'updated').map(agent => agent.id)).toEqual(['here']);
   expect(workspaceAgents(agents, '', 'updated')).toEqual([]);
 });
-it('최근 활동과 생성순을 구분하고 원본·그래프 형제 순서를 바꾸지 않음', () => {
+it('최근 활동과 생성순을 구분하고 원본 목록 순서를 바꾸지 않음', () => {
   const agents = [make('new', { createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-01T00:00:00Z' }),
     make('old-active', { updatedAt: '2026-04-01T00:00:00Z' })];
   expect(workspaceAgents(agents, 'w', 'updated').map(agent => agent.id)).toEqual(['old-active', 'new']);

@@ -6,11 +6,11 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { createPaseoClient } from '@getpaseo/client';
 import { createAgentDirectory } from '../../client/directory.ts';
-import { scopeForest, countForest } from '../../shared/forest.ts';
-const home = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
+import { workspaceAgents } from '../../shared/browser.ts';
+const taskPaseoHome = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
   url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-graph-local-validation', clientType: 'cli', appVersion: '0.10.2',
-  localCredential: () => readFileSync(path.join(home, 'local-credential'), 'utf8').trim(),
+  localCredential: () => readFileSync(path.join(taskPaseoHome, 'local-credential'), 'utf8').trim(),
   webSocketFactory: (url, options) => new WebSocket(url, options?.protocols, { headers: options?.headers }),
   reconnect: { enabled: false }, connectTimeoutMs: 5000,
 });
@@ -32,14 +32,11 @@ try {
   const initialReads = reads;
   await new Promise(resolve => setTimeout(resolve, 5000));
   assert.equal(reads, initialReads, '정상 연결에서 반복 목록 조회 없음');
-  const forest = directory.getForest();
-  const groups = forest.roots.map(key => {
-    const root = forest.nodes.get(key);
-    const count = countForest(scopeForest(forest, key, root.agent?.workspaceId ?? '', 'group'));
-    return { id: root.agent?.id, title: root.agent?.title, ...count };
-  }).filter(group => group.total > 1).sort((a, b) => b.total - a.total);
+  const workspaces = [...new Set(snapshot.agents.map(agent => agent.workspaceId).filter(Boolean))];
+  const counts = workspaces.map(workspaceId => ({ workspaceId,
+    total: workspaceAgents(snapshot.agents, workspaceId, 'updated').length }));
   console.log(JSON.stringify({ loaded: snapshot.loaded, partial: snapshot.partial, agents: snapshot.agents.length,
-    parentLinks: snapshot.agents.filter(agent => agent.parentId).length, reads, leases, idleReads: reads - initialReads, groups: groups.slice(0, 5) }, null, 2));
+    reads, leases, idleReads: reads - initialReads, workspaceCount: counts.length, largestWorkspaces: counts.sort((a, b) => b.total - a.total).slice(0, 5) }, null, 2));
 } finally {
   releaseWatch?.(); await directory?.dispose(); await transport.close();
 }

@@ -30,7 +30,7 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
 });
 import { createAgentDirectory } from '../client/directory';
 import { contributePills } from '../client/pill';
-import { createGraphViews } from '../client/view-state';
+import { createBrowserViews } from '../client/view-state';
 import { page, raw } from './fixtures';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 let root, directory, stop;
@@ -38,7 +38,7 @@ afterEach(async () => {
   await act(async () => root?.unmount()); stop?.(); await directory?.dispose(); document.body.innerHTML = '';
   vi.useRealTimers();
 });
-it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action을 재실행하지 않음', async () => {
+it('React portal 본문·정렬·ID 복사·대화 이동은 바깥 pill action을 재실행하지 않음', async () => {
   vi.useFakeTimers();
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   document.body.innerHTML = '<div id="app"></div><div id="portal"></div>';
@@ -47,7 +47,7 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
     observer.snapshot({ ...snapshot, subscriptionId: 's' }); return () => {};
   }, release: async () => {} };
   directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }) } }, 'h');
-  const views = createGraphViews(); views.forAgent('h', 'w', 'a').set({ view: 'structure' }); let button;
+  const views = createBrowserViews(); let button;
   const openSurface = vi.fn();
   const client = { openSurface, addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
   stop = contributePills(client, directory, views); await directory.start();
@@ -61,16 +61,13 @@ it('React portal 본문·노드·확대·ID 복사 클릭은 바깥 pill action�
   const click = async element => { expect(element).toBeTruthy(); await act(async () => element.dispatchEvent(new MouseEvent('click', { bubbles: true }))); };
   await click(document.getElementById('pill'));
   await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-  const initialZoom = views.forAgent('h', 'w', 'a').getSnapshot().zoom;
-  await click(document.querySelector('#portal [aria-label="b"]'));
-  await click(document.querySelector('#portal [aria-label="확대"]'));
+  await click(document.querySelector('#portal [aria-label="최신 생성순"]'));
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
-  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '에이전트 2 · 실행 0'));
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '워크스페이스 · 2개'));
   expect(press).toHaveBeenCalledTimes(1);
   expect(copyText).toHaveBeenLastCalledWith('b');
-  expect(views.forAgent('h', 'w', 'a').getSnapshot().zoom).toBe(initialZoom + 0.25);
-  expect(document.getElementById('portal').textContent).toContain('에이전트 2');
-  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '탐색'));
+  expect(views.forAgent('h', 'w', 'a').getSnapshot().browserSort).toBe('created');
+  expect(document.getElementById('portal').textContent).toContain('워크스페이스 · 2개');
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
   expect(openSurface).not.toHaveBeenCalled();
   await click(document.querySelector('#portal [aria-label="b"]'));

@@ -1,8 +1,8 @@
 {
   "name": "paseo-agent-graph",
   "private": true,
-  "version": "0.1.5",
-  "description": "Paseo 워크스페이스 에이전트 탐색과 부모·자식 구조 보기",
+  "version": "0.1.6",
+  "description": "Paseo 워크스페이스의 최근 에이전트 탐색",
   "files": [
     "paseo-plugin.json",
     "index.client.tsx",
@@ -14,13 +14,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "bench": "tsx test/manual/bench.ts",
-    "bench:force": "tsx test/manual/force-bench.ts",
     "audit": "node test/manual/audit.mjs"
   },
   "devDependencies": {
     "@getpaseo/client": "0.10.2",
     "@getpaseo/plugin": "0.10.2",
-    "@types/d3-force": "^3.0.10",
     "@types/node": "^24.0.0",
     "@types/react": "~19.2.0",
     "@types/react-dom": "19.1.9",
@@ -35,8 +33,5 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "ws": "8.22.0"
-  },
-  "dependencies": {
-    "d3-force": "^3.0.0"
   }
 }

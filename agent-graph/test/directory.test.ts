@@ -77,13 +77,13 @@ describe('공유 directory', () => {
     for (let i=0;i<50;i++) h.update(raw('a', { status: 'running', updatedAt: '2026-03-01T00:00:00.000Z' }));
     await vi.advanceTimersByTimeAsync(250); expect(listener).toHaveBeenCalledOnce();
   });
-  it('시각만 바뀌어도 최근 목록에 반영하지만 관계 signature는 유지', async () => {
+  it('시각만 바뀌어도 최근 목록에 반영하고 재조회 없이 알림', async () => {
     vi.useFakeTimers(); const h = harness(); await h.directory.start();
-    const signature = h.directory.getForest().signature, listener = vi.fn(); h.directory.subscribe(listener);
+    const listener = vi.fn(); h.directory.subscribe(listener);
     h.update(raw('a', { updatedAt: '2026-02-01T00:00:00.000Z' }));
     await vi.advanceTimersByTimeAsync(250);
     expect(h.directory.getSnapshot().agents[0].updatedAt).toBe('2026-02-01T00:00:00.000Z');
-    expect(listener).toHaveBeenCalledOnce(); expect(h.directory.getForest().signature).toBe(signature);
+    expect(listener).toHaveBeenCalledOnce();
     expect(h.list).toHaveBeenCalledOnce();
   });
   it('연결 단절은 0 대신 stale로 표시하고 watch 종료 시 타이머 정리', async () => {

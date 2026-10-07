@@ -21,8 +21,7 @@ export const Icon = ({ name, color, size = 16 }) => <svg width={size} height={si
     name === 'Copy' ? <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></> :
     name === 'X' ? <path d="m18 6-12 12M6 6l12 12"/> :
     name === 'Maximize2' ? <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/> :
-    name === 'GitFork' ? <><circle cx="6" cy="3" r="2"/><circle cx="18" cy="3" r="2"/><circle cx="6" cy="21" r="2"/><path d="M6 5v14M18 5v3a4 4 0 0 1-4 4H6"/></> :
-    name === 'ListTree' ? <path d="M3 3v12h4M3 9h4M11 3h10M11 9h10M11 15h10"/> : <path d="m9 18 6-6-6-6"/>}
+    name === 'List' ? <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/> : <path d="m9 18 6-6-6-6"/>}
 </svg>;
 export const copyText = async value => { window.preview.copied = value; window.preview.showToast('에이전트 ID 복사됨'); };
 export const useToast = () => ({ show: text => window.preview.showToast(text), error: text => window.preview.showToast(text) });
@@ -31,15 +30,15 @@ await writeFile(path.join(output, 'entry.tsx'), `
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { View, Text } from 'react-native';
-import { GraphContent } from ${JSON.stringify(path.join(root, 'client/content.tsx'))};
+import { AgentContent } from ${JSON.stringify(path.join(root, 'client/content.tsx'))};
 import { createAgentDirectory } from ${JSON.stringify(path.join(root, 'client/directory.ts'))};
-import { createGraphViews } from ${JSON.stringify(path.join(root, 'client/view-state.ts'))};
+import { createBrowserViews } from ${JSON.stringify(path.join(root, 'client/view-state.ts'))};
 import { page, raw } from ${JSON.stringify(path.join(root, 'test/fixtures.ts'))};
 const params = new URLSearchParams(location.search), compact = params.get('compact') !== '0', light = params.get('theme') === 'light';
 const total = Math.max(0, Number(params.get('nodes') ?? 12)), panel = params.get('surface') === 'panel';
 const titles = ['API 응답 검증', 'UI 레이아웃 검토', '회귀 테스트', '문서 정리', '성능 측정', '오류 처리'];
-const entries = [...(total ? [raw('supervisor-001', { title: params.get('long') === '1' ? '워크스페이스의 에이전트 탐색과 모바일 그래프 상호작용 개선 최종 검토' : '에이전트 구조 구현', status: 'running', updatedAt: '2026-10-07T04:59:00Z' })] : []),
-  ...Array.from({ length: total - 1 }, (_, i) => raw('agent-' + String(i + 1).padStart(3, '0'), {
+const entries = [...(total ? [raw('supervisor-001', { title: params.get('long') === '1' ? '워크스페이스의 최근 에이전트 탐색과 모바일 사용성 개선 최종 검토' : '에이전트 탐색 개선', status: 'running', updatedAt: '2026-10-07T04:59:00Z' })] : []),
+  ...Array.from({ length: Math.max(0, total - 1) }, (_, i) => raw('agent-' + String(i + 1).padStart(3, '0'), {
     title: titles[i % titles.length] + ' ' + (i + 1), status: i % 4 === 0 ? 'running' : 'idle',
     labels: { 'paseo.parent-agent-id': 'supervisor-001' }, model: 'GPT-6', cwd: '/example/paseo-plugin',
     createdAt: new Date(Date.parse('2026-10-06T00:00:00Z') + i * 60000).toISOString(),
@@ -48,8 +47,7 @@ const entries = [...(total ? [raw('supervisor-001', { title: params.get('long') 
 let observer;
 const snapshot = page(entries), lease = { subscriptionId: 'preview', release: async () => {}, subscribe(value) { observer = value; value.snapshot({ ...snapshot, subscriptionId: 'preview' }); return () => {}; } };
 const directory = createAgentDirectory({ agents: { list: async () => { if (params.get('error') === '1') throw new Error('예시 연결 오류'); return { ...snapshot, subscription: lease }; } } }, 'h');
-const views = createGraphViews(), store = views.forAgent('h', 'w', 'supervisor-001');
-if (params.get('view') === 'structure') store.set({ view: 'structure' });
+const views = createBrowserViews(), store = views.forAgent('h', 'w', 'supervisor-001');
 const colors = light ? { foreground: '#22272e', foregroundMuted: '#616b78', surface0: '#ffffff', surface1: '#f3f5f7', surface2: '#e7ebf1', border: '#d5dbe3', accent: '#395ec6', statusSuccess: '#28754c', statusWarning: '#9b6500', statusDanger: '#b83a40' }
   : { foreground: '#e5e7eb', foregroundMuted: '#a3adb9', surface0: '#181c21', surface1: '#20262d', surface2: '#303943', border: '#3a434d', accent: '#98b5ff', statusSuccess: '#7dce9b', statusWarning: '#eeb756', statusDanger: '#ee858a' };
 document.body.style.background = colors.surface0;
@@ -60,11 +58,11 @@ window.preview = { directory, store, views, copied: null, opened: null, update()
 function App() {
   const [toast, showToast] = useState(''); window.preview.showToast = text => { showToast(text); setTimeout(() => showToast(''), 1800); };
   return <View style={{ flex: 1, backgroundColor: colors.surface0, minHeight: 0 }}>
-    <View style={{ height: 52, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderColor: colors.border }}>
+    <View style={{ height: 52, justifyContent: 'center', paddingHorizontal: panel ? 16 : 24, borderBottomWidth: 1, borderColor: colors.border }}>
       <Text style={{ color: colors.foreground }}>에이전트</Text>
     </View>
     <View style={{ flex: compact || panel ? 1 : undefined, minHeight: 0, padding: 12 }}>
-      <GraphContent directory={directory} views={views} theme={{ colors }} host={{ id: 'h', label: '예시 호스트' }}
+      <AgentContent directory={directory} views={views} theme={{ colors }} host={{ id: 'h', label: '예시 호스트' }}
         layout={{ compact, platform: 'web' }} workspaceId="w" agentId="supervisor-001" surface={panel ? 'panel' : 'modal'}
         onLarge={panel ? undefined : () => window.preview.showToast('크게 보기 요청')}
         onNavigate={params.get('nav') === '0' ? undefined : id => { window.preview.opened = id; window.preview.showToast('대화 이동 요청: ' + id); }} />
