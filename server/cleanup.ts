@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { CLEANUP_LIMIT, OBSERVE_MS, RESULT_TTL_MS, processKey, type CleanupItem, type CleanupState, type ProcessMetadata } from '../shared/cleanup';
 import type { Collector } from './collector';
-import { Observation, eligibleMetadata, publicCommand, redact, sameMetadata } from './cleanup-policy';
+import { Observation, eligibleMetadata, historyCandidates, publicCommand, redact, sameMetadata, type ObservedCandidate } from './cleanup-policy';
 import { createCodexReviewer, validateReview, type Reviewer } from './cleanup-reviewer';
 
 type Source = Pick<Collector, 'observeInspection' | 'inspectProcess' | 'terminateInspected' | 'processHistory'>;
@@ -43,6 +43,7 @@ export class Cleanup {
     let release = () => {};
     try {
       const observation = new Observation();
+      let candidates: ObservedCandidate[] | undefined;
       await new Promise<void>((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined; let settled = false;
         const finish = (error?: string) => { if (settled) return; settled = true; clearTimeout(timer); signal.removeEventListener('abort', abort); error ? reject(new Error(error)) : resolve(); };
@@ -53,6 +54,15 @@ export class Cleanup {
             if (signal.aborted || settled) return;
             if (issue || !sample) { finish(issue ?? '관찰 정보 확인 불가'); return; }
             if (sampledAt === lastSample) return; lastSample = sampledAt;
+            if (!job.state.observationSource && sample.ready === true) {
+              const recent = historyCandidates(sample.entries, sampledAt, (pid, start) => this.source.processHistory(pid, start));
+              if (recent) {
+                candidates = recent;
+                job.state = { ...job.state, observationSource: 'history', sampledAt, truncated: job.state.truncated || sample.truncated };
+                finish(); return;
+              }
+              job.state = { ...job.state, observationSource: 'live' };
+            }
             observation.accept(sample.entries, this.now());
             job.state = { ...job.state, observedSeconds: observation.seconds, sampledAt,
               truncated: job.state.truncated || sample.truncated };
@@ -64,17 +74,18 @@ export class Cleanup {
       });
       if (signal.aborted) return;
       const items: CleanupItem[] = []; let unread = 0;
-      for (const p of observation.candidates()) {
+      for (const p of candidates ?? observation.candidates()) {
         if (signal.aborted) return;
         try {
           const metadata = await this.source.inspectProcess(p.pid, p.start);
           if (signal.aborted) return;
           if (!metadata.protected && (!metadata.path || !metadata.args || metadata.cpuPercent === null)) { unread++; continue; }
-          if (!eligibleMetadata(metadata) || metadata.group !== p.group || metadata.name !== p.name) continue;
+          if (!eligibleMetadata(metadata) || processKey(metadata) !== processKey(p) || metadata.parentPid !== p.parentPid
+            || metadata.group !== p.group || metadata.name !== p.name) continue;
           job.metadata.set(processKey(p), metadata);
           items.push({ ...p, name: redact(p.name), group: redact(p.group), parentPid: metadata.parentPid, parentName: metadata.parentName ? redact(metadata.parentName) : null,
             command: publicCommand(metadata), cwd: metadata.cwd ? redact(metadata.cwd) : null,
-            history: this.source.processHistory(p.pid, p.start), decision: 'uncertain', reason: '' });
+            history: p.history ?? this.source.processHistory(p.pid, p.start), decision: 'uncertain', reason: '' });
         } catch { unread++; }
       }
       if (signal.aborted) return;

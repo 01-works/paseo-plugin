@@ -80,7 +80,8 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
           </Pressable>
         </View>
       </> : busy ? <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-        <Text style={{ color: c.foregroundMuted }}>{state?.phase === 'reviewing' ? 'Luna 검사 중' : `활동 확인 중${state ? ` · ${Math.min(12, Math.floor(state.observedSeconds))}/12초` : ''}`}</Text>
+        <Text style={{ color: c.foregroundMuted }}>{state?.phase === 'reviewing' ? 'Luna 검사 중'
+          : state?.observationSource === 'live' ? `추가 활동 확인 중 · ${Math.min(12, Math.floor(state.observedSeconds))}/12초` : '활동 확인 중'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="정리 검사 취소" onPress={onBack} style={{ padding: 8 }}><Text style={{ color: c.foregroundMuted }}>취소</Text></Pressable>
       </View> : state?.phase === 'ready' ? <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -101,7 +102,9 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
               <Text numberOfLines={1} style={{ color: c.foreground, flex: 1 }}>{p.name} · PID {p.pid}</Text>
               <Badge theme={theme} label={labels[p.decision]} />
             </View>
-            <Text style={{ color: c.foregroundMuted }}>실행 {elapsedLabel(p.ageSeconds)} · 관찰 {Math.floor(p.observedSeconds)}초 · CPU 최대 {appPercent(p.maxCpuPercent)} · {gib(p.memoryBytes)}</Text>
+            <Text style={{ color: c.foregroundMuted }}>실행 {elapsedLabel(p.ageSeconds)} · {p.observationSource === 'history'
+              ? `CPU ${p.cpuPercent === null ? '—' : appPercent(p.cpuPercent)}`
+              : `관찰 ${Math.floor(p.observedSeconds)}초 · CPU 최대 ${appPercent(p.maxCpuPercent)}`} · {gib(p.memoryBytes)}</Text>
             {p.history ? <Text style={{ color: c.foregroundMuted }}>최근 {Math.max(1, Math.round(p.history.observedSeconds / 60))}분 · 평균 CPU {appPercent(p.history.averageCpuPercent)} · 메모리 {p.history.memoryDeltaBytes === 0 ? '유지' : `${gib(Math.abs(p.history.memoryDeltaBytes))} ${p.history.memoryDeltaBytes > 0 ? '증가' : '감소'}`}</Text> : null}
             {p.command ? <Text numberOfLines={2} style={{ color: c.foregroundMuted }}>{p.command}</Text> : null}
             {p.cwd ? <Text numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.cwd}</Text> : null}

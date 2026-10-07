@@ -135,7 +135,7 @@ export class Collector {
     this.lastIssue = valid ? '' : '시스템 측정 일부 실패';
     if (this.inspection) {
       const parsed = inspectionSchema.safeParse(raw.procs?.inspection);
-      this.inspection(parsed.success ? parsed.data : null, raw.t,
+      this.inspection(parsed.success ? { ...parsed.data, ready: raw.procs?.ready === true } : null, raw.t,
         !valid || raw.errors.length ? '측정값이 유효하지 않습니다' : !parsed.success ? '정리 관찰 정보 확인 불가' : undefined);
     }
   }

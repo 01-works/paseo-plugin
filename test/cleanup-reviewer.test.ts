@@ -30,6 +30,11 @@ it('모델 입력은 실제 이력 범위와 평균 한계를 전달하며 명�
   expect(prompt).toContain('순간 CPU 최대가 아닙니다'); expect(prompt).toContain('0으로 해석하지 마세요');
   expect(prompt).toContain('정상 서버'); expect(prompt).toContain('명령을 만들거나 실행하지 마세요');
 });
+it('이력 검사와 현재 CPU를 구분해 12초 관찰이나 순간 최대를 꾸미지 않음', () => {
+  const prompt = reviewPrompt({ items: [{ ...item, observationSource: 'history', observedSeconds: history.observedSeconds, history }] });
+  expect(prompt).toContain('"observationSource":"history"'); expect(prompt).toContain('"currentCpuPercent":0.01');
+  expect(prompt).toContain('추가 12초 관찰을 생략'); expect(prompt).toContain('1분 구간 평균의 최대');
+});
 it('실제 자식의 정상 JSON 이벤트와 구조 결과만 허용', async () => {
   const review = fake(`process.stdin.resume();process.stdin.on('end',()=>{${output({ decisions: [decision] })}console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'결과'}}));});`);
   expect(await review(input, new AbortController().signal)).toEqual({ decisions: [decision] });

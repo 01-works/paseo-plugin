@@ -2,7 +2,31 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { CLEANUP_LIMIT, MAX_CPU_PERCENT, MIN_AGE_SECONDS, processKey,
   type CleanupItem, type ObservedProcess, type ProcessMetadata } from '../shared/cleanup';
+import { HISTORY_MAX_GAP_MS, type HistorySummary } from '../shared/history';
 
+export type ObservedCandidate = Omit<CleanupItem, 'command' | 'cwd' | 'parentName' | 'decision' | 'reason'>;
+function limitCandidates<T extends ObservedProcess>(entries: T[]): T[] {
+  const counts = new Map<string, number>();
+  return [...entries].sort((a, b) => b.memoryBytes - a.memoryBytes).filter(p => {
+    const count = counts.get(p.group) ?? 0; counts.set(p.group, count + 1); return count < 2;
+  }).slice(0, CLEANUP_LIMIT);
+}
+// 현재 CPU/식별자가 준비된 목록에서만 이력을 사용한다. 누락은 추가 관찰이 필요하다는 뜻이다.
+export function historyCandidates(entries: ObservedProcess[], sampledAt: number,
+  lookup: (pid: number, start: string) => HistorySummary | null): ObservedCandidate[] | null {
+  const eligible = entries.filter(p => p.ageSeconds >= MIN_AGE_SECONDS);
+  if (eligible.some(p => p.cpuPercent === null)) return null;
+  const selected = limitCandidates(eligible.filter(p => p.cpuPercent! <= MAX_CPU_PERCENT));
+  const candidates: ObservedCandidate[] = [];
+  for (const p of selected) {
+    const history = lookup(p.pid, p.start);
+    if (!history || history.sampleCount < 2 || history.observedSeconds < 30
+      || history.sampledAt > sampledAt || sampledAt - history.sampledAt > HISTORY_MAX_GAP_MS) return null;
+    candidates.push({ ...p, observationSource: 'history', observedSeconds: history.observedSeconds,
+      maxCpuPercent: history.maxMinuteCpuPercent, readBytes: history.readBytes, writtenBytes: history.writtenBytes, history });
+  }
+  return candidates;
+}
 type Track = { first: ObservedProcess; last: ObservedProcess; since: number; points: number; maxCpu: number };
 export class Observation {
   private tracks = new Map<string, Track>();
@@ -26,13 +50,10 @@ export class Observation {
     }
     this.tracks = next;
   }
-  candidates(): Omit<CleanupItem, 'command' | 'cwd' | 'parentName' | 'decision' | 'reason'>[] {
-    const counts = new Map<string, number>();
-    return [...this.tracks.values()].filter(t => t.points >= 6 && this.lastAt! - t.since >= 10_000)
-      .sort((a, b) => b.last.memoryBytes - a.last.memoryBytes).filter(t => {
-        const count = counts.get(t.last.group) ?? 0; counts.set(t.last.group, count + 1); return count < 2;
-      }).slice(0, CLEANUP_LIMIT).map(t => ({ ...t.last, observedSeconds: (this.lastAt! - t.since) / 1000,
-        maxCpuPercent: t.maxCpu, readBytes: t.last.readBytes - t.first.readBytes, writtenBytes: t.last.writtenBytes - t.first.writtenBytes }));
+  candidates(): ObservedCandidate[] {
+    return limitCandidates([...this.tracks.values()].filter(t => t.points >= 6 && this.lastAt! - t.since >= 10_000)
+      .map(t => ({ ...t.last, observationSource: 'live' as const, observedSeconds: (this.lastAt! - t.since) / 1000,
+        maxCpuPercent: t.maxCpu, readBytes: t.last.readBytes - t.first.readBytes, writtenBytes: t.last.writtenBytes - t.first.writtenBytes })));
   }
 }
 export function eligibleMetadata(m: ProcessMetadata): boolean {

@@ -1,13 +1,13 @@
 import { homedir } from 'node:os';
 import { expect, it } from 'vitest';
-import { Observation, eligibleMetadata, publicCommand, redact, sameMetadata } from '../server/cleanup-policy';
-import { observed, metadata } from './cleanup-fixtures';
+import { Observation, eligibleMetadata, historyCandidates, publicCommand, redact, sameMetadata } from '../server/cleanup-policy';
+import { observed, metadata, history } from './cleanup-fixtures';
 
 it('연속된 실제 관찰 구간의 CPU 최대값과 디스크 I/O 차이만 계산', () => {
   const o = new Observation();
   for (let i = 0; i <= 6; i++) o.accept([{ ...observed, cpuPercent: i === 3 ? 0.09 : 0.01, readBytes: 1000 + i * 10, writtenBytes: 2000 + i }], i * 2000);
   expect(o.seconds).toBe(12);
-  expect(o.candidates()).toEqual([{ ...observed, observedSeconds: 12, maxCpuPercent: 0.09, readBytes: 60, writtenBytes: 6 }]);
+  expect(o.candidates()).toEqual([{ ...observed, observationSource: 'live', observedSeconds: 12, maxCpuPercent: 0.09, readBytes: 60, writtenBytes: 6 }]);
   // 같은 시각의 중복 읽기는 관찰을 늘리지 않는다.
   o.accept([observed], 12_000); expect(o.candidates()[0].readBytes).toBe(60);
 });
@@ -27,6 +27,14 @@ it('앱 하나가 후보를 독점하지 않으며 전체 후보는 16개로 제
   const entries = Array.from({ length: 60 }, (_, i) => ({ ...observed, pid: i + 100, group: `앱${Math.floor(i / 3)}`, memoryBytes: 1000 - i }));
   const o = new Observation(); for (let i = 0; i <= 6; i++) o.accept(entries, i * 2000);
   expect(o.candidates()).toHaveLength(16); expect(o.candidates().filter(p => p.group === '앱0')).toHaveLength(2);
+});
+it('이력 경로도 같은 앱별·전체 제한을 사용하며 최근 90초 경계를 포함', () => {
+  const entries = Array.from({ length: 60 }, (_, i) => ({ ...observed, pid: i + 100, group: `앱${Math.floor(i / 3)}`, memoryBytes: 1000 - i }));
+  const candidates = historyCandidates(entries, history.sampledAt + 90_000, () => history)!;
+  expect(candidates).toHaveLength(16); expect(candidates.filter(p => p.group === '앱0')).toHaveLength(2);
+  expect(historyCandidates([observed], history.sampledAt + 90_001, () => history)).toBeNull();
+  expect(historyCandidates([{ ...observed, cpuPercent: 1 }], history.sampledAt, () => history)).toEqual([]);
+  expect(historyCandidates([{ ...observed, ageSeconds: 20 }], history.sampledAt, () => null)).toEqual([]);
 });
 it('보호된 트리·시스템·Paseo·Codex·Claude·터미널·누락 인자는 검토 대상에서 제외', () => {
   expect(eligibleMetadata(metadata)).toBe(true);
