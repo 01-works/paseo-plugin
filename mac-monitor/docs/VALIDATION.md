@@ -9,7 +9,7 @@
 |---|---|
 | PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·헬퍼·호스트 전환·UI·자동 리뷰/확인 종료 테스트 | 완료 (0.3.0, 11개 파일, 162개 테스트) |
+| 계산·오류·헬퍼·호스트 전환·UI·수동 종료 테스트 | 완료 (0.4.0, 8개 파일, 57개 테스트) |
 | client DOM/HTML audit | 금지 사용 0건 (`Promise<void>` 타입의 검색 결과 1건은 DOM/HTML 아님) |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
@@ -22,24 +22,69 @@
 | disable → 자식 종료 → enable | 완료, 헬퍼 1개로 복귀 |
 | 부모 SIGKILL → 고아 헬퍼 방지 | 실제 네이티브 검증 완료 |
 | prebuilt 실패 → 로컬 빌드 → Node 폴백 | 전용 임시 홈에서 실제 검증 완료 |
-| Luna·자동 종료 검증 | 실제 Luna는 가상 후보로 검증; 네이티브 종료는 직접 만든 worker만 검증 |
-| 자동 종료 로그 | 임시 폴더의 저장 순서·0600·교체·크기 제한, 저장 실패 시 종료 중단 검증 |
-| 리뷰 후보 확인 종료 | 합성 리뷰·실제 자체 자식의 SIGTERM 1회·직접 종료 조회·로그 완료; 설치 RPC 거절 확인 |
+| 자동 감시·Luna 리뷰·자동 종료 제거 | 소스·UI·RPC·native 명령 제거, 설치된 RPC/번들 및 이전 파일 보존 확인 |
+| 개별·전체 수동 종료 | 테스트 자식의 실제 SIGTERM, 시작 시각 불일치·부모/헬퍼 차단 검증 |
 | 실험적 멀티 호스트 집계 제거 | 레지스트리·표·설정·serverId 파일 읽기 제거, 공식 호스트별 화면 및 오프라인 전환 테스트 완료 |
 | Activity Monitor 화면 대조 | 이전 버전 대조 및 원인 확인 완료; **현재 합계는 사용자 대조 필요** |
-| 실제 Paseo 데스크톱 다크 화면 | 0.3.0 시스템 수치·상위 10개·빈 자동 리뷰 화면·뒤로 복귀, 실험 토글 제거 확인 |
-| 실제 Paseo 데스크톱 라이트 화면 | 이전 RAM·고정 목록·정상/주의 색 확인; 현재 자동 관리 화면은 추가 확인 필요 |
+| 실제 Paseo 데스크톱 다크 화면 | 0.4.0 시스템 수치·상위 10개·프로세스 상세·뒤로 복귀, 리뷰 버튼 제거 확인 |
+| 실제 Paseo 데스크톱 라이트 화면 | 이전 RAM·고정 목록·정상/주의 색 확인; 현재 기본 모니터는 추가 확인 필요 |
 | compact 실제 화면 | **추가 확인 필요**: 확대 조작으로 호스트 compact 배치를 재현하지 못함 |
 | 다른 Mac 설치 / 공식 호스트 전환 | **별도 사용자 승인 및 확인 필요**: 현재 연결 호스트 1개; 실제 원격 전환은 미검증 |
 | x86_64 실행 | Intel macOS 26 CI에서 커밋된 prebuilt 실행 완료; Intel의 Paseo 설치는 미검증 |
 
 초기에는 컴퓨터 제어 접근이 시간 초과됐으나, 후속 검증에서 실제 Paseo 앱 화면을 관찰했다.
 데스크톱 다크·라이트 화면과 Activity Monitor를 직접 관찰했고 두 에이전트 pill도 동시에 확인했다.
-새 후보 화면의 라이트·compact 실제 배치와 다른 Mac의 Paseo 설치·공식 호스트 전환은 남아 있다.
+현재 기본 모니터의 라이트·compact 실제 배치와 다른 Mac의 Paseo 설치·공식 호스트 전환은 남아 있다.
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: 리뷰 후보 확인 종료·실험 집계 제거 (0.3.0)
+## 최종 후속 검증: 자동 관리 제거 (0.4.0)
+
+2026-10-07 15:45~15:54 KST. 범위와 변경 근거는 [PLAN 15절](PLAN.md), [DECISIONS.md](DECISIONS.md)에 있다.
+
+- `npm run typecheck` 통과. `npm test` 8개 파일/57개 통과.
+  자동 관리 전용 테스트를 제거하고 메모리·CPU·압력·오류·Node 폴백·수명주기·30초 관심,
+  공유 pill·화면 자동 갱신·호스트 전환·PID 재사용·수동 확인·그룹 목록 고정·부분 실패 회귀를 유지했다.
+- `npm run build`, `lipo -archs`, `codesign --verify --strict` 통과. 새 prebuilt는 arm64/x86_64 universal이다.
+  `test/manual/native.ts`는 실제 JSON → Zod, 상위 10개, 앱 기준점 → 최신, procs off,
+  1992~2011ms 간격과 부모 SIGKILL 후 헬퍼 종료를 확인했다.
+- `test/manual/native-actions.mjs`와 `group-actions.mjs`는 직접 만든 Node 자식만 사용했다.
+  잘못된 시작 시각·부모/헬퍼 종료는 차단하고 개별 및 정확히 확인한 두 자식의 SIGTERM 종료를 확인했다.
+  그룹 대상 하나가 달라지면 신호를 전혀 보내지 않았다. 테스트 자식·별도 헬퍼는 모두 정리했다.
+- `test/manual/fallback.ts`는 별도 임시 홈에서 prebuilt 누락 → 로컬 clang 빌드와
+  소스 누락 → Node 전용 모드까지 확인했다. 두 모드 모두 시스템 status ok/errors=[]였으며 Node의 목록은 미지원이다.
+- 15:48:30 KST `paseo plugin reload mac-monitor` 후 running. 실제 host RPC는 version 0.4.0/native를 반환했다.
+  snapshot의 automation과 process list의 path/autoAllowed가 없다. 이전 자동 관리 RPC 4개는 모두
+  `does not contribute RPC`로 거절됐다. 새 설정 저장이나 모델 호출은 수행하지 않았다.
+- 실제 로컬 동시 100개 snapshot 요청은 seq 11 하나였다. 앱 관심을 켜면 warming → ok로 전환했고 errors=[]였다.
+  disable/enable 뒤 1회만 앱 관심을 요청하고 42초간 시스템 캐시만 읽은 별도 관찰은
+  21개 샘플/seq 16~36, 간격 **1995~2005ms**, warming → ok → off였다. 마지막 값도 ok/errors=[]였다.
+- 실제 다크 Paseo에서 리뷰 버튼이 없는 시스템 화면·CPU/메모리 열·상위 10개를 확인했다.
+  codex 프로세스 상세에는 수동 종료만 표시됐고 뒤로 이동해 목록으로 복귀했다.
+  사용자 프로세스의 종료 버튼은 실행하지 않았다. 현재 라이트·compact 화면은 직접 확인하지 않았다.
+- 15:52:37 KST disable 후 `pgrep -fl macmon-helper`는 0개였다.
+  enable 후 **PID 88094 한 개**로 복귀했다. 최종 로컬 snapshot은 ok/processes off/errors=[]이고
+  플러그인 로그에는 시작·정리 외 stderr·오류·실패가 없었다. agent-graph는 계속 running이었다.
+  CLI 실행기의 기존 Electron codesign ENOENT 메시지는 일부 명령에 표시됐지만 플러그인 로그의 오류는 아니다.
+- 기존 자동 관리 설정 파일의 SHA-256은 반영 전후 동일했다. 없던 상세 자동 조치 로그도 새로 생성되지 않았다.
+  실제 전역 설정을 직접 수정하거나 이전 기록을 삭제하지 않았다.
+- 설치된 클라이언트 번들 **59,711 bytes**에서 자동 관리 RPC·모델·허용 버튼과 실험 집계 문자열이 없다.
+  React Native 제공 Hermes의 바이트코드 컴파일을 통과했다. 이는 실제 모바일 화면/터치 확인을 대신하지 않는다.
+  client AST의 HTML JSX·DOM API/속성·fontSize·색 없는 Text는 0건이며 Text 색은 모두 theme 토큰이다.
+
+`python3 test/manual/helper-cost.py`는 새 헬퍼의 앱 스캔을 켠 상태로 **60.0025초** 관찰했다.
+CPU 시간 0.206477초, **코어 하나의 0.344114%**(10코어 환산 0.034411%), 최대 RSS **2.765625 MiB**였다.
+30개 샘플, 간격 1995.701~2004.317ms, 디스크 조회 2회, 최대 전송 멤버 334개였다.
+별도 측정 헬퍼는 종료했으며 최종 상주 헬퍼는 하나다. 이는 Paseo/Node/UI 전체 부하가 아니며
+프로세스 수·부하가 다른 이전 측정과 성능 개선 비율로 비교하지 않는다.
+
+`npm run compare -- --samples=3`는 정상 CPU 샘플 3개와 메모리·압력·스왑·앱 데이터를 errors=[]로 출력한 뒤 종료했다.
+**현재 Activity Monitor 화면 대조는 사용자 대조 필요**이며 일치한다고 단정하지 않는다.
+실제 라이트·compact/모바일과 다른 Mac 설치·공식 호스트 전환도 확인이 남아 있다.
+이번 검증에서는 데몬 재시작·다른 Mac 조작·실제 사용자 프로세스 종료를 하지 않았다.
+아래 자동 관리 검증과 당시 미검증 흐름은 제거 전 버전의 변경 이력이다.
+
+## 이전 후속 검증: 리뷰 후보 확인 종료·실험 집계 제거 (0.3.0)
 
 2026-10-07. 로컬 플러그인 검증은 14:56~15:01 KST에 수행했다.
 승인 범위·호스트 전환 결함 재현과 검토 결과는 [DECISIONS.md](DECISIONS.md), [REVIEW.md](REVIEW.md)에 있다.

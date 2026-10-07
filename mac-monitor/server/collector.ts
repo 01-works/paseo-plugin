@@ -29,9 +29,6 @@ export class Collector {
   private lastIssue = '';
   private attempts = 0;
   private interest = false;
-  private automaticInterest = false;
-  private listeners = new Set<() => void>();
-  private get scanning() { return this.interest || this.automaticInterest; }
   private interestTimer?: ReturnType<typeof setTimeout>;
   private restartTimer?: ReturnType<typeof setTimeout>;
   private watchdog?: ReturnType<typeof setInterval>;
@@ -82,7 +79,7 @@ export class Collector {
       const file = this.options.command?.file ?? this.file ?? path.join(this.root!, 'bin/macmon-helper');
       const source = spawnSource(file, this.options.command?.args ?? [], line => this.receive(line), reason => this.exited(source, reason));
       this.source = source; this.alive = true;
-      if (this.scanning) source.setProcesses(true);
+      if (this.interest) source.setProcesses(true);
       this.log(`헬퍼 시작 (${this.stage}, pid ${source.child.pid ?? '실행 대기'})`);
     } catch (error) {
       if (this.stopped) return;
@@ -102,7 +99,7 @@ export class Collector {
     }
   }
   private accept(raw: RawSample): void {
-    this.members = this.scanning ? raw.procs?.members ?? [] : [];
+    this.members = this.interest ? raw.procs?.members ?? [] : [];
     const first = !this.received;
     const cpu = computeCpu(raw.sys.cpu, this.previousCpu);
     this.previousCpu = raw.sys.cpu;
@@ -114,15 +111,12 @@ export class Collector {
     if (first) this.log(`수집 활성 (${this.mode}, 2초 고정 간격)`);
     this.value = { ...this.value, seq: raw.seq, sampledAt: raw.t, ageMs: 0,
       cpu, memory, pressure: pressure(raw.sys.pressureLevel), memoryLevel: raw.sys.memoryLevel, swap: raw.sys.swap, disk: raw.sys.disk ?? null,
-      processes: this.scanning && raw.procs ? (({ members: _members, ...groups }) => groups)(raw.procs) : null,
-      processesStatus: this.mode === 'node' ? 'unsupported' : !this.scanning ? 'off' : raw.procs ? (raw.procs.ready ? 'ok' : 'warming') : raw.errors.some(e => e.includes('프로세스')) ? 'error' : 'warming',
+      processes: this.interest && raw.procs ? (({ members: _members, ...groups }) => groups)(raw.procs) : null,
+      processesStatus: this.mode === 'node' ? 'unsupported' : !this.interest ? 'off' : raw.procs ? (raw.procs.ready ? 'ok' : 'warming') : raw.errors.some(e => e.includes('프로세스')) ? 'error' : 'warming',
       errors: [...raw.errors, ...(memory === null && raw.sys.vm ? [raw.sys.vm.speculative === null
         ? '메모리 speculative 카운터 없음 · 헬퍼 업데이트 필요' : '메모리 카운터 조합이 유효하지 않음'] : [])],
       status: valid ? cpu ? 'ok' : 'warming' : 'error' };
     this.lastIssue = valid ? '' : '시스템 측정 일부 실패';
-    for (const listener of this.listeners) {
-      try { listener(); } catch (error) { this.log(`관측 처리 실패: ${String(error)}`); }
-    }
   }
   private exited(source: NativeSource, reason: string): void {
     if (this.stopped || this.source !== source) return;
@@ -153,10 +147,14 @@ export class Collector {
   }
   snapshot(includeProcesses = false): Snapshot {
     if (includeProcesses && !this.stopped && this.mode === 'native') {
-      if (!this.interest) { const active = this.scanning; this.interest = true; if (!active) { this.value.processes = null; this.value.processesStatus = 'warming'; this.source?.setProcesses(true); } }
+      if (!this.interest) {
+        this.interest = true; this.value.processes = null; this.value.processesStatus = 'warming';
+        this.source?.setProcesses(true);
+      }
       clearTimeout(this.interestTimer);
       this.interestTimer = setTimeout(() => {
-        this.interest = false; if (!this.scanning) { this.source?.setProcesses(false); this.value.processes = null; this.value.processesStatus = 'off'; }
+        this.interest = false; this.source?.setProcesses(false);
+        this.members = []; this.value.processes = null; this.value.processesStatus = 'off';
       }, 30_000);
     }
     const ageMs = this.value.sampledAt === null ? null : Math.max(0, this.now() - this.value.sampledAt);
@@ -174,35 +172,8 @@ export class Collector {
   async stop(): Promise<void> {
     this.stopped = true; this.alive = false; this.abort.abort();
     clearTimeout(this.interestTimer); clearTimeout(this.restartTimer); clearTimeout(this.nodeTimer); clearInterval(this.watchdog);
-    this.listeners.clear();
     await this.source?.close(); this.source = undefined;
     await Promise.all([this.starting, this.nodeInFlight]);
-  }
-  subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
-  setAutomaticInterest(on: boolean) {
-    if (this.stopped) return;
-    const was = this.scanning; this.automaticInterest = on;
-    if (was !== this.scanning) {
-      this.source?.setProcesses(this.scanning); this.value.processes = null;
-      this.value.processesStatus = this.scanning ? 'warming' : 'off';
-    }
-  }
-  observeAutomation() { return { snapshot: this.snapshot(false), members: [...this.members] }; }
-  async inspectAutomatically(target: { pid: number; start: string; path: string }) {
-    if (!this.source || this.stopped || this.mode !== 'native') return 'unknown' as const;
-    return this.source.inspect(target.pid, target.start, target.path);
-  }
-  async validateAutomatically(target: { pid: number; start: string; path: string }) {
-    if (!this.source || this.stopped || this.mode !== 'native') return { allowed: false, error: '자동 관리 미지원' };
-    return this.source.validateAuto(target.pid, target.start, target.path);
-  }
-  async terminateAutomatically(target: ProcessInfo & { path: string }) {
-    const observation = this.observeAutomation();
-    if (observation.snapshot.status !== 'ok' || observation.snapshot.processesStatus !== 'ok'
-      || !observation.members.some(p => p.pid === target.pid && p.start === target.start && p.path === target.path && p.group === target.group))
-      return { sent: false, error: '자동 종료 대상이 변경되었거나 측정값이 오래되었습니다.' };
-    if (!this.source || this.stopped || this.mode !== 'native') return { sent: false, error: '자동 종료 미지원' };
-    return this.source.terminate(target.pid, target.start, target.path);
   }
   processList(group: string) {
     const snapshot = this.snapshot(true);
