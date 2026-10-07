@@ -3,12 +3,15 @@ import { mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { paseoHome } from './host-info';
+import { metadataSchema, type ProcessMetadata } from '../shared/cleanup';
 
-type Response = { sent: boolean; error?: string };
+type Response = { sent: boolean; error?: string; ok?: boolean; process?: unknown };
 export type NativeSource = {
   child: ChildProcessWithoutNullStreams;
   close(): Promise<void>;
   setProcesses(on: boolean): void;
+  setInspection(on: boolean): void;
+  inspect(pid: number, start: string): Promise<ProcessMetadata>;
   terminate(pid: number, start: string): Promise<{ sent: boolean; error?: string }>;
 };
 export function spawnSource(command: string, args: string[], onLine: (line: string) => void, onExit: (reason: string) => void): NativeSource {
@@ -19,7 +22,8 @@ export function spawnSource(command: string, args: string[], onLine: (line: stri
   lines.on('line', line => {
     try {
       const value = JSON.parse(line);
-      if (value.action === 'terminate') { pending.get(value.id)?.({ sent: value.sent === true, error: typeof value.error === 'string' ? value.error : undefined }); return; }
+      if (value.action === 'terminate' || value.action === 'inspect') { pending.get(value.id)?.({ sent: value.sent === true,
+        ok: value.ok === true, process: value.process, error: typeof value.error === 'string' ? value.error : undefined }); return; }
     } catch { /* 측정 JSON 오류는 수집기가 처리한다. */ }
     onLine(line);
   });
@@ -41,8 +45,15 @@ export function spawnSource(command: string, args: string[], onLine: (line: stri
   return {
     child,
     setProcesses(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`procs ${on ? 'on' : 'off'}\n`); },
-    terminate(pid, start) {
-      return request(`terminate $id ${pid} ${start}`, '종료 응답 시간 초과 · 대상 상태를 다시 확인하세요');
+    setInspection(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`inspection ${on ? 'on' : 'off'}\n`); },
+    async inspect(pid, start) {
+      const result = await request(`inspect $id ${pid} ${start}`, '실행 정보 응답 시간 초과');
+      if (!result.ok) throw new Error(result.error ?? '실행 정보 확인 불가');
+      return metadataSchema.parse(result.process);
+    },
+    async terminate(pid, start) {
+      const { sent, error } = await request(`terminate $id ${pid} ${start}`, '종료 응답 시간 초과 · 대상 상태를 다시 확인하세요');
+      return { sent, error };
     },
     async close() {
       closing = true;

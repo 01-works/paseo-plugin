@@ -10,17 +10,23 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 try {
   const end = Date.now() + 10_000;
   let entry;
-  while (!entry && Date.now() < end) { entry = current?.procs?.members?.find(p => p.pid === child.pid); await pause(100); }
+  while (!entry && Date.now() < end) { entry = current?.procs?.members?.find(p => p.pid === child.pid && p.cpuPercent !== null); await pause(100); }
   assert.ok(entry, '테스트 자식이 상위 그룹의 캐시에 포함되어야 함');
   assert.ok(current.sys.disk?.total > 0);
   assert.equal((await source.terminate(child.pid, '0')).sent, false);
   process.kill(child.pid, 0);
   assert.equal((await source.terminate(process.pid, '0')).sent, false);
   assert.equal((await source.terminate(source.child.pid, '0')).sent, false);
+  const metadata = await source.inspect(child.pid, entry.start);
+  assert.equal(metadata.pid, child.pid); assert.ok(metadata.path.endsWith('/node')); assert.ok(metadata.args.includes('-e'));
+  assert.equal(metadata.protected, false); assert.equal(metadata.parentPid, process.pid); assert.equal(typeof metadata.cpuPercent, 'number');
+  await assert.rejects(source.inspect(child.pid, '0'));
+  const parentEntry = current?.procs?.members?.find(p => p.pid === process.pid);
+  if (parentEntry) assert.equal((await source.inspect(process.pid, parentEntry.start)).protected, true);
   const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
   assert.equal((await source.terminate(child.pid, entry.start)).sent, true);
   assert.equal((await exited).signal, 'SIGTERM');
-  console.log(JSON.stringify({ result: 'PID 시작 시각 불일치·부모·헬퍼 차단, 테스트 자식 SIGTERM 성공', disk: current.sys.disk, sampledSeq: current.seq }));
+  console.log(JSON.stringify({ result: '실행 정보 읽기·PID 시작 시각 불일치·부모·헬퍼 차단, 테스트 자식 SIGTERM 성공', disk: current.sys.disk, sampledSeq: current.seq }));
 } finally {
   child.kill('SIGTERM');
   await source.close();

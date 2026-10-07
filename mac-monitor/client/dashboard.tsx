@@ -25,7 +25,7 @@ function SelectedHost(props: PluginSurfaceProps) {
     <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: 16 }}>
       <Details key={host.id} {...props} snapshot={sample.data} name={info.data?.hostname ?? host.label}
         error={sample.error?.message} refreshing={sample.isFetching} onRefresh={sample.error ? () => void sample.refetch() : undefined} />
-      {hosts.length > 1 ? <Text style={{ color: c.foregroundMuted }}>다른 Mac은 상단 호스트 선택기로 전환하세요.</Text> : null}
+      {hosts.length > 1 ? <Text style={{ color: c.foregroundMuted }}>기기 전환은 상단 선택기에서 · 각 Mac에 mac-monitor 설치 필요</Text> : null}
       <Card theme={theme}>
         <Text style={{ color: c.foreground, fontWeight: '600' }}>연결된 호스트 / 에이전트</Text>
         {hosts.map(h => {
@@ -33,7 +33,10 @@ function SelectedHost(props: PluginSurfaceProps) {
           const label = value && !value.error ? `작업 중 ${value.running} · 대기 ${value.idle}${value.other ? ` · 기타 ${value.other}` : ''}` : '에이전트 확인 불가';
           return <View key={h.serverId} style={{ paddingVertical: 8, gap: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-              <Text style={{ color: c.foreground, fontWeight: '600', flexShrink: 1 }}>{h.label}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+                <Text style={{ color: c.foreground, fontWeight: '600', flexShrink: 1 }}>{h.label}</Text>
+                {h.serverId === host.id ? <Badge theme={theme} label="현재 기기" /> : null}
+              </View>
               <Badge theme={theme} label={h.status === 'online' ? '온라인' : '연결 안 됨'} />
             </View>
             <Text style={{ color: c.foregroundMuted }}>{label}</Text>

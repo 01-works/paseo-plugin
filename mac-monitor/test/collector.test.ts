@@ -15,6 +15,33 @@ function fake(code: string, extras: ConstructorParameters<typeof Collector>[0] =
 const sampleCode = `const raw=${JSON.stringify(raw)}; raw.t=Date.now(); console.log(JSON.stringify(raw)); raw.seq++;raw.t=Date.now();raw.sys.cpu.user+=50;raw.sys.cpu.idle+=50;console.log(JSON.stringify(raw));`;
 afterEach(async () => { await Promise.all(collectors.splice(0).map(c => c.stop())); await Promise.all(dirs.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 describe('캐시 및 헬퍼 수명주기', () => {
+  it('종료 시 응답 없는 실행 정보 IPC도 헬퍼 종료와 함께 해제', async () => {
+    const c = fake(`${sampleCode}process.on('SIGTERM',()=>{});require('node:readline').createInterface({input:process.stdin}).on('line',()=>{});setInterval(()=>{},1000);`);
+    await c.start(); await until(() => c.snapshot().status === 'ok');
+    const response = expect(c.inspectProcess(123, '1')).rejects.toThrow('헬퍼 연결 종료');
+    await c.stop(); await response;
+  });
+  it('정리 관찰은 명시 요청 때만 활성화하며 원본 정보는 snapshot에 노출하지 않음', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'mac-monitor-test-'));dirs.push(dir);const file = path.join(dir, 'commands');
+    const entry = { pid: 123, start: '1', group: 'node', name: 'node', memoryBytes: 10000000, cpuPercent: 0.01,
+      ageSeconds: 3600, parentPid: 1, readBytes: 0, writtenBytes: 0 };
+    const procs = { ready: true, sampledAt: Date.now(), coreCount: 10, excludedRoot: 0, excludedPermission: 0, otherErrors: 0,
+      topCpu: [], topMemory: [], members: [], inspection: { entries: [entry], truncated: false } };
+    const code = `${sampleCode}let inspecting=false;require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+      require('node:fs').appendFileSync(${JSON.stringify(file)},line+'\\n');
+      if(line==='inspection on')inspecting=true;if(line==='inspection off')inspecting=false;
+      if(line.startsWith('inspect ')){console.log(JSON.stringify({action:'inspect',id:Number(line.split(' ')[1]),ok:true,process:{pid:123,start:'1',group:'node',name:'node',path:'/opt/homebrew/bin/node',cwd:null,args:['node'],parentPid:1,parentName:'launchd',protected:false,issues:[],cpuPercent:0.01}}));}
+    });setInterval(()=>{raw.seq++;raw.t=Date.now();raw.sys.cpu.user+=1;raw.procs=inspecting?${JSON.stringify(procs)}:null;console.log(JSON.stringify(raw));},200);`;
+    const c = fake(code);await c.start();await until(() => c.snapshot().status==='ok');
+    const observed = vi.fn();const release = c.observeInspection(observed);
+    expect(() => c.observeInspection(() => {})).toThrow('진행 중');
+    await until(() => observed.mock.calls.length > 0);
+    expect(observed.mock.calls[0][0].entries[0].pid).toBe(123);expect(c.snapshot().processes).toBeNull();
+    expect(await c.inspectProcess(123,'1')).toMatchObject({ args: ['node'], cpuPercent: 0.01 });
+    release();release();await pause(30);expect((await readFile(file,'utf8')).split('\n').filter(l=>l==='inspection on')).toHaveLength(1);
+    expect((await readFile(file,'utf8')).split('\n').filter(l=>l==='inspection off')).toHaveLength(1);
+    const count=observed.mock.calls.length;await pause(220);expect(observed).toHaveBeenCalledTimes(count);
+  });
   it('전체 종료의 응답 순서가 달라도 PID별 성공·보호 대상 실패를 보존', async () => {
     const members = [123, 124].map(pid => ({ pid, start: String(pid), group: '앱', name: '앱', memoryBytes: 100, cpuPercent: 1 }));
     const payload = { ...raw, procs: { ready: true, sampledAt: Date.now(), coreCount: 10, excludedRoot: 0, excludedPermission: 0, otherErrors: 0,
