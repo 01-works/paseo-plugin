@@ -98,23 +98,11 @@ it('본문 클릭 guard와 상태 갱신은 모달·검색·정렬·스크롤을
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
   expect(h.list).toHaveBeenCalledOnce();
 });
-it('크게 보기는 현재 context로 패널을 열고 표시 상태를 넘김', async () => {
-  const h = await setup(), registration = h.buttons.get('a')!;
-  const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
-  await act(async () => { renderer = create(<Icon {...props} />); });
-  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
-  const action = registration.button.behavior;
-  await act(async () => { await action.onPress(); });
-  const content = renderer!.root.findByType(AgentContent);
-  await act(async () => content.props.onLarge());
-  expect(h.openPanel).toHaveBeenCalledWith('graph', { workspaceId: 'w', agentId: 'a', location: 'workspace' });
-  expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0);
-});
 it('compact도 목록·검색을 바로 표시하고 모든 텍스트는 테마 색·기본 크기를 사용', async () => {
   Platform.OS = 'ios';
   const h = await setup();
   await act(async () => { renderer = create(<AgentContent {...props} layout={{ compact: true, platform: 'ios' }}
-    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   expect(renderer!.root.findAllByType('FlatList' as React.ElementType)).toHaveLength(1);
   expect(renderer!.root.findByType('TextInput' as React.ElementType).props.accessibilityLabel).toBe('워크스페이스 에이전트 검색');
   const texts = renderer!.root.findAllByType('Text' as React.ElementType);
@@ -124,19 +112,22 @@ it('compact도 목록·검색을 바로 표시하고 모든 텍스트는 테마 
   }
   expect(texts.map(text => text.props.children)).not.toContain('구조');
 });
-it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 최근 목록을 즉시 표시', async () => {
-  Platform.OS = 'ios';
+it.each([{ compact: false, platform: 'web' }, { compact: true, platform: 'ios' }] as const)
+('$platform pill은 전체보기 없이 목록·검색을 바로 표시', async layout => {
+  Platform.OS = layout.platform;
   const h = await setup(), registration = h.buttons.get('a')!;
   const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
-  const ios = { ...props, layout: { compact: true, platform: 'ios' as const } };
-  await act(async () => { renderer = create(<Icon {...ios} />); });
+  await act(async () => { renderer = create(<Icon {...props} layout={layout} />); });
   expect(registration.update).toHaveBeenLastCalledWith({ label: '에이전트 2' });
   if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
   const action = registration.button.behavior;
   await act(async () => { await action.onPress(); });
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
   expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(1);
-  expect(renderer!.root.findByType('ModalContent' as React.ElementType).props.scrollable).toBe(false);
+  expect(renderer!.root.findByType('ModalContent' as React.ElementType).props.scrollable).toBe(!layout.compact);
+  expect(renderer!.root.findAll(n => n.type === ('Icon' as React.ElementType) && n.props.name === 'Maximize2')).toHaveLength(0);
+  expect(renderer!.root.findByType('TextInput' as React.ElementType).props.accessibilityLabel).toBe('워크스페이스 에이전트 검색');
+  expect(h.openPanel).not.toHaveBeenCalled(); expect(h.openSurface).not.toHaveBeenCalled();
   expect(h.list).toHaveBeenCalledOnce();
 });
 it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를 거쳐 대화 focus를 요청', async () => {
@@ -158,14 +149,14 @@ it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를
   expect(h.openSurface).toHaveBeenCalledWith(browserSurfaceId);
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0);
   const openAgent = vi.fn();
-  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
   expect(openAgent).toHaveBeenCalledExactlyOnceWith({ agentId: 'b', serverId: 'h' });
-  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+  await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
   expect(openAgent).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
 });
 it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동작하고 조회를 늘리지 않음', async () => {
   const h = await setup([raw('a', { createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z' }), raw('b')]);
-  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   const ids = () => renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id);
   expect(ids()).toEqual(['a', 'b']);
   const list = renderer!.root.findByType('FlatList' as React.ElementType);
@@ -182,7 +173,7 @@ it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동
   const input = renderer!.root.findByType('TextInput' as React.ElementType);
   await act(async () => input.props.onChangeText(' B ')); expect(ids()).toEqual(['b']);
   await act(async () => { renderer!.unmount(); renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+    workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   expect(ids()).toEqual(['b']); expect(h.views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(92);
   expect(h.list).toHaveBeenCalledOnce();
 });
@@ -190,7 +181,7 @@ it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우�
   const h = await setup([raw('a', { title: 'API 검토' }), raw('b', { title: '문서 정리' })]);
   const onNavigate = vi.fn();
   await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+    workspaceId="w" agentId="a" onNavigate={onNavigate} />); });
   const input = () => renderer!.root.findByType('TextInput' as React.ElementType);
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   await act(async () => input().props.onSubmitEditing()); expect(onNavigate).not.toHaveBeenCalled();
@@ -207,7 +198,7 @@ it('호버와 포커스는 피드백만 표시하고 이동·복사·닫기·재
   const h = await setup(), onNavigate = vi.fn();
   const copies = vi.mocked(copyText).mock.calls.length;
   await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+    workspaceId="w" agentId="a" onNavigate={onNavigate} />); });
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   const list = renderer!.root.findByType('FlatList' as React.ElementType);
   for (const label of ['a ID 복사', 'a 대화 닫기', 'b', '최신 생성순']) {
@@ -246,7 +237,7 @@ it('닫기가 비활성화되면 호버·포커스 표시를 지우고 다시 �
 it('행 닫기는 확인만 열고 취소하면 검색·정렬·스크롤·목록을 유지', async () => {
   const h = await setup(), onNavigate = vi.fn();
   await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+    workspaceId="w" agentId="a" onNavigate={onNavigate} />); });
   const store = h.views.forAgent('h', 'w', 'a');
   await act(async () => store.set({ browserQuery: 'b', browserSort: 'created' }));
   const list = renderer!.root.findByType('FlatList' as React.ElementType);
@@ -268,7 +259,7 @@ it('닫기 확인의 중복 클릭은 한 번 실행하고 성공 뒤에만 선�
   const h = await setup(), onNavigate = vi.fn(); let finish!: () => void;
   h.archive.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ archivedAt: '2026-10-07T07:00:00Z' }); }));
   await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+    workspaceId="w" agentId="a" onNavigate={onNavigate} />); });
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   await act(async () => button('b 대화 닫기').props.onPress());
   const confirm = button('선택한 대화 닫기 확인');
@@ -289,7 +280,7 @@ it('compact 닫기 실패는 목록과 확인창을 유지하고 재시도하며
   const h = await setup(), onNavigate = vi.fn();
   h.archive.mockRejectedValueOnce(new Error('연결 오류'));
   await act(async () => { renderer = create(<AgentContent {...props} layout={{ compact: true, platform: 'ios' }}
-    directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+    directory={h.directory} views={h.views} workspaceId="w" agentId="a" onNavigate={onNavigate} />); });
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   await act(async () => button('b 대화 닫기').props.onPress());
   await act(async () => button('선택한 대화 닫기 확인').props.onPress());
@@ -311,7 +302,7 @@ it('첫 목록 조회 실패는 로딩으로 남지 않고 다시 읽기로 복�
   cleanups.push(() => directory.dispose());
   await directory.start();
   await act(async () => { renderer = create(<AgentContent {...props} directory={directory} views={createBrowserViews()}
-    workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+    workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   const text = () => renderer!.root.findAllByType('Text' as React.ElementType).map(node => node.props.children);
   expect(text()).toContain('목록 확인 불가'); expect(text()).not.toContain('불러오는 중');
   const retry = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
@@ -321,34 +312,22 @@ it('첫 목록 조회 실패는 로딩으로 남지 않고 다시 읽기로 복�
   expect(renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id)).toEqual(['a']);
   expect(text()).not.toContain('목록 확인 불가'); expect(list).toHaveBeenCalledTimes(2);
 });
-it('데스크톱 탐색 크게 보기는 원래 workspace의 패널을 열고 열기 실패 때 모달을 유지', async () => {
-  const h = await setup(undefined), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
-  await act(async () => { renderer = create(<Icon {...props} />); });
-  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
-  const action = registration.button.behavior;
-  await act(async () => { await action.onPress(); });
-  const store = h.views.forAgent('h', 'w', 'a');
-  await act(async () => store.set({ browserSort: 'created', browserQuery: 'a' }));
-  h.openPanel.mockImplementationOnce(() => { throw new Error('panel unavailable'); });
-  await act(async () => renderer!.root.findByType(AgentContent).props.onLarge());
-  expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
-  await act(async () => renderer!.root.findByType(AgentContent).props.onLarge());
-  expect(h.openPanel).toHaveBeenLastCalledWith('graph', { workspaceId: 'w', agentId: 'a', location: 'workspace' });
-  expect(store.getSnapshot()).toMatchObject({ browserSort: 'created', browserQuery: 'a' });
-  expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0); expect(h.openSurface).not.toHaveBeenCalled();
-});
-it('compact 탐색 크게 보기는 현재 workspace context로 열며 surface 실패는 pill을 닫지 않음', async () => {
-  const h = await setup(undefined), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+it('대화 이동을 위한 화면 열기 실패는 pill과 검색·정렬을 유지', async () => {
+  const h = await setup(), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
   await act(async () => { renderer = create(<Icon {...props} layout={{ compact: true, platform: 'ios' }} />); });
   if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
   const action = registration.button.behavior;
   await act(async () => { await action.onPress(); });
-  const content = renderer!.root.findByType(AgentContent);
+  const store = h.views.forAgent('h', 'w', 'a');
+  await act(async () => store.set({ browserSort: 'created', browserQuery: 'b' }));
   h.openSurface.mockImplementationOnce(() => { throw new Error('route unavailable'); });
-  await act(async () => content.props.onLarge());
-  expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1); expect(h.agentNavigation.getSnapshot()).toBeNull();
-  await act(async () => content.props.onLarge());
-  expect(h.agentNavigation.getSnapshot()).toMatchObject({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: null });
+  const row = () => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'b');
+  await act(async () => row().props.onPress());
+  expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
+  expect(h.agentNavigation.getSnapshot()).toBeNull();
+  expect(store.getSnapshot()).toEqual({ browserSort: 'created', browserQuery: 'b' });
+  await act(async () => row().props.onPress());
+  expect(h.agentNavigation.getSnapshot()).toMatchObject({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
   expect(h.openPanel).not.toHaveBeenCalled(); expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0);
 });
 it('이동 도중 archive된 에이전트와 다른 호스트 context는 navigation을 호출하지 않음', async () => {
@@ -357,20 +336,18 @@ it('이동 도중 archive된 에이전트와 다른 호스트 context는 navigat
   await act(async () => {
     h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('b', { archivedAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
     await vi.advanceTimersByTimeAsync(250);
-    renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} navigation={navigation} />);
+    renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} navigation={navigation} />);
   });
   expect(openAgent).not.toHaveBeenCalled();
   expect(renderer!.root.findAllByType('Text' as React.ElementType).some(node => node.props.children === '선택한 에이전트가 원래 워크스페이스에 없습니다')).toBe(true);
   await act(async () => h.agentNavigation.open({ serverId: 'other', workspaceId: 'w', agentId: 'a', targetId: 'a' }));
   expect(openAgent).not.toHaveBeenCalled();
 });
-it('navigation이 없는 공개 surface는 이동을 가장하지 않고 ID 복사만 제공', async () => {
-  const h = await setup(undefined); h.agentNavigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
-  await act(async () => { renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} views={h.views} />); });
-  const row = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'b');
-  expect(row.props.disabled).toBe(true);
-  const copy = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === 'b ID 복사');
-  await act(async () => copy.props.onPress()); expect(copyText).toHaveBeenLastCalledWith('b');
+it('navigation이 없는 이동 화면은 오류를 알리고 별도 목록을 표시하지 않음', async () => {
+  const h = await setup(); h.agentNavigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
+  await act(async () => { renderer = create(<AgentSurface {...props} agentNavigation={h.agentNavigation} directory={h.directory} />); });
+  expect(renderer!.root.findAllByType('FlatList' as React.ElementType)).toHaveLength(0);
+  expect(renderer!.root.findByType('Text' as React.ElementType).props.children).toBe('이 Paseo에서는 대화 이동을 지원하지 않습니다');
   expect(h.agentNavigation.takeTarget(h.agentNavigation.getSnapshot()!)).toBeNull();
 });
 it('다른 workspace로 바뀐 대상은 목록·pill·공개 surface에서 이동을 차단', async () => {
@@ -393,16 +370,16 @@ it('다른 workspace로 바뀐 대상은 목록·pill·공개 surface에서 이�
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
   h.agentNavigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'foreign' });
   const openAgent = vi.fn();
-  await act(async () => renderer!.update(<AgentSurface {...props} directory={h.directory} views={h.views} agentNavigation={h.agentNavigation}
+  await act(async () => renderer!.update(<AgentSurface {...props} directory={h.directory} agentNavigation={h.agentNavigation}
     navigation={{ openAgent, openWorkspace: vi.fn() }} />));
   expect(openAgent).not.toHaveBeenCalled();
 });
-it('검색·정렬은 호스트·workspace·에이전트별로 구분하고 모달·패널 스크롤을 따로 보존', () => {
+it('검색·정렬·스크롤은 호스트·workspace·에이전트별로 보존', () => {
   const views = createBrowserViews(), first = views.forAgent('h', 'w', 'a');
-  expect(first.getSnapshot()).toEqual({ browserSort: 'updated', browserQuery: '', message: null });
+  expect(first.getSnapshot()).toEqual({ browserSort: 'updated', browserQuery: '' });
   first.set({ browserSort: 'created', browserQuery: '검토' }); first.browserScroll.modal = 160;
   expect(views.forAgent('h', 'w', 'a')).toBe(first);
-  expect(first.browserScroll.panel).toBe(0);
+  expect(views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(160);
   for (const other of [views.forAgent('other', 'w', 'a'), views.forAgent('h', 'other', 'a'), views.forAgent('h', 'w', 'b')]) {
     expect(other).not.toBe(first); expect(other.getSnapshot().browserQuery).toBe('');
   }

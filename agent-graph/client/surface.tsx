@@ -2,11 +2,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
 import type { PluginSurfaceProps } from '@getpaseo/plugin/client';
 import type { AgentDirectory } from './directory';
-import type { BrowserViews } from './view-state';
 import type { AgentNavigation } from './navigation';
-import { AgentContent } from './content';
 type SurfaceError = string | null;
-export function AgentSurface(props: PluginSurfaceProps & { directory: AgentDirectory; views: BrowserViews; agentNavigation: AgentNavigation }) {
+// 대화 이동에 필요한 공개 navigation을 받는 경유 화면이다. 별도 목록은 표시하지 않는다.
+export function AgentSurface(props: PluginSurfaceProps & { directory: AgentDirectory; agentNavigation: AgentNavigation }) {
   const { agentNavigation, directory, host, theme, layout } = props;
   const context = useSyncExternalStore(agentNavigation.subscribe, agentNavigation.getSnapshot);
   const [error, setError] = useState<SurfaceError>(null);
@@ -15,18 +14,15 @@ export function AgentSurface(props: PluginSurfaceProps & { directory: AgentDirec
     setError(null);
     if (context.serverId !== host.id) { setError('원래 호스트에서 다시 열어 주세요'); return; }
     const id = agentNavigation.takeTarget(context);
-    if (!id) return;
+    if (!id) { setError('에이전트 pill에서 대화를 선택해 주세요'); return; }
     if (!props.navigation) { setError('이 Paseo에서는 대화 이동을 지원하지 않습니다'); return; }
     if (!directory.getSnapshot().agents.some(agent => agent.id === id && !agent.archived && agent.workspaceId === context.workspaceId)) {
       setError('선택한 에이전트가 원래 워크스페이스에 없습니다'); return;
     }
     try { props.navigation.openAgent({ agentId: id, serverId: host.id }); }
-    catch { setError('대화를 열지 못했습니다. 목록에서 다시 선택해 주세요'); }
+    catch { setError('대화를 열지 못했습니다. 에이전트 pill에서 다시 선택해 주세요'); }
   }, [context, host.id, agentNavigation, directory, props.navigation]);
   return <View style={{ flex: 1, minHeight: 0, padding: layout.compact ? 12 : 16, backgroundColor: theme.colors.surface0, gap: 8 }}>
-    {error ? <Text style={{ color: theme.colors.foregroundMuted }}>{error}</Text> : null}
-    {context && context.serverId === host.id ? <AgentContent {...props} workspaceId={context.workspaceId} agentId={context.agentId}
-      surface="panel" onNavigate={props.navigation ? id => props.navigation!.openAgent({ agentId: id, serverId: host.id }) : undefined} /> :
-      <Text style={{ color: theme.colors.foregroundMuted }}>에이전트 pill에서 현재 워크스페이스의 탐색을 열어 주세요.</Text>}
+    <Text style={{ color: theme.colors.foregroundMuted }}>{error ?? (context ? '대화를 여는 중…' : '에이전트 pill에서 대화를 선택해 주세요')}</Text>
   </View>;
 }

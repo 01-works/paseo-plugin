@@ -48,17 +48,6 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
         update(); const unsubscribe = directory.subscribe(update);
         return () => { unsubscribe(); unwatch(); };
       }, []);
-      const openLarge = () => {
-        const store = views.forAgent(props.host.id, workspaceId, id);
-        store.set({ message: null });
-        try {
-          if (props.layout.compact) {
-            agentNavigation.open({ serverId: props.host.id, workspaceId, agentId: id, targetId: null });
-          } else client.openPanel('graph', { workspaceId, agentId: id, location: 'workspace' });
-          setOpen(false);
-        }
-        catch { store.set({ message: '큰 보기를 열지 못했습니다. 현재 창에서 계속 볼 수 있습니다.' }); }
-      };
       const navigate = (targetId: string) => {
         const target = directory.getSnapshot().agents.find(agent => agent.id === targetId && agent.workspaceId === workspaceId && !agent.archived);
         if (!target) throw new Error('에이전트 확인 불가');
@@ -68,7 +57,7 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
       return <>
         <Icon name="List" size={props.size} color={props.color} />
         {opened ? <AgentModal {...props} agentId={id} workspaceId={workspaceId} directory={directory} views={views}
-          open onOpenChange={setOpen} onLarge={openLarge} onNavigate={navigate} /> : null}
+          open onOpenChange={setOpen} onNavigate={navigate} /> : null}
       </>;
     }
     const registration = client.addComposerPill({ id: 'graph', workspaceId, agentId: id,

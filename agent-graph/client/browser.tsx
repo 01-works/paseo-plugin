@@ -10,9 +10,9 @@ import { Button, ControlLayout, IconButton, RowButton, Status } from './controls
 import { spacing } from './spacing';
 export function AgentBrowser(props: PluginHostProps & {
   directory: AgentDirectory; store: BrowserViewState; workspaceId: string; agentId: string;
-  surface: 'modal' | 'panel'; onLarge?: () => void; onNavigate?: (id: string) => void;
+  onNavigate?: (id: string) => void;
 }) {
-  const { theme, layout, directory, store, workspaceId, agentId, surface, onLarge, onNavigate } = props;
+  const { theme, layout, directory, store, workspaceId, agentId, onNavigate } = props;
   const c = theme.colors, toast = useToast();
   const snapshot = useSyncExternalStore(directory.subscribe, directory.getSnapshot);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -58,22 +58,19 @@ export function AgentBrowser(props: PluginHostProps & {
       if (mounted.current) setClosingId(null);
     }
   };
-  return <View style={{ flex: surface === 'panel' || layout.compact ? 1 : undefined, minHeight: 0, gap: spacing.inset }}>
+  return <View style={{ flex: layout.compact ? 1 : undefined, minHeight: 0, gap: spacing.inset }}>
     <View style={{ gap: spacing.gap }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
-        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset,
-          borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, borderRadius: spacing.gap }}>
-          <Icon name="Search" size={16} color={c.foregroundMuted} />
-          <TextInput accessibilityLabel="워크스페이스 에이전트 검색" placeholder="이름 또는 ID 검색" value={state.browserQuery}
-            onChangeText={browserQuery => store.set({ browserQuery })} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
-            onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
-            onSubmitEditing={() => { if (rows.length === 1) navigate(rows[0].id); }}
-            placeholderTextColor={c.foregroundMuted} selectionColor={c.accent}
-            style={{ flex: 1, minWidth: 0, minHeight: layout.compact ? 44 : 40, padding: 0, color: c.foreground,
-              outlineWidth: layout.platform === 'web' && searchFocused ? 0 : undefined }} />
-          {state.browserQuery ? <IconButton theme={theme} name="X" label="검색 지우기" onPress={() => store.set({ browserQuery: '' })} /> : null}
-        </View>
-        {onLarge ? <IconButton theme={theme} name="Maximize2" label="크게 보기" onPress={onLarge} /> : null}
+      <View style={{ minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset,
+        borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, borderRadius: spacing.gap }}>
+        <Icon name="Search" size={16} color={c.foregroundMuted} />
+        <TextInput accessibilityLabel="워크스페이스 에이전트 검색" placeholder="이름 또는 ID 검색" value={state.browserQuery}
+          onChangeText={browserQuery => store.set({ browserQuery })} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
+          onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
+          onSubmitEditing={() => { if (rows.length === 1) navigate(rows[0].id); }}
+          placeholderTextColor={c.foregroundMuted} selectionColor={c.accent}
+          style={{ flex: 1, minWidth: 0, minHeight: layout.compact ? 44 : 40, padding: 0, color: c.foreground,
+            outlineWidth: layout.platform === 'web' && searchFocused ? 0 : undefined }} />
+        {state.browserQuery ? <IconButton theme={theme} name="X" label="검색 지우기" onPress={() => store.set({ browserQuery: '' })} /> : null}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset }}>
         <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted }}>{snapshot.loaded ?
@@ -95,10 +92,10 @@ export function AgentBrowser(props: PluginHostProps & {
     {!onNavigate ? <Text style={{ color: c.foregroundMuted, paddingHorizontal: spacing.inset }}>이 화면에서는 대화 이동을 지원하지 않습니다.</Text> : null}
     <FlatList data={rows} keyExtractor={agent => agent.key} initialNumToRender={12} maxToRenderPerBatch={12} windowSize={5}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-      contentOffset={{ x: 0, y: store.browserScroll[surface] }}
-      onScroll={event => { store.browserScroll[surface] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={64}
-      style={{ flex: surface === 'panel' || layout.compact ? 1 : undefined, minHeight: 0,
-        height: surface === 'modal' && !layout.compact ? Math.min(400, Math.max(160, all.length * 80)) : undefined,
+      contentOffset={{ x: 0, y: store.browserScroll.modal }}
+      onScroll={event => { store.browserScroll.modal = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={64}
+      style={{ flex: layout.compact ? 1 : undefined, minHeight: 0,
+        height: !layout.compact ? Math.min(400, Math.max(160, all.length * 80)) : undefined,
         borderTopWidth: 1, borderColor: c.border }}
       contentContainerStyle={{ flexGrow: rows.length ? undefined : 1 }}
       extraData={{ agentId, stale: snapshot.stale, sort: state.browserSort, onNavigate, closingId }}

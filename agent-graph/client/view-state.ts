@@ -1,12 +1,12 @@
 import type { AgentSort } from '../shared/browser';
 type Listener = () => void;
-export type BrowserState = { browserSort: AgentSort; browserQuery: string; message: string | null };
+export type BrowserState = { browserSort: AgentSort; browserQuery: string };
 
 // 0.10.2의 모바일 번들에서도 미변환 클래스 문법을 남기지 않는다.
 export function createBrowserViewState() {
-  let state: BrowserState = { browserSort: 'updated', browserQuery: '', message: null };
+  let state: BrowserState = { browserSort: 'updated', browserQuery: '' };
   const listeners = new Set<Listener>();
-  const browserScroll = { modal: 0, panel: 0 };
+  const browserScroll = { modal: 0 };
   const getSnapshot = () => state;
   const subscribe = (listener: Listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
   const set = (patch: Partial<BrowserState>) => {

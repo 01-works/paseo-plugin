@@ -55,10 +55,10 @@ it('공개 surface로 이동 의도를 전달하고 같은 요청은 한 번만 
 });
 it('surface 열기 실패는 이전 context를 유지하고 이동 요청을 남기지 않음', () => {
   const openSurface = vi.fn(), navigation = createAgentNavigation({ openSurface });
-  navigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'origin', targetId: null });
+  navigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'origin', targetId: 'previous' });
   const previous = navigation.getSnapshot();
   openSurface.mockImplementationOnce(() => { throw new Error('unavailable'); });
   expect(() => navigation.open({ ...previous!, targetId: 'target' })).toThrow();
   expect(navigation.getSnapshot()).toBe(previous);
-  expect(navigation.takeTarget(previous!)).toBeNull();
+  expect(navigation.takeTarget(previous!)).toBe('previous');
 });

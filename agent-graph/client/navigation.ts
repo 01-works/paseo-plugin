@@ -1,7 +1,7 @@
 import type { PluginClientContext } from '@getpaseo/plugin/client';
 export const browserSurfaceId = 'agent-browser';
 export type BrowserContext = {
-  serverId: string; workspaceId: string; agentId: string; targetId: string | null; sequence: number;
+  serverId: string; workspaceId: string; agentId: string; targetId: string; sequence: number;
 };
 // pill에는 navigation props가 없다. 공개 surface로 이동 의도만 넘기고 그곳에서 openAgent를 호출한다.
 export function createAgentNavigation(client: Pick<PluginClientContext, 'openSurface'>) {
