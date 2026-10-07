@@ -1,4 +1,4 @@
-import { defineRpc, defineSettings } from '@getpaseo/plugin';
+import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 
 const number = z.number().finite().nonnegative();
@@ -22,7 +22,9 @@ export const rawSchema = z.object({
     cpu: cpuTicksSchema.nullable(), swap: z.object({ total: number, used: number }).nullable(),
     pressureLevel: z.number().finite().nullable(), memoryLevel: nullable, disk: diskSchema.nullable().optional(),
   }),
-  procs: processesSchema.extend({ members: z.array(processSchema).optional() }).nullable(), errors: z.array(z.string()),
+  // 정리 검사의 제한된 원시 관찰은 서버 내부에서만 사용한다.
+  procs: processesSchema.extend({ members: z.array(processSchema).optional(), inspection: z.unknown().optional() }).nullable(),
+  history: z.unknown().optional(), errors: z.array(z.string()),
 });
 export const snapshotSchema = z.object({
   seq: nullable, sampledAt: nullable, ageMs: nullable,
@@ -37,7 +39,7 @@ export const snapshotSchema = z.object({
   errors: z.array(z.string()),
 });
 export const snapshotRpc = defineRpc({ name: 'mac-monitor.snapshot.get', input: z.object({ includeProcesses: z.boolean() }), output: snapshotSchema });
-export const hostInfoSchema = z.object({ hostname: z.string(), serverId: z.string().optional(), platform: z.string(), helperMode: z.enum(['native', 'node', 'unsupported']), version: z.string() });
+export const hostInfoSchema = z.object({ hostname: z.string(), platform: z.string(), helperMode: z.enum(['native', 'node', 'unsupported']), version: z.string() });
 export const hostInfoRpc = defineRpc({ name: 'mac-monitor.host.info', input: z.object({}), output: hostInfoSchema });
 export const processListRpc = defineRpc({ name: 'mac-monitor.processes.list', input: z.object({ group: z.string().max(256) }),
   output: z.object({ status: snapshotSchema.shape.processesStatus, sampledAt: nullable, entries: z.array(processSchema) }) });
@@ -47,8 +49,7 @@ export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate'
   input: z.object({ group: z.string().max(256), targets: z.array(processSchema.pick({ pid: true, start: true })).min(1).max(4096)
     .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
   output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
-export const settings = defineSettings({ id: 'monitor', scope: 'host', version: 1, schema: z.object({ experimentalFleet: z.boolean().default(true) }) });
-export const VERSION = '0.1.1';
+export const VERSION = '0.6.0';
 export type RawSample = z.infer<typeof rawSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type HostInfo = z.infer<typeof hostInfoSchema>;

@@ -48,7 +48,7 @@ export function ProcessPanel({ group, theme, onBack }: { group: string; theme: T
       </View> : null}
       {entries.map(p => <View key={`${p.pid}:${p.start}`} style={{ gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
         <Text selectable numberOfLines={1} style={{ color: c.foreground }}>{p.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <View style={{ flex: 1 }}><Text selectable style={{ color: c.foregroundMuted }}>PID {p.pid}</Text></View>
           <Text selectable style={{ color: c.foregroundMuted }}>{appPercent(p.cpuPercent)}</Text>
           <Text selectable style={{ color: c.foregroundMuted }}>{gib(p.memoryBytes)}</Text>

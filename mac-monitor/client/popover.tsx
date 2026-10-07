@@ -9,6 +9,7 @@ import { useSnapshot } from './data';
 import { gib, percent, pressureLabels, statusLabels, displaySnapshot, appPercent } from './format';
 import { Badge, Bar, Card, barPercent, usageColor, type Theme } from './visuals';
 import { GroupTermination, ProcessPanel } from './processes';
+import { CleanupPanel } from './cleanup';
 
 const rankingColumns = {
   cpu: { width: 72, paddingHorizontal: 4, alignItems: 'flex-end' as const },
@@ -70,9 +71,10 @@ function AppRanking({ snapshot: s, theme, canInspect, onSelect, tab, setTab, com
   </Card>;
 }
 
-export function Details({ snapshot, theme, layout, name, error, onRefresh, refreshing = false, canInspect = true }: PluginHostProps & { snapshot?: Snapshot; name: string; error?: string; onRefresh?: () => void; refreshing?: boolean; canInspect?: boolean }) {
+export function Details({ snapshot, theme, layout, host, name, error, onRefresh, refreshing = false, canInspect = true }: PluginHostProps & { snapshot?: Snapshot; name: string; error?: string; onRefresh?: () => void; refreshing?: boolean; canInspect?: boolean }) {
   const [selection, select] = useState<{ group: string; mode: 'processes' | 'terminate' } | null>(null);
   const [tab, setTab] = useState<'cpu' | 'memory'>('cpu');
+  const [cleanup, setCleanup] = useState(false);
   const c = theme.colors;
   const s: Snapshot = useMemo(() => snapshot ? displaySnapshot(snapshot, Boolean(error)) : {
     ...emptySnapshot('native'), ...(error ? { status: 'error', processesStatus: 'error' } : {}),
@@ -87,6 +89,7 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
     { label: '와이어드', value: s.memory?.wired },
     { label: '압축', value: s.memory?.compressed },
   ];
+  if (cleanup && canInspect) return <CleanupPanel key={host.id} hostId={host.id} name={name} theme={theme} onBack={() => setCleanup(false)} />;
   if (selection && canInspect) return selection.mode === 'processes'
     ? <ProcessPanel group={selection.group} theme={theme} onBack={() => select(null)} />
     : <GroupTermination group={selection.group} theme={theme} onBack={() => select(null)} />;
@@ -98,6 +101,10 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
       </View>
       {s.status === 'ok' ? null : <Badge theme={theme} label={statusLabels[s.status]} />}
       <View style={{ flexDirection: 'row', gap: 8 }}>
+      {canInspect && s.helperMode === 'native' ? <Pressable accessibilityRole="button" accessibilityLabel="정리 검사 시작" disabled={muted || Boolean(error)}
+        onPress={() => setCleanup(true)} style={({ pressed }) => ({ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, backgroundColor: pressed ? c.surface2 : undefined })}>
+        <Text style={{ color: muted || error ? c.foregroundMuted : c.foreground }}>정리 검사</Text>
+      </Pressable> : null}
       {onRefresh ? <Pressable accessibilityRole="button" accessibilityLabel="모니터 새로고침" disabled={refreshing}
         onPress={onRefresh}
         style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, backgroundColor: c.surface2 }}>
@@ -140,7 +147,7 @@ export function Details({ snapshot, theme, layout, name, error, onRefresh, refre
           <Text selectable style={{ color: valueColor, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{gib(s.disk?.used)} / {gib(s.disk?.total)}</Text>
         </View>
         <Bar theme={theme} value={diskUsage} color={usageColor(diskUsage, theme, 'disk', muted)} muted={muted} label={`디스크 ${gib(s.disk?.used)} / ${gib(s.disk?.total)}`} height={6} />
-        <Text selectable style={{ color: c.foregroundMuted }}>여유 {gib(s.disk?.available)}</Text>
+        <Text selectable style={{ color: !muted && s.disk && s.disk.available < 2 * 1024 ** 3 ? c.statusWarning : c.foregroundMuted }}>여유 {gib(s.disk?.available)}{!muted && s.disk && s.disk.available < 2 * 1024 ** 3 ? ' · 공간 부족' : ''}</Text>
       </View>
     </Card>
     <AppRanking snapshot={s} theme={theme} canInspect={canInspect} compact={layout.compact} tab={tab} setTab={setTab} onSelect={(group, mode) => select({ group, mode })} />
