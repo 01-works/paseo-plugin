@@ -18,6 +18,8 @@
 정리 후보는 0개였고 종료 RPC를 호출하지 않았다. 결과 확인 뒤 검사를 취소했다.
 실제 화면 제어는 시간 초과되어 이번 화면은 컴포넌트 테스트/번들 컴파일로 검증했다.
 구체적인 결과와 남은 확인은 [VALIDATION.md](VALIDATION.md)에 기록한다.
+공개 main `e4913af`의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37669744248)도
+타입·113개 테스트·prebuilt 실행·빌드·서명·스키마 검사를 모두 통과했다.
 
 ## 0.6.0 · 짧은 숫자 이력의 방향 검토
 
