@@ -86,6 +86,6 @@ agent-graph/
 - 제품 entry와 실제 설치 bundle의 Hermes 컴파일 통과.
 - 실제 Paseo 데스크톱에서 검색·ID 붙여넣기·기존 대화 탭 focus·전체보기 제거 확인.
 - 합성 자료의 라이트/다크·320/390px 목록과 갱신 전후 스크롤 확인. 미리보기를 실제 iPhone 검증으로 주장하지 않기.
-- agent-graph만 로컬 reload하고 로그와 running 확인. 데몬 재시작, mac-monitor 변경, 원격 호스트 설치·GitHub push는 하지 않기.
+- agent-graph만 로컬 reload하고 로그와 running 확인. 데몬 재시작, mac-monitor 변경, 원격 호스트 설치는 하지 않기. GitHub main 배포는 [DECISIONS 17절](DECISIONS.md)의 사용자 승인에 따른다.
 
 실제 iPhone의 시트·키보드·길게 누르기·VoiceOver·Dynamic Type과 0.11 이상 지원은 미검증 항목으로 남긴다. 구체적인 결과와 범위는 [VALIDATION](VALIDATION.md)에 기록한다.

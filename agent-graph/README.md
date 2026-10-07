@@ -6,7 +6,15 @@
 
 ## 설치·업데이트
 
-현재 구현은 로컬에서 설치·검증했습니다. agent-graph의 변경 내용은 아직 GitHub에 push하지 않았습니다.
+Paseo 0.10.2 데몬에서 플러그인 사용을 활성화한 뒤 설치합니다.
+
+```sh
+paseo plugin install github:01-works/paseo-plugin:agent-graph
+```
+
+GitHub 설치본의 업데이트는 `paseo plugin update agent-graph`입니다.
+
+로컬 소스를 개발하려면 해당 폴더에서 설치합니다.
 
 ```sh
 cd agent-graph
@@ -16,7 +24,7 @@ paseo plugin install "$PWD"
 
 설치 후 에이전트 입력창의 **에이전트 N** pill을 누릅니다. N은 현재 워크스페이스의 미보관 에이전트 수입니다. Paseo 설정에서 플러그인이 활성화되어 있어야 합니다.
 
-소스를 업데이트한 뒤에는 의존성을 설치하고 플러그인만 reload합니다.
+로컬 설치본은 소스를 업데이트한 뒤 의존성을 설치하고 플러그인만 reload합니다.
 
 ```sh
 npm ci

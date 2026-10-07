@@ -199,3 +199,11 @@ mac-monitor는 읽기와 화면 비교에만 사용했다. 로컬 agent-graph만
 - 기존 구독·가상화·행 높이·확인 흐름과 보관 대상 검증은 유지한다. 전체보기 전용 테스트는 제거하고 기존 이동 실패 검사와 데스크톱/iOS 모달 검사를 현재 동작에 맞춘다. 새 런타임 의존성·조회·폴링은 추가하지 않는다.
 
 로컬 agent-graph만 반영한다. 실제 iPhone 확인과 GitHub push는 별도로 남긴다.
+
+## 17. GitHub main 배포 — 2026-10-08
+
+사용자가 리뷰·커밋 후 main에 올리도록 요청했다. 앞선 로컬 반영 범위에서 GitHub `01-works/paseo-plugin`의 `main` 배포로 확장한다. 플러그인은 0.1.11을 유지하고 GitHub 하위 경로 설치·업데이트 명령을 안내한다.
+
+- 원격 main의 mac-monitor 후속 커밋을 병합하고 원격 mac-monitor 트리와 리뷰한 agent-graph 트리가 각각 그대로 보존되는지 확인한다. 다른 플러그인의 변경을 되돌리거나 강제 push하지 않는다.
+- 기존 agent-graph workflow로 타입 검사·58개 테스트·Hermes 번들 컴파일·React Native 경계를 검증한다. CI는 실제 iPhone 화면 검증을 대신하지 않는다.
+- 현재 로컬 directory 설치는 유지한다. 배포를 위해 데몬을 재시작하거나 mac-monitor를 reload하지 않는다.
