@@ -60,7 +60,7 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
           open onOpenChange={setOpen} onNavigate={navigate} /> : null}
       </>;
     }
-    const registration = client.addComposerPill({ id: 'graph', workspaceId, agentId: id,
+    const registration = client.addComposerPill({ id: 'browser', workspaceId, agentId: id,
       button: { title: '에이전트', label: '에이전트 …', icon: AgentIcon, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
     pills.set(id, { workspaceId, registration, label: '에이전트 …' });
   };

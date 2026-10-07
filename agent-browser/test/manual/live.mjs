@@ -9,7 +9,7 @@ import { createAgentDirectory } from '../../client/directory.ts';
 import { workspaceAgents } from '../../shared/browser.ts';
 const taskPaseoHome = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
-  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-graph-local-validation', clientType: 'cli', appVersion: '0.10.2',
+  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-browser-local-validation', clientType: 'cli', appVersion: '0.10.2',
   localCredential: () => readFileSync(path.join(taskPaseoHome, 'local-credential'), 'utf8').trim(),
   webSocketFactory: (url, options) => new WebSocket(url, options?.protocols, { headers: options?.headers }),
   reconnect: { enabled: false }, connectTimeoutMs: 5000,

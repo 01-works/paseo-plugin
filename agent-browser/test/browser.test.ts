@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { normalizeAgent } from '../client/normalize';
 import { agentTime, browserTime, workspaceAgents } from '../shared/browser';
-import { browserSurfaceId, createAgentNavigation } from '../client/navigation';
+import { navigationSurfaceId, createAgentNavigation } from '../client/navigation';
 import { raw } from './fixtures';
 const make = (id: string, patch: Parameters<typeof raw>[1] = {}) => normalizeAgent(raw(id, patch), 'h');
 it('탐색은 현재 workspace만 포함하며 다른 workspace의 자손·조상과 archive를 제외', () => {
@@ -44,7 +44,7 @@ it('공개 surface로 이동 의도를 전달하고 같은 요청은 한 번만 
   const openSurface = vi.fn(), navigation = createAgentNavigation({ openSurface });
   const input = { serverId: 'h', workspaceId: 'w', agentId: 'origin', targetId: 'target' };
   navigation.open(input);
-  expect(openSurface).toHaveBeenCalledWith(browserSurfaceId);
+  expect(openSurface).toHaveBeenCalledWith(navigationSurfaceId);
   const request = navigation.getSnapshot()!;
   expect(navigation.takeTarget(request)).toBe('target');
   expect(navigation.takeTarget(request)).toBeNull();

@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-const root = process.cwd(), output = path.join(tmpdir(), 'agent-graph-ui');
+const root = process.cwd(), output = path.join(tmpdir(), 'agent-browser-ui');
 const option = name => process.argv.find(value => value.startsWith(name + '='))?.slice(name.length + 1);
 const require = createRequire(path.join(option('--modules') ?? root, 'package.json'));
 const web = require.resolve('react-native-web');
@@ -112,7 +112,7 @@ await build({ entryPoints: [path.join(output, 'entry.tsx')], bundle: true, forma
   alias: { 'react-native': web, '@getpaseo/plugin/client/react-native': path.join(output, 'host.tsx'),
     react: path.join(root, 'node_modules/react'), 'react-dom': path.join(root, 'node_modules/react-dom') },
   outfile: path.join(output, 'preview.js'), logLevel: 'warning' });
-await writeFile(path.join(output, 'index.html'), '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-graph 화면 검증</title><style>html,body,#root{margin:0;width:100%;height:100%;}#root{display:flex;flex-direction:column;font:14px system-ui;}*{box-sizing:border-box;}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>');
+await writeFile(path.join(output, 'index.html'), '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-browser 화면 검증</title><style>html,body,#root{margin:0;width:100%;height:100%;}#root{display:flex;flex-direction:column;font:14px system-ui;}*{box-sizing:border-box;}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>');
 const server = createServer(async (request, response) => {
   try {
     const file = request.url?.split('?')[0] === '/preview.js' ? 'preview.js' : 'index.html';

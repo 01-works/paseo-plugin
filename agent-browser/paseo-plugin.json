@@ -1,5 +1,5 @@
 {
-  "id": "agent-graph",
+  "id": "agent-browser",
   "description": "Paseo 최근 에이전트 탐색",
   "requirements": {
     "paseo": ">=0.10.2 <0.11.0"

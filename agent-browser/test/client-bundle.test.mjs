@@ -9,7 +9,7 @@ import path from 'node:path';
 // Node 테스트만으로는 iOS의 번들 로드 실패를 검출하지 못한다.
 // Paseo 0.10.2 client compiler와 같은 설정으로 제품 entry를 묶어 RN에 포함된 Hermes로 읽는다.
 const require = createRequire(import.meta.url);
-const directory = mkdtempSync(path.join(tmpdir(), 'agent-graph-hermes-'));
+const directory = mkdtempSync(path.join(tmpdir(), 'agent-browser-hermes-'));
 const binary = { darwin: 'osx-bin/hermesc', linux: 'linux64-bin/hermesc', win32: 'win64-bin/hermesc.exe' }[process.platform];
 if (!binary) throw new Error('Hermes 검증을 지원하지 않는 운영체제입니다');
 const hermesc = path.join(path.dirname(require.resolve('react-native/package.json')), 'sdks/hermesc', binary);

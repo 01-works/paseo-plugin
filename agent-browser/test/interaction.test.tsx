@@ -20,7 +20,7 @@ import { contributePills } from '../client/pill';
 import { AgentContent } from '../client/content';
 import { AgentModal } from '../client/modal';
 import { AgentSurface } from '../client/surface';
-import { createAgentNavigation, browserSurfaceId } from '../client/navigation';
+import { createAgentNavigation, navigationSurfaceId } from '../client/navigation';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 import { Platform } from 'react-native';
 import { IconButton } from '../client/controls';
@@ -52,13 +52,14 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const views = createBrowserViews();
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
   const openPanel = vi.fn(), openSurface = vi.fn();
-  const client = { openPanel, openSurface, addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
+  const addComposerPill = vi.fn(({ agentId, button }: { agentId: string; button: PluginButton }) => {
     const registration = { button, update: vi.fn(), remove: vi.fn() }; buttons.set(agentId, registration); return registration;
-  } } as unknown as PluginClientContext;
+  });
+  const client = { openPanel, openSurface, addComposerPill } as unknown as PluginClientContext;
   const agentNavigation = createAgentNavigation(client);
   cleanups.push(contributePills(client, directory, views, agentNavigation)); cleanups.push(() => directory.dispose()); cleanups.push(() => agentNavigation.dispose());
   await directory.start();
-  return { directory, views, buttons, list, openPanel, openSurface, agentNavigation, observer, ref, archive };
+  return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, archive };
 }
 it('보이는 pill 3개도 구독 하나를 공유하고 같은 라벨을 다시 갱신하지 않음', async () => {
   const h = await setup();
@@ -116,6 +117,7 @@ it.each([{ compact: false, platform: 'web' }, { compact: true, platform: 'ios' }
 ('$platform pill은 전체보기 없이 목록·검색을 바로 표시', async layout => {
   Platform.OS = layout.platform;
   const h = await setup(), registration = h.buttons.get('a')!;
+  expect(h.addComposerPill).toHaveBeenCalledWith(expect.objectContaining({ id: 'browser', agentId: 'a', workspaceId: 'w' }));
   const Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
   await act(async () => { renderer = create(<Icon {...props} layout={layout} />); });
   expect(registration.update).toHaveBeenLastCalledWith({ label: '에이전트 2' });
@@ -146,7 +148,7 @@ it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를
   await act(async () => target.props.onLongPress()); expect(copyText).toHaveBeenLastCalledWith('b');
   expect(h.openSurface).not.toHaveBeenCalled();
   await act(async () => target.props.onPress());
-  expect(h.openSurface).toHaveBeenCalledWith(browserSurfaceId);
+  expect(h.openSurface).toHaveBeenCalledWith(navigationSurfaceId);
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0);
   const openAgent = vi.fn();
   await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} navigation={{ openAgent, openWorkspace: vi.fn() }} />));

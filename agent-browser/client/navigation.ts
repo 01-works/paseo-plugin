@@ -1,5 +1,5 @@
 import type { PluginClientContext } from '@getpaseo/plugin/client';
-export const browserSurfaceId = 'agent-browser';
+export const navigationSurfaceId = 'navigate';
 export type BrowserContext = {
   serverId: string; workspaceId: string; agentId: string; targetId: string; sequence: number;
 };
@@ -12,7 +12,7 @@ export function createAgentNavigation(client: Pick<PluginClientContext, 'openSur
   const open = (input: Omit<BrowserContext, 'sequence'>) => {
     const previous = context;
     context = { ...input, sequence: ++sequence };
-    try { client.openSurface(browserSurfaceId); }
+    try { client.openSurface(navigationSurfaceId); }
     catch (error) { context = previous; throw error; }
     for (const listener of listeners) listener();
   };
