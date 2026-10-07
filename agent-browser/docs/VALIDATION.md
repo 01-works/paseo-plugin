@@ -25,6 +25,7 @@
 | 실제 목록·구독 | 에이전트 105개를 목록 조회 1회·owned lease 1개로 수신. 정상 연결 5초 동안 추가 목록 조회 0회 |
 | 문서·차이 검사 | 상대 파일 링크 오류 0개, `git diff --check` 통과 |
 | mac-monitor 보존 | 플러그인 파일·workflow 변경 없음. 기존 로컬 설치 running 유지 |
+| GitHub CI | 이름 변경 커밋 `8b177d4`의 [검증 실행](https://github.com/01-works/paseo-plugin/actions/runs/37668302460)이 26초에 통과. 타입 검사·58개 테스트·Hermes·audit 완료 |
 
 GitHub Actions는 새 폴더의 타입 검사·58개 테스트·제품 entry의 Hermes 컴파일·client audit를 실행한다. 배포 workflow와 cache 경로도 새 이름으로 통일했다.
 
