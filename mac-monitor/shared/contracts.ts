@@ -49,7 +49,7 @@ export const terminateGroupRpc = defineRpc({ name: 'mac-monitor.group.terminate'
   input: z.object({ group: z.string().max(256), targets: z.array(processSchema.pick({ pid: true, start: true })).min(1).max(4096)
     .refine(targets => new Set(targets.map(p => p.pid)).size === targets.length, '중복 PID') }),
   output: z.object({ results: z.array(z.object({ pid: number.int().positive(), sent: z.boolean(), error: z.string().optional() })) }) });
-export const VERSION = '0.6.0';
+export const VERSION = '0.6.1';
 export type RawSample = z.infer<typeof rawSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type HostInfo = z.infer<typeof hostInfoSchema>;

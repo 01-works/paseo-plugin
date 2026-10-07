@@ -13,7 +13,7 @@ const number = z.number().finite().nonnegative();
 export const observedProcessSchema = processSchema.extend({
   ageSeconds: number, parentPid: number.int(), readBytes: number, writtenBytes: number,
 });
-export const inspectionSchema = z.object({ entries: z.array(observedProcessSchema).max(128), truncated: z.boolean() });
+export const inspectionSchema = z.object({ entries: z.array(observedProcessSchema).max(128), truncated: z.boolean(), ready: z.boolean().optional() });
 export const metadataSchema = processSchema.pick({ pid: true, start: true, group: true, name: true }).extend({
   path: z.string().max(4096).nullable(), cwd: z.string().max(4096).nullable(),
   args: z.array(z.string().max(512)).max(32).nullable(), parentPid: number.int(),
@@ -26,6 +26,7 @@ export const reviewResultSchema = z.object({ decisions: z.array(z.object({
 }).strict()).max(CLEANUP_LIMIT) }).strict();
 export const cleanupItemSchema = processSchema.extend({
   ageSeconds: number, observedSeconds: number, maxCpuPercent: number, readBytes: number, writtenBytes: number,
+  observationSource: z.enum(['live', 'history']).optional(),
   command: z.string().max(2048).nullable(), cwd: z.string().max(4096).nullable(),
   parentPid: number.int(), parentName: z.string().max(256).nullable(),
   decision: decisionSchema, reason: z.string().max(240),
@@ -34,6 +35,7 @@ export const cleanupItemSchema = processSchema.extend({
 export const cleanupStateSchema = z.object({
   id: z.string().uuid(), phase: z.enum(['observing', 'reviewing', 'ready', 'error', 'cancelled']),
   observedSeconds: number, sampledAt: number.nullable(), expiresAt: number.nullable(),
+  observationSource: z.enum(['live', 'history']).optional(),
   items: z.array(cleanupItemSchema).max(CLEANUP_LIMIT), truncated: z.boolean(), error: z.string().optional(),
 });
 const id = z.object({ id: z.string().uuid() });

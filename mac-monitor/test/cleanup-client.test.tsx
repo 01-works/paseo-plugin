@@ -59,6 +59,24 @@ it('타이머의 미세한 오차로 2분 이력을 1분으로 내림 표시하�
   const labels = renderer!.root.findAllByType(Text).map(p => p.props.children).flat().join('');
   expect(labels).toContain('최근 2분'); expect(rpc.terminate).not.toHaveBeenCalled();
 });
+it('이력으로 대기를 생략한 결과는 현재 CPU와 이력을 표시하고 12초 관찰로 쓰지 않음', async () => {
+  rpc.get.mockResolvedValue({ ...ready, observationSource: 'history', observedSeconds: 0,
+    items: [{ ...ready.items[0], observationSource: 'history', observedSeconds: history.observedSeconds, history }] });
+  await act(async () => { renderer = create(tree()); await flush(); });
+  const labels = renderer!.root.findAllByType(Text).map(p => p.props.children).flat().join('');
+  expect(labels).toContain('CPU <0.1%'); expect(labels).toContain('최근 20분');
+  expect(labels).not.toContain('관찰'); expect(labels).not.toContain('CPU 최대'); expect(rpc.terminate).not.toHaveBeenCalled();
+});
+it('현재 기준점 확인에는 12초 대기를 표시하지 않고 이력 부족 때만 진행 시간을 표시', async () => {
+  rpc.get.mockResolvedValue(initial);
+  await act(async () => { renderer = create(tree()); await flush(); });
+  expect(text()).toContain('활동 확인 중'); expect(text()).not.toContain('/12초');
+  await act(async () => { renderer!.unmount(); await flush(); }); renderer = undefined;
+  rpc.start.mockResolvedValue({ ...initial, observationSource: 'live', observedSeconds: 2 });
+  rpc.get.mockResolvedValue({ ...initial, observationSource: 'live', observedSeconds: 2 });
+  await act(async () => { renderer = create(tree('b')); await flush(); });
+  expect(text()).toContain('추가 활동 확인 중 · 2/12초');
+});
 it('StrictMode는 검사 하나만 시작하고 실제 닫기에서만 취소', async () => {
   rpc.get.mockResolvedValue(initial);
   await act(async () => { renderer = create(<StrictMode>{tree()}</StrictMode>); await flush(); });

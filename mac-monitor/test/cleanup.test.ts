@@ -14,20 +14,70 @@ function harness(review?: Reviewer) {
     inspectProcess: vi.fn(async (_pid: number, _start: string) => ({ ...metadata })), terminateInspected: vi.fn(async (_pid: number, _start: string) => ({ sent: true })) };
   const reviewer = review ?? vi.fn<Reviewer>(async input => ({ decisions: input.items.map(p => ({ key: processKey(p), decision: 'candidate', reason: '테스트 잔여 실행 정황으로 선택 검토' })) }));
   const cleanup = new Cleanup(source, reviewer, { now: () => now }); managers.push(cleanup);
-  const emit = (entries = [observed], issue?: string) => { listener?.({ entries, truncated: false }, now + 1000, issue); now += 2000; };
+  const emit = (entries = [observed], issue?: string, ready = true) => { listener?.({ entries, truncated: false, ready }, history.sampledAt + now, issue); now += 2000; };
   const observe = async () => { for (let i = 0; i <= 6; i++) emit(); await flush(); };
   return { cleanup, source, reviewer, release, emit, observe, advance: (ms: number) => { now += ms; } };
 }
 afterEach(async () => { await Promise.all(managers.splice(0).map(c => c.stop())); vi.useRealTimers(); });
 
-it('최근 숫자 이력은 보조 근거로만 넘기고 이력 부족도 기존 요청형 검사를 유지', async () => {
+it('최신 이력은 추가 관찰을 생략하고 이력 부족은 기존 요청형 검사를 유지', async () => {
   for (const value of [history, null]) {
     const h = harness(); h.source.processHistory.mockReturnValue(value);
-    const state = h.cleanup.start(); await h.observe();
+    const state = h.cleanup.start(); h.emit(); await flush();
+    if (value) {
+      expect(h.cleanup.get(state.id).phase).toBe('ready');
+      expect(h.cleanup.get(state.id).observationSource).toBe('history');
+      expect(h.cleanup.get(state.id).items[0]).toMatchObject({ observationSource: 'history', observedSeconds: history.observedSeconds,
+        maxCpuPercent: history.maxMinuteCpuPercent, cpuPercent: observed.cpuPercent, readBytes: history.readBytes });
+    } else {
+      expect(h.reviewer).not.toHaveBeenCalled(); expect(h.cleanup.get(state.id).observationSource).toBe('live'); await h.observe();
+    }
     expect(h.reviewer).toHaveBeenCalledOnce(); expect(h.cleanup.get(state.id).items[0].history).toEqual(value);
-    expect(h.source.processHistory).toHaveBeenCalledExactlyOnceWith(observed.pid, observed.start);
+    expect(h.source.processHistory).toHaveBeenCalledWith(observed.pid, observed.start);
+    expect(h.source.processHistory).toHaveBeenCalledTimes(value ? 1 : 2);
     expect(h.source.terminateInspected).not.toHaveBeenCalled();
   }
+});
+
+it('준비 안 된 빈 목록은 정상 완료로 해석하지 않고 현재 기준점을 기다림', async () => {
+  const h = harness(); h.source.processHistory.mockReturnValue(history);
+  const state = h.cleanup.start(); h.emit([], undefined, false); await flush();
+  expect(h.cleanup.get(state.id).phase).toBe('observing'); expect(h.reviewer).not.toHaveBeenCalled();
+  expect(h.source.processHistory).not.toHaveBeenCalled(); h.emit(); await flush();
+  expect(h.cleanup.get(state.id).phase).toBe('ready'); expect(h.reviewer).toHaveBeenCalledOnce();
+});
+it('오래되거나 불연속으로 부족한 이력·현재 CPU 미확인은 추가 관찰로 보완', async () => {
+  for (const value of [{ ...history, sampledAt: history.sampledAt - 90_001 }, { ...history, sampledAt: history.sampledAt + 1 },
+    { ...history, sampleCount: 1 }, { ...history, observedSeconds: 20 }]) {
+    const h = harness(); h.source.processHistory.mockReturnValue(value);
+    const state = h.cleanup.start(); h.emit(); await flush();
+    expect(h.cleanup.get(state.id).phase).toBe('observing'); expect(h.cleanup.get(state.id).observationSource).toBe('live');
+    expect(h.reviewer).not.toHaveBeenCalled(); await h.observe(); expect(h.cleanup.get(state.id).items[0].observationSource).toBe('live');
+  }
+  const h = harness(); h.source.processHistory.mockReturnValue(history);
+  const state = h.cleanup.start(); h.emit([{ ...observed, cpuPercent: null }]); await flush();
+  expect(h.cleanup.get(state.id).phase).toBe('observing'); expect(h.reviewer).not.toHaveBeenCalled();
+});
+it('선택 범위 중 한 대상만 이력이 없어도 누락하지 않고 관찰 후 함께 검토', async () => {
+  const h = harness(), second = { ...observed, pid: 124 };
+  h.source.processHistory.mockImplementation(pid => pid === observed.pid ? history : null);
+  h.source.inspectProcess.mockImplementation(async pid => ({ ...metadata, pid }));
+  const state = h.cleanup.start(); h.emit([observed, second]); await flush(); expect(h.reviewer).not.toHaveBeenCalled();
+  for (let i = 0; i < 6; i++) h.emit([observed, second]); await flush();
+  expect(h.cleanup.get(state.id).items.map(p => p.pid)).toEqual([123, 124]);
+  expect(h.cleanup.get(state.id).items.every(p => p.observationSource === 'live')).toBe(true);
+});
+it('이력으로 대기를 생략해도 실행 정보 변경·활동·보호·취소 검증을 유지', async () => {
+  for (const change of [{ cpuPercent: 2 }, { protected: true }, { name: '바뀐 이름' }, { start: '1' }]) {
+    const h = harness(); h.source.processHistory.mockReturnValue(history);
+    h.source.inspectProcess.mockResolvedValue({ ...metadata, ...change });
+    const state = h.cleanup.start(); h.emit(); await flush();
+    expect(h.cleanup.get(state.id).items).toEqual([]); expect(h.reviewer).not.toHaveBeenCalled(); expect(h.source.terminateInspected).not.toHaveBeenCalled();
+  }
+  const h = harness(); h.source.processHistory.mockReturnValue(history); let done!: (m: ProcessMetadata) => void;
+  h.source.inspectProcess.mockImplementation(() => new Promise(resolve => { done = resolve; }));
+  const state = h.cleanup.start(); h.emit(); await flush(); h.cleanup.cancel(state.id); done(metadata); await flush();
+  expect(h.cleanup.get(state.id).phase).toBe('cancelled'); expect(h.reviewer).not.toHaveBeenCalled(); expect(h.release).toHaveBeenCalledOnce();
 });
 
 it('요청 때만 관찰·메타데이터·리뷰 1회, 모델 대기 전에 관찰 해제; 선택만으로 종료하지 않음', async () => {
