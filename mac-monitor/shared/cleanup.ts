@@ -1,6 +1,7 @@
 import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 import { processSchema } from './contracts';
+import { historySummarySchema } from './history';
 
 export const CLEANUP_MODEL = 'gpt-6-luna';
 export const CLEANUP_LIMIT = 16;
@@ -28,6 +29,7 @@ export const cleanupItemSchema = processSchema.extend({
   command: z.string().max(2048).nullable(), cwd: z.string().max(4096).nullable(),
   parentPid: number.int(), parentName: z.string().max(256).nullable(),
   decision: decisionSchema, reason: z.string().max(240),
+  history: historySummarySchema.nullable().optional(),
 });
 export const cleanupStateSchema = z.object({
   id: z.string().uuid(), phase: z.enum(['observing', 'reviewing', 'ready', 'error', 'cancelled']),

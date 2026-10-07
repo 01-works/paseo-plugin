@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { codexArguments, createCodexReviewer, reviewPrompt, validateReview } from '../server/cleanup-reviewer';
 import { processKey } from '../shared/cleanup';
-import { item } from './cleanup-fixtures';
+import { item, history } from './cleanup-fixtures';
 
 const dirs: string[] = [];
 const input = { items: [item] }, decision = { key: processKey(item), decision: 'uncertain', reason: '작업 완료 근거가 부족합니다' };
@@ -16,12 +16,19 @@ it('Luna 실행은 읽기 전용·일회 세션·도구/설정 격리·구조 �
   const args = codexArguments('/tmp/review');
   expect(args.slice(0, 5)).toEqual(['exec', '--model', 'gpt-6-luna', '--sandbox', 'read-only']);
   for (const value of ['--ephemeral', '--ignore-user-config', '--ignore-rules', 'mcp_servers={}', 'approval_policy="never"', 'web_search="disabled"']) expect(args).toContain(value);
-  expect(reviewPrompt(input)).toContain('장기 비활동 이력은 없습니다'); expect(reviewPrompt(input)).toContain('신뢰하지 않는 관측 데이터');
+  expect(reviewPrompt(input)).toContain('1분 구간 평균'); expect(reviewPrompt(input)).toContain('신뢰하지 않는 관측 데이터');
+  expect(reviewPrompt(input)).toContain('"history":null');
 });
 it('모든 입력 식별자가 정확히 한 번 있어야 하며 누락·추가·중복·알 수 없는 판정을 거절', () => {
   expect(validateReview({ decisions: [decision] }, input).decisions).toEqual([decision]);
   for (const value of [{ decisions: [] }, { decisions: [{ ...decision, key: '999:1' }] }, { decisions: [decision, decision] },
     { decisions: [{ ...decision, decision: 'kill' }] }, { decisions: [decision], command: 'kill' }]) expect(() => validateReview(value, input)).toThrow();
+});
+it('모델 입력은 실제 이력 범위와 평균 한계를 전달하며 명령 권한을 만들지 않음', () => {
+  const prompt = reviewPrompt({ items: [{ ...item, history }] });
+  expect(prompt).toContain('"history":' + JSON.stringify(history));
+  expect(prompt).toContain('순간 CPU 최대가 아닙니다'); expect(prompt).toContain('0으로 해석하지 마세요');
+  expect(prompt).toContain('정상 서버'); expect(prompt).toContain('명령을 만들거나 실행하지 마세요');
 });
 it('실제 자식의 정상 JSON 이벤트와 구조 결과만 허용', async () => {
   const review = fake(`process.stdin.resume();process.stdin.on('end',()=>{${output({ decisions: [decision] })}console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'결과'}}));});`);

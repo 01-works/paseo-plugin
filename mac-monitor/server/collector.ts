@@ -6,6 +6,8 @@ import { buildLocal, spawnSource, type NativeSource } from './helper-process';
 import { nodeSample } from './node-fallback';
 import { pluginRoot } from './host-info';
 import { inspectionSchema, type Inspection, type ProcessMetadata } from '../shared/cleanup';
+import { historyFrameSchema } from '../shared/history';
+import { ProcessHistory } from './history';
 
 type Options = {
   platform?: string; root?: string; command?: { file: string; args: string[] }; now?: () => number;
@@ -45,9 +47,11 @@ export class Collector {
   private now: () => number;
   private mono: () => number;
   private log: (message: string) => void;
+  private history: ProcessHistory;
   constructor(options: Options = {}) {
     this.options = options; this.now = options.now ?? Date.now; this.mono = options.monotonicNow ?? (() => performance.now());
     this.log = options.log ?? (message => console.log(`[mac-monitor] ${message}`));
+    this.history = new ProcessHistory({ now: this.now, monotonicNow: this.mono });
     this.value = emptySnapshot((options.platform ?? process.platform) === 'darwin' ? 'native' : 'unsupported');
   }
   get mode(): Snapshot['helperMode'] { return this.value.helperMode; }
@@ -55,6 +59,7 @@ export class Collector {
     if (this.started || this.value.helperMode === 'unsupported') return this.starting ?? Promise.resolve();
     this.started = true;
     this.watchdog = setInterval(() => {
+      this.history.prune();
       if (!this.source || this.stopped) return;
       const age = this.receivedMono === null ? this.mono() - this.sourceStarted : this.mono() - this.receivedMono;
       if (age > 15_000) {
@@ -81,6 +86,7 @@ export class Collector {
       const file = this.options.command?.file ?? this.file ?? path.join(this.root!, 'bin/macmon-helper');
       const source = spawnSource(file, this.options.command?.args ?? [], line => this.receive(line), reason => this.exited(source, reason));
       this.source = source; this.alive = true;
+      source.setHistory(true);
       if (this.interest) source.setProcesses(true);
       if (this.inspection) source.setInspection(true);
       this.log(`헬퍼 시작 (${this.stage}, pid ${source.child.pid ?? '실행 대기'})`);
@@ -97,11 +103,18 @@ export class Collector {
       const sample = rawSchema.parse(JSON.parse(line));
       this.accept(sample); this.streamInvalid = false;
     } catch {
+      this.history.clear();
       this.streamInvalid = true; this.lastIssue = '헬퍼 JSON 또는 스키마 오류';
       if (!this.invalidLogged) { this.log(this.lastIssue); this.invalidLogged = true; }
     }
   }
   private accept(raw: RawSample): void {
+    this.history.prune();
+    if (raw.history !== undefined) {
+      const parsed = historyFrameSchema.safeParse(raw.history);
+      if (parsed.success && this.mode === 'native') this.history.accept(parsed.data, raw.t, raw.mono);
+      else this.history.clear();
+    }
     this.members = this.interest ? raw.procs?.members ?? [] : [];
     const first = !this.received;
     const cpu = computeCpu(raw.sys.cpu, this.previousCpu);
@@ -129,6 +142,7 @@ export class Collector {
   private exited(source: NativeSource, reason: string): void {
     if (this.stopped || this.source !== source) return;
     this.source = undefined; this.alive = false; this.lastIssue = reason; this.previousCpu = null;
+    this.history.clear();
     this.inspection?.(null, this.now(), reason);
     if (!this.received && !this.options.command) {
       if (this.stage === 'prebuilt') { this.stage = 'local'; this.file = undefined; this.log('prebuilt 실행 실패: 로컬 clang 빌드로 폴백'); }
@@ -180,6 +194,7 @@ export class Collector {
   }
   async stop(): Promise<void> {
     this.stopped = true; this.alive = false; this.abort.abort();
+    this.history.clear();
     clearTimeout(this.interestTimer); clearTimeout(this.restartTimer); clearTimeout(this.nodeTimer); clearInterval(this.watchdog);
     await this.source?.close(); this.source = undefined;
     await Promise.all([this.starting, this.nodeInFlight]);
@@ -190,6 +205,7 @@ export class Collector {
     this.inspection = listener; this.source.setInspection(true);
     return () => { if (this.inspection === listener) { this.inspection = undefined; this.source?.setInspection(false); } };
   }
+  processHistory(pid: number, start: string) { return this.stopped || this.mode !== 'native' ? null : this.history.summary(pid, start); }
   async inspectProcess(pid: number, start: string): Promise<ProcessMetadata> {
     if (this.stopped || this.mode !== 'native' || !this.source || this.snapshot().status !== 'ok') throw new Error('최신 실행 정보를 확인할 수 없습니다');
     return this.source.inspect(pid, start);
