@@ -33,6 +33,8 @@
 
 타입 검사·**13개 파일/90개 테스트**·AST audit 0건·universal 빌드/서명·Hermes 컴파일·
 실제 로컬 RPC/disable·enable을 검증했다. 직접 만든 자식만 SIGTERM으로 종료했다.
+공개 main의 [arm64·Intel CI](https://github.com/01-works/paseo-plugin/actions/runs/37602757088)도
+타입·90개 테스트·prebuilt 실행·universal 빌드/서명·네이티브 스키마 검사를 모두 통과했다.
 모델 호출의 일시적 CPU/RSS는 C 헬퍼 실측에 포함되지 않으며 별도 실측하지 않았다.
 Activity Monitor의 현재 합계 대조, 실제 라이트·compact/모바일, 다른 Mac 설치/호스트 전환은 남아 있다.
 PID 검증과 신호 사이의 짧은 경합과 모델 오판 가능성도 남으며 자동 신호를 보내지 않는다.
