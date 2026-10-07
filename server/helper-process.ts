@@ -4,15 +4,12 @@ import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { paseoHome } from './host-info';
 
-export type ProcessState = 'running' | 'exited' | 'unknown';
-type Response = { sent: boolean; error?: string; state?: ProcessState };
+type Response = { sent: boolean; error?: string };
 export type NativeSource = {
   child: ChildProcessWithoutNullStreams;
   close(): Promise<void>;
   setProcesses(on: boolean): void;
-  terminate(pid: number, start: string, expectedPath?: string): Promise<{ sent: boolean; error?: string }>;
-  inspect(pid: number, start: string, expectedPath: string): Promise<ProcessState>;
-  validateAuto(pid: number, start: string, expectedPath: string): Promise<{ allowed: boolean; error?: string }>;
+  terminate(pid: number, start: string): Promise<{ sent: boolean; error?: string }>;
 };
 export function spawnSource(command: string, args: string[], onLine: (line: string) => void, onExit: (reason: string) => void): NativeSource {
   const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -23,8 +20,6 @@ export function spawnSource(command: string, args: string[], onLine: (line: stri
     try {
       const value = JSON.parse(line);
       if (value.action === 'terminate') { pending.get(value.id)?.({ sent: value.sent === true, error: typeof value.error === 'string' ? value.error : undefined }); return; }
-      if (value.action === 'inspect') { pending.get(value.id)?.({ sent: false, state: ['running', 'exited'].includes(value.state) ? value.state : 'unknown' }); return; }
-      if (value.action === 'validate') { pending.get(value.id)?.({ sent: value.allowed === true, error: typeof value.error === 'string' ? value.error : undefined }); return; }
     } catch { /* 측정 JSON 오류는 수집기가 처리한다. */ }
     onLine(line);
   });
@@ -43,24 +38,11 @@ export function spawnSource(command: string, args: string[], onLine: (line: stri
       child.stdin.write(`${command.replace('$id', String(id))}\n`);
     });
   };
-  const validPath = (p: string) => p.startsWith('/') && Buffer.byteLength(p) <= 511 && !p.includes('\0');
   return {
     child,
     setProcesses(on) { if (!closing && !exited && child.stdin.writable) child.stdin.write(`procs ${on ? 'on' : 'off'}\n`); },
-    terminate(pid, start, expectedPath) {
-      if (expectedPath !== undefined && !validPath(expectedPath))
-        return Promise.resolve({ sent: false, error: '자동 종료 경로 확인 불가' });
-      return request(expectedPath === undefined ? `terminate $id ${pid} ${start}`
-        : `terminate-auto $id ${pid} ${start} ${Buffer.from(expectedPath).toString('hex')}`, '종료 응답 시간 초과 · 대상 상태를 다시 확인하세요');
-    },
-    async inspect(pid, start, expectedPath) {
-      if (!validPath(expectedPath)) return 'unknown';
-      return (await request(`inspect $id ${pid} ${start} ${Buffer.from(expectedPath).toString('hex')}`, '종료 확인 시간 초과')).state ?? 'unknown';
-    },
-    async validateAuto(pid, start, expectedPath) {
-      if (!validPath(expectedPath)) return { allowed: false, error: '자동 관리 경로 확인 불가' };
-      const result = await request(`check-auto $id ${pid} ${start} ${Buffer.from(expectedPath).toString('hex')}`, '자동 관리 대상 확인 시간 초과');
-      return { allowed: result.sent, error: result.error };
+    terminate(pid, start) {
+      return request(`terminate $id ${pid} ${start}`, '종료 응답 시간 초과 · 대상 상태를 다시 확인하세요');
     },
     async close() {
       closing = true;
