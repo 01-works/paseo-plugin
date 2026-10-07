@@ -28,13 +28,14 @@ export function Button({ theme, children, onPress, active = false, disabled = fa
   const feedback = useFeedback(disabled);
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, disabled }}
     disabled={disabled} onPress={onPress} {...feedback.events} style={({ pressed }) => ({
-      minHeight: compact ? 44 : 32, minWidth: compact ? 44 : 32, paddingHorizontal: spacing.inset,
-      justifyContent: 'center', alignItems: 'center', borderRadius: spacing.gap,
+      minHeight: compact ? 44 : 32, minWidth: compact ? 44 : 32, paddingHorizontal: spacing.small, paddingVertical: 6,
+      justifyContent: 'center', alignItems: 'center', borderRadius: spacing.small,
       borderWidth: 1, borderColor: feedback.focused ? danger ? c.statusDanger : c.accent : 'transparent',
       outlineWidth: Platform.OS === 'web' && feedback.focused ? 0 : undefined,
       backgroundColor: active || !disabled && (pressed || feedback.highlighted) ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1,
     })}>
-    <Text style={{ color: danger ? c.statusDanger : active ? c.accent : c.foreground }}>{children}</Text>
+    <Text style={{ color: danger ? c.statusDanger : active ? c.foreground : c.foregroundMuted,
+      fontWeight: active ? '600' : '400' }}>{children}</Text>
   </Pressable>;
 }
 export function IconButton({ theme, name, label, hint, onPress, active = false, disabled = false, danger = false }: {
@@ -47,7 +48,7 @@ export function IconButton({ theme, name, label, hint, onPress, active = false, 
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint} accessibilityState={{ selected: active, disabled }}
     disabled={disabled} onPress={onPress} {...feedback.events}
     style={({ pressed }) => ({ width: compact ? 44 : 32, minHeight: compact ? 44 : 32, alignItems: 'center', justifyContent: 'center',
-      borderRadius: spacing.gap, borderWidth: 1, borderColor: feedback.focused ? danger ? c.statusDanger : c.accent : 'transparent',
+      borderRadius: spacing.small, borderWidth: 1, borderColor: feedback.focused ? danger ? c.statusDanger : c.accent : 'transparent',
       outlineWidth: Platform.OS === 'web' && feedback.focused ? 0 : undefined,
       backgroundColor: active || !disabled && (pressed || feedback.highlighted) ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1 })}>
     <Icon name={name} size={16} color={color} />
@@ -58,12 +59,12 @@ export function RowButton({ theme, children, label, hint, disabled, onPress, onL
 }) {
   const c = theme.colors, feedback = useFeedback(disabled);
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint} disabled={disabled}
-    onPress={onPress} onLongPress={onLongPress} {...feedback.events}
+    onPress={onPress} onLongPress={onLongPress} onFocus={feedback.events.onFocus} onBlur={feedback.events.onBlur}
     style={({ pressed }) => ({ flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center', gap: spacing.small,
-      paddingHorizontal: spacing.gap, paddingVertical: spacing.small, borderWidth: 1, borderRadius: spacing.gap,
+      paddingHorizontal: spacing.gap, paddingVertical: spacing.small, borderWidth: 1, borderRadius: spacing.small,
       borderColor: feedback.focused ? c.accent : 'transparent',
       outlineWidth: Platform.OS === 'web' && feedback.focused ? 0 : undefined,
-      backgroundColor: !disabled && (pressed || feedback.highlighted) ? c.surface2 : 'transparent' })}>
+      backgroundColor: !disabled && pressed ? c.surface2 : 'transparent' })}>
     {children}
   </Pressable>;
 }

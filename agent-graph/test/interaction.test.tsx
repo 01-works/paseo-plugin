@@ -211,9 +211,10 @@ it('호버와 포커스는 피드백만 표시하고 이동·복사·닫기·재
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   const list = renderer!.root.findByType('FlatList' as React.ElementType);
   for (const label of ['a ID 복사', 'a 대화 닫기', 'b', '최신 생성순']) {
-    await act(async () => { button(label).props.onHoverIn(); button(label).props.onFocus(); });
-    expect(button(label).props.style({ pressed: false }).backgroundColor).toBe(palette.surface2);
-    await act(async () => { button(label).props.onHoverOut(); button(label).props.onBlur(); });
+    await act(async () => { button(label).props.onHoverIn?.(); button(label).props.onFocus(); });
+    expect(button(label).props.style({ pressed: false }).backgroundColor).toBe(label === 'b' ? 'transparent' : palette.surface2);
+    expect(button(label).props.style({ pressed: false }).borderColor).toBe(label === 'a 대화 닫기' ? palette.statusDanger : palette.accent);
+    await act(async () => { button(label).props.onHoverOut?.(); button(label).props.onBlur(); });
     expect(button(label).props.style({ pressed: false }).borderColor).toBe('transparent');
     // 테마 포커스가 없는 동안은 호스트가 복원하는 기본 포커스를 가리지 않는다.
     expect(button(label).props.style({ pressed: false }).outlineWidth).toBeUndefined();
