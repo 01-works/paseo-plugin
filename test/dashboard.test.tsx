@@ -31,6 +31,8 @@ it('선택한 호스트의 스냅샷 하나만 표시하며 호스트 전환은 
   const details = renderer!.root.findByType('Details' as React.ElementType);
   expect(details.props.snapshot).toBe(second); expect(details.props.host.id).toBe('b'); expect(details.props.name).toBe('Mac B');
   expect(hooks.info).toHaveBeenCalledTimes(2);
+  const current = renderer!.root.findAll(node => String(node.type) === 'Text' && node.children.join('') === '현재 기기');
+  expect(current).toHaveLength(1);
 });
 it('오프라인 선택 호스트는 다른 Mac의 값으로 대체하지 않으며 공식 에이전트 수만 표시', async () => {
   hooks.sample.mockReturnValue({ data: undefined, error: new Error('선택한 호스트 연결 안 됨'), isFetching: false, refetch: vi.fn() });
