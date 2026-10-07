@@ -4,7 +4,7 @@ import { ScrollView } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 type PluginTheme = PluginHostProps['theme'];
 import type { Forest, ForestNode } from '../shared/types';
-import { Button, Status } from './controls';
+import { Button, IconButton, Status } from './controls';
 export function Details({ node, forest, theme, stale, onNavigate, compact, onCopyId, onFocus, onToggle, collapsed }: {
   node: ForestNode | undefined; forest: Forest; theme: PluginTheme; stale: boolean; compact: boolean;
   onNavigate?: (id: string) => void; onCopyId: (id: string) => void; onFocus?: () => void; onToggle?: () => void; collapsed?: boolean;
@@ -34,7 +34,7 @@ export function Details({ node, forest, theme, stale, onNavigate, compact, onCop
         <Text numberOfLines={2} style={{ color: c.foreground }}>{agent.title} ↗</Text>
         <Status state={agent.state} theme={theme} stale={stale} />
       </Pressable>
-      <Button theme={theme} label={`${agent.title} ID 복사`} onPress={() => onCopyId(agent.id)}>ID 복사</Button>
+      <IconButton theme={theme} name="Copy" label={`${agent.title} ID 복사`} onPress={() => onCopyId(agent.id)} />
       <Button theme={theme} active={expanded} label={expanded ? '에이전트 상세 접기' : '에이전트 상세 펼치기'}
         onPress={() => setExpanded(!expanded)}>{expanded ? '접기' : '상세'}</Button>
     </View>
@@ -43,7 +43,7 @@ export function Details({ node, forest, theme, stale, onNavigate, compact, onCop
     borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <Text selectable style={{ flex: 1, color: c.foreground, fontWeight: '600' }}>{agent.title}</Text>
-      <Button theme={theme} label={`${agent.title} ID 복사`} onPress={() => onCopyId(agent.id)}>ID 복사</Button>
+      <IconButton theme={theme} name="Copy" label={`${agent.title} ID 복사`} onPress={() => onCopyId(agent.id)} />
       {onNavigate ? <Button theme={theme} onPress={() => onNavigate(agent.id)}>대화 열기</Button> : null}
     </View>
     <Status state={agent.state} theme={theme} stale={stale} />

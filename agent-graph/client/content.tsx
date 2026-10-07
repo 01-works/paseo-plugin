@@ -7,7 +7,7 @@ import { countForest, initialCollapse, scopeForest } from '../shared/forest';
 import { fitZoom } from '../shared/layout';
 import type { AgentDirectory } from './directory';
 import type { GraphViews } from './view-state';
-import { Button } from './controls';
+import { Button, IconButton, Tab } from './controls';
 import { Graph } from './graph';
 import { Tree } from './tree';
 import { Details } from './details';
@@ -26,13 +26,17 @@ export function GraphContent(props: GraphContentProps) {
     try { props.onNavigate!(id); }
     catch { toast.error('대화를 열지 못했습니다. 다시 눌러 주세요'); }
   } : undefined;
-  return <View style={{ flex: props.surface === 'panel' || props.layout.compact ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <View style={{ flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface1 }}>
-        <Button theme={props.theme} active={state.view === 'browse'} onPress={() => store.set({ view: 'browse', message: null })}>탐색</Button>
-        <Button theme={props.theme} active={state.view === 'structure'} onPress={() => store.set({ view: 'structure', message: null })}>구조</Button>
+  return <View style={{ flex: props.surface === 'panel' || props.layout.compact ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0,
+    width: '100%', alignSelf: 'center', maxWidth: state.view === 'browse' && !props.layout.compact ? 760 : undefined }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderBottomWidth: 1, borderColor: c.border }}>
+      <View style={{ flexDirection: 'row' }}>
+        <Tab theme={props.theme} active={state.view === 'browse'} onPress={() => store.set({ view: 'browse', message: null })}>탐색</Tab>
+        <Tab theme={props.theme} active={state.view === 'structure'} onPress={() => store.set({ view: 'structure', message: null })}>구조</Tab>
       </View>
-      {props.onLarge ? <View style={{ flex: 1, alignItems: 'flex-end' }}><Button theme={props.theme} onPress={props.onLarge}>크게 보기</Button></View> : null}
+      {props.onLarge ? <View style={{ flex: 1, alignItems: 'flex-end' }}>
+        {props.layout.compact ? <IconButton theme={props.theme} name="Maximize2" label="크게 보기" onPress={props.onLarge} /> :
+          <Button theme={props.theme} onPress={props.onLarge}>크게 보기</Button>}
+      </View> : null}
     </View>
     {state.view === 'browse' ? <AgentBrowser {...props} store={store} onNavigate={navigate} /> : <StructureContent {...props} onNavigate={navigate} />}
     {state.view === 'browse' && state.message ? <Text style={{ color: c.foregroundMuted }}>{state.message}</Text> : null}
@@ -102,23 +106,24 @@ function StructureContent(props: GraphContentProps) {
     {layout.compact && viewport.height < 160 ? <Button theme={theme} label="확대 도구 닫기" onPress={() => setZoomOpen(false)}>×</Button> : null}
   </View>;
   return <View style={{ flex: surface === 'panel' || layout.compact ? 1 : undefined, minHeight: 0, gap: 8, backgroundColor: c.surface0 }}>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4,
-      padding: 4, borderRadius: 8, backgroundColor: c.surface1, borderWidth: 1, borderColor: c.border }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
       <Button theme={theme} active={state.scope === 'group'} onPress={() => store.set({ scope: 'group', message: null })}>현재 구조</Button>
       <Button theme={theme} active={state.scope === 'workspace'} onPress={() => store.set({ scope: 'workspace', message: null })}>워크스페이스</Button>
+      {layout.compact ? <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end', minWidth: 88 }}>
+        <IconButton theme={theme} name="GitFork" label="그래프" active={!tree} disabled={geometry.truncated} onPress={() => store.set({ mode: 'graph' })} />
+        <IconButton theme={theme} name="ListTree" label="목록" active={tree} onPress={() => store.set({ mode: 'tree' })} />
+      </View> : null}
     </View>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
+    {!layout.compact ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
       <View style={{ flexDirection: 'row', borderRadius: 8, backgroundColor: c.surface1 }}>
         <Button theme={theme} active={!tree} disabled={geometry.truncated} onPress={() => store.set({ mode: 'graph' })}>그래프</Button>
         <Button theme={theme} active={tree} onPress={() => store.set({ mode: 'tree' })}>목록</Button>
       </View>
       {!tree && !layout.compact ? zoomControls(state.zoom) : null}
       <Button theme={theme} onPress={() => reveal(origin, true)}>현재 위치</Button>
-      {layout.compact ? <Button theme={theme} active={searchOpen} label={searchOpen ? '검색 닫기' : '에이전트 검색'}
-        onPress={() => { setSearchOpen(!searchOpen); if (searchOpen) setQuery(''); }}>찾기</Button> : null}
       {!layout.compact && state.selected && forest.nodes.get(state.selected)?.children.length ? <Button theme={theme}
         onPress={() => store.toggle(state.selected!)}>{state.collapsed.has(state.selected) ? '펼치기' : '접기'}</Button> : null}
-    </View>
+    </View> : null}
     {!layout.compact || searchOpen ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
       <TextInput accessibilityLabel="에이전트 이름 또는 ID 검색" placeholder="이름 또는 ID 찾기" value={query}
         onChangeText={setQuery} onSubmitEditing={() => findMatch(1)} returnKeyType="search" autoCorrect={false} autoCapitalize="none"
@@ -133,11 +138,16 @@ function StructureContent(props: GraphContentProps) {
         <Button theme={theme} label="검색 지우기" onPress={() => setQuery('')}>×</Button>
       </> : null}
     </View> : null}
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, minHeight: 24 }}>
-      <Text style={{ flex: 1, color: c.foregroundMuted }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, minHeight: 24 }}>
+      <Text numberOfLines={layout.compact ? 1 : undefined} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted }}>
         {snapshot.loaded ? originMissing ? '현재 에이전트 확인 불가' :
-          (snapshot.partial ? '확인한 에이전트 ' : '에이전트 ') + count.total + ' · 실행 ' + (snapshot.stale ? '—' : count.running) : snapshot.error ? '구조 확인 불가' : '구조 불러오는 중'}
+          (snapshot.partial ? '일부 · ' : '') + (layout.compact ? count.total + '개' : '에이전트 ' + count.total) + ' · 실행 ' + (snapshot.stale ? '—' : count.running) : snapshot.error ? '구조 확인 불가' : '구조 불러오는 중'}
       </Text>
+      {layout.compact ? <>
+        <Button theme={theme} onPress={() => reveal(origin, true)}>현재 위치</Button>
+        <Button theme={theme} active={searchOpen} label={searchOpen ? '검색 닫기' : '에이전트 검색'}
+          onPress={() => { setSearchOpen(!searchOpen); if (searchOpen) setQuery(''); }}>찾기</Button>
+      </> : null}
       {arranging && !tree ? <Text style={{ color: c.foregroundMuted }}>배치 정리 중</Text> : null}
       {snapshot.error || snapshot.partial ? <Button theme={theme} disabled={snapshot.loading} onPress={() => { void directory.retry(); }}>다시 읽기</Button> : null}
     </View>

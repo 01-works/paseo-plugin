@@ -55,7 +55,7 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
         const store = views.forAgent(props.host.id, workspaceId, id);
         store.set({ message: null });
         try {
-          if (store.getSnapshot().view === 'browse' || props.layout.compact) {
+          if (props.layout.compact) {
             agentNavigation.open({ serverId: props.host.id, workspaceId, agentId: id, targetId: null });
           } else client.openPanel('graph', { workspaceId, agentId: id, location: 'workspace' });
           setOpen(false);

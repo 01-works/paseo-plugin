@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { Icon } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 type PluginTheme = PluginHostProps['theme'];
 import { stateLabels, type AgentState } from '../shared/types';
@@ -13,6 +14,30 @@ export function Button({ theme, children, onPress, active = false, disabled = fa
       backgroundColor: active || pressed ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1,
     })}>
     <Text style={{ color: active ? c.accent : c.foreground }}>{children}</Text>
+  </Pressable>;
+}
+export function Tab({ theme, children, onPress, active, label }: {
+  theme: PluginTheme; children: ReactNode; onPress: () => void; active: boolean; label?: string;
+}) {
+  const c = theme.colors;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }}
+    onPress={onPress} style={({ pressed }) => ({
+      minHeight: 44, minWidth: 44, paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center',
+      borderBottomWidth: 2, borderBottomColor: active ? c.accent : 'transparent',
+      backgroundColor: pressed ? c.surface1 : 'transparent',
+    })}>
+    <Text style={{ color: active ? c.foreground : c.foregroundMuted, fontWeight: active ? '600' : '400' }}>{children}</Text>
+  </Pressable>;
+}
+export function IconButton({ theme, name, label, onPress, active = false, disabled = false }: {
+  theme: PluginTheme; name: string; label: string; onPress: () => void; active?: boolean; disabled?: boolean;
+}) {
+  const c = theme.colors;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, disabled }}
+    disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center',
+      borderRadius: 8, backgroundColor: active || pressed ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1 })}>
+    <Icon name={name} size={16} color={active ? c.accent : c.foregroundMuted} />
   </Pressable>;
 }
 export const stateColor = (state: AgentState, theme: PluginTheme, stale = false) => {

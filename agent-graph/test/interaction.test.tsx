@@ -7,6 +7,7 @@ import { createAgentDirectory } from '../client/directory';
 import { createGraphViews } from '../client/view-state';
 import { page, raw } from './fixtures';
 const testViewport = vi.hoisted(() => ({ width: 320, height: 360 }));
+const treeScrollToIndex = vi.hoisted(() => vi.fn());
 
 vi.mock('react-native', async () => {
   const { createElement, forwardRef, useImperativeHandle, useLayoutEffect } = await import('react');
@@ -31,7 +32,7 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
     return createElement('ScrollView', props, props.children);
   });
   const FlatList = forwardRef((props: { data: unknown[]; renderItem: (input: { item: unknown }) => React.ReactNode }, ref) => {
-    useImperativeHandle(ref, () => ({ scrollToIndex: vi.fn() }));
+    useImperativeHandle(ref, () => ({ scrollToIndex: treeScrollToIndex }));
     return createElement('FlatList', props, props.data.slice(0,12).map((item, i) => createElement('Row', { key: i }, props.renderItem({ item }))));
   });
   return { ScrollView, FlatList, Icon: 'Icon', TextInput: 'TextInput',
@@ -56,6 +57,7 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   Platform.OS = 'web'; vi.useFakeTimers();
   testViewport.width = 320; testViewport.height = 360;
+  treeScrollToIndex.mockClear();
 });
 afterEach(async () => {
   await act(async () => renderer?.unmount()); renderer = undefined;
@@ -140,7 +142,8 @@ it('compact는 그래프·목록을 선택하고 확대 도구와 기본 텍스�
   await act(async () => { renderer = create(<GraphContent {...props} layout={{ compact: true, platform: 'ios' }}
     directory={h.directory} views={h.views} workspaceId="w" agentId="a" surface="modal" />); });
   expect(renderer!.root.findAllByType(Graph)).toHaveLength(1);
-  const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name));
+  const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
+    (n.props.accessibilityLabel === name || n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name)));
   await act(async () => press('목록').props.onPress());
   expect(renderer!.root.findAllByType(Graph)).toHaveLength(0);
   expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(1);
@@ -167,6 +170,24 @@ it('iOS에서도 pill을 등록하고 탭하면 compact 모달의 그래프를 �
   expect(renderer!.root.findAll(n => n.type === ('FlatList' as React.ElementType))).toHaveLength(0);
   expect(renderer!.root.findByType('ModalContent' as React.ElementType).props.scrollable).toBe(false);
   expect(h.list).toHaveBeenCalledOnce();
+});
+it('구조 목록의 최초 위치 맞춤은 실제 높이를 기다리고 상태 갱신 중 스크롤을 반복하지 않음', async () => {
+  const h = await setup();
+  await act(async () => { renderer = create(<GraphContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" surface="modal" />); });
+  const mode = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
+    n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '목록'));
+  await act(async () => mode.props.onPress()); expect(treeScrollToIndex).not.toHaveBeenCalled();
+  const list = () => renderer!.root.findByType('FlatList' as React.ElementType);
+  await act(async () => list().props.onLayout({ nativeEvent: { layout: { height: 0 } } }));
+  expect(treeScrollToIndex).not.toHaveBeenCalled();
+  await act(async () => list().props.onLayout({ nativeEvent: { layout: { height: 200 } } }));
+  expect(treeScrollToIndex).toHaveBeenCalledExactlyOnceWith({ index: 0, animated: false, viewPosition: 0.3 });
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('a', { status: 'running' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  expect(treeScrollToIndex).toHaveBeenCalledOnce();
 });
 it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를 거쳐 대화 focus를 요청', async () => {
   Platform.OS = 'ios';
@@ -207,16 +228,72 @@ it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동
   });
   expect(ids()).toEqual(['b', 'a']); expect(h.views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(92);
   const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name));
-  await act(async () => press('최근 활동 ↓').props.onPress()); expect(ids()).toEqual(['a', 'b']);
+  await act(async () => press('생성순').props.onPress()); expect(ids()).toEqual(['a', 'b']);
+  await act(async () => press('생성순').props.onPress()); expect(ids()).toEqual(['a', 'b']);
+  await act(async () => press('활동순').props.onPress()); expect(ids()).toEqual(['b', 'a']);
   const input = renderer!.root.findByType('TextInput' as React.ElementType);
   await act(async () => input.props.onChangeText(' B ')); expect(ids()).toEqual(['b']);
   await act(async () => press('구조').props.onPress());
   await act(async () => press('탐색').props.onPress()); expect(ids()).toEqual(['b']);
   expect(h.list).toHaveBeenCalledOnce();
 });
-it('탐색 크게 보기는 현재 workspace context로 열며 surface 실패는 pill을 닫지 않음', async () => {
+it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우기는 이동하지 않음', async () => {
+  const h = await setup([raw('a', { title: 'API 검토' }), raw('b', { title: '문서 정리' })], 'browse');
+  const onNavigate = vi.fn();
+  await act(async () => { renderer = create(<GraphContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" surface="modal" onNavigate={onNavigate} />); });
+  const input = () => renderer!.root.findByType('TextInput' as React.ElementType);
+  const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
+  await act(async () => input().props.onSubmitEditing()); expect(onNavigate).not.toHaveBeenCalled();
+  await act(async () => input().props.onChangeText('없음'));
+  await act(async () => input().props.onSubmitEditing()); expect(onNavigate).not.toHaveBeenCalled();
+  await act(async () => input().props.onChangeText('문서'));
+  await act(async () => button('b ID 복사').props.onPress()); expect(copyText).toHaveBeenLastCalledWith('b');
+  expect(onNavigate).not.toHaveBeenCalled();
+  await act(async () => input().props.onSubmitEditing()); expect(onNavigate).toHaveBeenCalledExactlyOnceWith('b');
+  await act(async () => button('검색 지우기').props.onPress());
+  expect(input().props.value).toBe(''); expect(onNavigate).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
+});
+it('첫 목록 조회 실패는 로딩으로 남지 않고 다시 읽기로 복구', async () => {
+  const snapshot = page([raw('a')]);
+  const lease = { subscriptionId: 'retry', release: vi.fn(async () => {}),
+    subscribe: (observer: SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>) => {
+      observer.snapshot({ ...snapshot, subscriptionId: 'retry' }); return vi.fn();
+    } };
+  const list = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...snapshot, subscription: lease });
+  const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
+  cleanups.push(() => directory.dispose());
+  await directory.start();
+  await act(async () => { renderer = create(<GraphContent {...props} directory={directory} views={createGraphViews()}
+    workspaceId="w" agentId="a" surface="modal" onNavigate={vi.fn()} />); });
+  const text = () => renderer!.root.findAllByType('Text' as React.ElementType).map(node => node.props.children);
+  expect(text()).toContain('목록 확인 불가'); expect(text()).not.toContain('불러오는 중');
+  const retry = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
+    node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '다시 읽기'));
+  await act(async () => retry.props.onPress());
+  expect(directory.getSnapshot()).toMatchObject({ loaded: true, loading: false, error: null });
+  expect(renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id)).toEqual(['a']);
+  expect(text()).not.toContain('목록 확인 불가'); expect(list).toHaveBeenCalledTimes(2);
+});
+it('데스크톱 탐색 크게 보기는 원래 workspace의 패널을 열고 열기 실패 때 모달을 유지', async () => {
   const h = await setup(undefined, 'browse'), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
   await act(async () => { renderer = create(<Icon {...props} />); });
+  if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
+  const action = registration.button.behavior;
+  await act(async () => { await action.onPress(); });
+  const store = h.views.forAgent('h', 'w', 'a');
+  await act(async () => store.set({ browserSort: 'created', browserQuery: 'a' }));
+  h.openPanel.mockImplementationOnce(() => { throw new Error('panel unavailable'); });
+  await act(async () => renderer!.root.findByType(GraphContent).props.onLarge());
+  expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(1);
+  await act(async () => renderer!.root.findByType(GraphContent).props.onLarge());
+  expect(h.openPanel).toHaveBeenLastCalledWith('graph', { workspaceId: 'w', agentId: 'a', location: 'workspace' });
+  expect(store.getSnapshot()).toMatchObject({ view: 'browse', browserSort: 'created', browserQuery: 'a' });
+  expect(renderer!.root.findAllByType(GraphModal)).toHaveLength(0); expect(h.openSurface).not.toHaveBeenCalled();
+});
+it('compact 탐색 크게 보기는 현재 workspace context로 열며 surface 실패는 pill을 닫지 않음', async () => {
+  const h = await setup(undefined, 'browse'), registration = h.buttons.get('a')!, Icon = registration.button.icon as React.ComponentType<PluginButtonIconProps>;
+  await act(async () => { renderer = create(<Icon {...props} layout={{ compact: true, platform: 'ios' }} />); });
   if (registration.button.behavior.kind !== 'action') throw new Error('action 필요');
   const action = registration.button.behavior;
   await act(async () => { await action.onPress(); });
