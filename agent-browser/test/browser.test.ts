@@ -62,3 +62,22 @@ it('surface 열기 실패는 이전 context를 유지하고 이동 요청을 남
   expect(navigation.getSnapshot()).toBe(previous);
   expect(navigation.takeTarget(previous!)).toBe('previous');
 });
+it('0.11.1에서는 openScreen을 우선 사용하고 요청을 한 번만 소비', () => {
+  const openScreen = vi.fn(), openSurface = vi.fn(), navigation = createAgentNavigation({ openScreen, openSurface });
+  navigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'origin', targetId: 'target' });
+  expect(openScreen).toHaveBeenCalledExactlyOnceWith({ screenId: navigationSurfaceId });
+  expect(openSurface).not.toHaveBeenCalled();
+  const request = navigation.getSnapshot()!;
+  expect(navigation.takeTarget(request)).toBe('target');
+  expect(navigation.takeTarget(request)).toBeNull();
+});
+it('openScreen 실패는 이전 요청을 유지하며 구 API로 중복 이동하지 않음', () => {
+  const openScreen = vi.fn(), openSurface = vi.fn(), navigation = createAgentNavigation({ openScreen, openSurface });
+  navigation.open({ serverId: 'h', workspaceId: 'w', agentId: 'origin', targetId: 'previous' });
+  const previous = navigation.getSnapshot();
+  openScreen.mockImplementationOnce(() => { throw new Error('unavailable'); });
+  expect(() => navigation.open({ ...previous!, targetId: 'target' })).toThrow('unavailable');
+  expect(navigation.getSnapshot()).toBe(previous);
+  expect(navigation.takeTarget(previous!)).toBe('previous');
+  expect(openSurface).not.toHaveBeenCalled();
+});

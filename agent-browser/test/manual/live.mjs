@@ -7,9 +7,10 @@ import WebSocket from 'ws';
 import { createPaseoClient } from '@getpaseo/client';
 import { createAgentDirectory } from '../../client/directory.ts';
 import { workspaceAgents } from '../../shared/browser.ts';
+const sdkVersion = JSON.parse(readFileSync(new URL('../../node_modules/@getpaseo/client/package.json', import.meta.url), 'utf8')).version;
 const taskPaseoHome = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
-  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-browser-local-validation', clientType: 'cli', appVersion: '0.10.2',
+  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-browser-local-validation', clientType: 'cli', appVersion: sdkVersion,
   localCredential: () => readFileSync(path.join(taskPaseoHome, 'local-credential'), 'utf8').trim(),
   webSocketFactory: (url, options) => new WebSocket(url, options?.protocols, { headers: options?.headers }),
   reconnect: { enabled: false }, connectTimeoutMs: 5000,

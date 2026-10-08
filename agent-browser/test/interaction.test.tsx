@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import type { PluginButton, PluginButtonIconProps, PluginClientContext } from '@getpaseo/plugin/client';
+import type { PluginButton, PluginButtonIconProps, PluginClientContext, PluginSurfaceProps } from '@getpaseo/plugin/client';
 import type { PaseoApi, PaseoAgentListResult, SubscriptionObserver } from '@getpaseo/client';
 import { createAgentDirectory } from '../client/directory';
 import { createBrowserViews } from '../client/view-state';
@@ -24,6 +24,7 @@ import { createAgentNavigation, navigationSurfaceId } from '../client/navigation
 import { copyText } from '@getpaseo/plugin/client/react-native';
 import { Platform } from 'react-native';
 import { IconButton } from '../client/controls';
+import contribute from '../index.client';
 const palette = { foreground: '#eee', foregroundMuted: '#aaa', surface0: '#111', surface1: '#222', surface2: '#333', border: '#444',
   accent: '#88c', statusSuccess: '#0a0', statusWarning: '#aa0', statusDanger: '#a00' };
 const props = { theme: { colors: palette }, host: { id: 'h', label: '호스트' }, layout: { compact: false, platform: 'web' }, size: 14, color: '#aaa' } as PluginButtonIconProps;
@@ -61,6 +62,51 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   await directory.start();
   return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, archive };
 }
+it.each([false, true])('entry부터 대화 이동까지 구·신 화면 API로 실행하고 구독을 해제 (신 API: %s)', async modern => {
+  const snapshot = page([raw('a'), raw('b')]), release = vi.fn(async () => {});
+  const lease = { subscriptionId: 's', release, subscribe: (observer: SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>) => {
+    observer.snapshot({ ...snapshot, subscriptionId: 's' }); return vi.fn();
+  } };
+  const list = vi.fn(async () => ({ ...snapshot, subscription: lease }));
+  let Screen!: React.ComponentType<PluginSurfaceProps>;
+  const removeScreen = vi.fn(), openScreen = vi.fn(), openSurface = vi.fn(), openAgent = vi.fn();
+  const addSurface = vi.fn((_: string, Component: typeof Screen) => { Screen = Component; return removeScreen; });
+  const addScreen = vi.fn(({ Component }: { Component: typeof Screen }) => { Screen = Component; return removeScreen; });
+  const buttons = new Map<string, { button: PluginButton; remove: ReturnType<typeof vi.fn> }>();
+  const client = { paseo: { agents: { list } }, addSurface, openSurface,
+    ...(modern ? { addScreen, openScreen } : {}),
+    addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
+      const registration = { update: vi.fn(), remove: vi.fn() }; buttons.set(agentId, { button, remove: registration.remove }); return registration;
+    },
+  } as unknown as PluginClientContext;
+  const cleanup = contribute(client);
+  try {
+    await act(async () => {});
+    const button = buttons.get('a')!.button, Icon = button.icon as React.ComponentType<PluginButtonIconProps>;
+    await act(async () => { renderer = create(<Icon {...props} />); });
+    if (button.behavior.kind !== 'action') throw new Error('action 필요');
+    const action = button.behavior;
+    await act(async () => action.onPress());
+    await act(async () => renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.accessibilityLabel === 'b').props.onPress());
+    if (modern) {
+      expect(addScreen).toHaveBeenCalledWith(expect.objectContaining({ id: navigationSurfaceId, title: '에이전트' }));
+      expect(openScreen).toHaveBeenCalledExactlyOnceWith({ screenId: navigationSurfaceId });
+      expect(addSurface).not.toHaveBeenCalled(); expect(openSurface).not.toHaveBeenCalled();
+    } else {
+      expect(addSurface).toHaveBeenCalledWith(navigationSurfaceId, Screen);
+      expect(openSurface).toHaveBeenCalledExactlyOnceWith(navigationSurfaceId);
+      expect(addScreen).not.toHaveBeenCalled(); expect(openScreen).not.toHaveBeenCalled();
+    }
+    await act(async () => renderer!.update(<Screen {...props} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
+    expect(openAgent).toHaveBeenCalledExactlyOnceWith({ agentId: 'b', serverId: 'h' });
+    expect(list).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => renderer?.unmount()); renderer = undefined;
+    await cleanup();
+  }
+  expect(release).toHaveBeenCalledOnce(); expect(removeScreen).toHaveBeenCalledOnce();
+  for (const button of buttons.values()) expect(button.remove).toHaveBeenCalledOnce();
+});
 it('보이는 pill 3개도 구독 하나를 공유하고 같은 라벨을 다시 갱신하지 않음', async () => {
   const h = await setup();
   const Icon = h.buttons.get('a')!.button.icon as React.ComponentType<PluginButtonIconProps>;

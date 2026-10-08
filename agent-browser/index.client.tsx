@@ -9,9 +9,11 @@ export default function contribute(client: PluginClientContext) {
   const directory = createAgentDirectory(client.paseo, 'installation');
   const views = createBrowserViews();
   const agentNavigation = createAgentNavigation(client);
-  // 0.10.2 pill에는 navigation이 없어 대화 이동에만 공개 surface를 사용한다.
+  // pill에는 navigation이 없어 대화 이동에만 공개 화면을 사용한다.
   function Surface(props: PluginSurfaceProps) { return <AgentSurface {...props} directory={directory} agentNavigation={agentNavigation} />; }
-  const removeSurface = client.addSurface(navigationSurfaceId, Surface);
+  const removeSurface = typeof client.addScreen === 'function'
+    ? client.addScreen({ id: navigationSurfaceId, title: '에이전트', Component: Surface })
+    : client.addSurface(navigationSurfaceId, Surface);
   const removePills = contributePills(client, directory, views, agentNavigation);
   void directory.start();
   return async () => { removePills(); removeSurface(); agentNavigation.dispose(); views.dispose(); await directory.dispose(); };

@@ -4,8 +4,9 @@ import WebSocket from 'ws';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+const sdkVersion = JSON.parse(readFileSync(new URL('../../node_modules/@getpaseo/client/package.json', import.meta.url), 'utf8')).version;
 const home = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
-const client = new DaemonClient({ url: 'ws://127.0.0.1:6767/ws', clientId: 'mac-monitor-local-validation', clientType: 'cli', appVersion: '0.10.2',
+const client = new DaemonClient({ url: 'ws://127.0.0.1:6767/ws', clientId: 'mac-monitor-local-validation', clientType: 'cli', appVersion: sdkVersion,
   localCredential: () => readFileSync(path.join(home, 'local-credential'), 'utf8').trim(),
   webSocketFactory: (url, options) => new WebSocket(url, options?.protocols, { headers: options?.headers }), reconnect: { enabled: false }, connectTimeoutMs: 5000 });
 const snapshots = [];

@@ -6,8 +6,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+const sdkVersion=JSON.parse(readFileSync(new URL('../../node_modules/@getpaseo/client/package.json',import.meta.url),'utf8')).version;
 const taskHome=process.env.PASEO_HOME??path.join(homedir(),'.paseo');
-const client=new DaemonClient({url:'ws://127.0.0.1:6767/ws',clientId:'mac-monitor-cleanup-validation',clientType:'cli',appVersion:'0.10.2',
+const client=new DaemonClient({url:'ws://127.0.0.1:6767/ws',clientId:'mac-monitor-cleanup-validation',clientType:'cli',appVersion:sdkVersion,
   localCredential:()=>readFileSync(path.join(taskHome,'local-credential'),'utf8').trim(),
   webSocketFactory:(url,options)=>new WebSocket(url,options?.protocols,{headers:options?.headers}),reconnect:{enabled:false},connectTimeoutMs:5000});
 const rpc=(method,input)=>client.invokePluginRpc('mac-monitor',`mac-monitor.cleanup.${method}`,input);

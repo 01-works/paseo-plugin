@@ -4,12 +4,13 @@ Paseo용 플러그인을 모은 저장소입니다. 각 플러그인은 독립�
 
 | 플러그인 | 기능 | 검증 환경 |
 |---|---|---|
-| [mac-monitor](mac-monitor/README.md) | 저부하 macOS 시스템 모니터. CPU·메모리·압력·스왑·SSD 용량, 상위 앱 10개와 프로세스 종료 | Paseo 0.10.2, arm64 macOS 26.5.1 |
-| [agent-browser](agent-browser/README.md) | pill에서 현재 워크스페이스의 최근 목록·검색·대화 이동·ID 복사·확인 후 닫기 | Paseo 0.10.2, Hermes·실화면 검증 이력 |
+| [mac-monitor](mac-monitor/README.md) | 저부하 macOS 시스템 모니터. CPU·메모리·압력·스왑·SSD 용량, 상위 앱 10개와 프로세스 종료 | Paseo SDK 0.11.1, arm64 macOS 26.5.1 |
+| [agent-browser](agent-browser/README.md) | pill에서 현재 워크스페이스의 최근 목록·검색·대화 이동·ID 복사·확인 후 닫기 | Paseo SDK 0.11.1, Hermes·0.10.2 실화면 검증 이력 |
 
 ## 설치
 
-Paseo 0.10.2 데몬에서 플러그인 사용을 활성화한 뒤 사용할 플러그인을 설치합니다. mac-monitor는 macOS 전용입니다.
+Paseo 0.10.2~0.11.x의 데몬과 앱에서 플러그인 사용을 활성화한 뒤 사용할 플러그인을 설치합니다. mac-monitor는 macOS 전용입니다.
+두 플러그인은 SDK 0.11.1로 개발하며, 새 화면 API를 우선 사용하고 0.10.2 클라이언트에서는 기존 API를 사용합니다.
 
 ```sh
 paseo plugin install github:01-works/paseo-plugin:mac-monitor

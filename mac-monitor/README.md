@@ -3,12 +3,13 @@
 macOS 전용 Paseo 시스템 모니터 플러그인입니다. CPU·메모리·OS 메모리 압력·스왑과
 SSD 용량·앱 그룹별 CPU/메모리 상위 10개를 보여줍니다. 개별 프로세스와 앱 그룹의 수동 종료,
 요청할 때만 Luna가 검토하는 정리 검사를 제공합니다.
-Paseo 0.10.2 API를 사용하며 `paseo-top`과 독립적입니다.
+Paseo SDK 0.11.1을 사용하며 `paseo-top`과 독립적입니다. 현재 플러그인 버전은 0.6.2입니다.
 
 ## 설치·업데이트·제거
 
 사용할 Mac의 Paseo 데몬에서 플러그인 사용이 활성화되어 있어야 합니다.
-Paseo 0.10.2에서 검증했으며, 다른 버전의 호환성은 별도 확인이 필요합니다.
+지원 범위는 `>=0.10.2 <0.12.0`입니다. 0.11.1의 화면·사이드바 API를 우선 사용하며, 0.10.2 클라이언트에서는 기존 API를 사용합니다.
+0.11.1 SDK의 타입·자동 테스트와 실제 앱 화면의 검증 범위는 [검증 기록](docs/VALIDATION.md)에 구분합니다.
 
 ```sh
 paseo plugin install github:01-works/paseo-plugin:mac-monitor
@@ -210,7 +211,7 @@ Node 폴백은 `vm_stat`의 "Pages free"와 "Pages speculative"을 더해 Mach �
 [htop Darwin 구현](https://github.com/htop-dev/htop/blob/main/darwin/Platform.c).
 합계 식의 실행 파일 추적·원시 값 대조는 [메모리 합계 조사](docs/research/report-memory-accounting.md),
 폴백의 빈 페이지 기준은 [Apple vm_stat 구현](https://github.com/apple-oss-distributions/system_cmds/blob/main/vm_stat/vm_stat.c#L126)에 있습니다.
-API 호환성 기준은 [Paseo v0.10.2 플러그인 문서](https://github.com/getpaseo/paseo/blob/v0.10.2/public-docs/plugins/reference.md)와 설치된 0.10.2 타입입니다.
+API 호환성 기준은 [Paseo v0.11.1 플러그인 문서](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/reference.md)와 0.11.1 SDK 타입입니다. 0.10.2 클라이언트의 화면·사이드바 폴백도 자동 테스트로 확인합니다.
 자세한 조사와 실측은 [docs/research](docs/research/)에 있습니다.
 
 ## 상태 표시
@@ -306,5 +307,5 @@ npm run compare -- --samples=3   # CPU 샘플 3회 기록 후 종료
 - 합계 식은 macOS 26.5.1의 Activity Monitor에서 확인했습니다. 다른 OS 버전의 내부 합계·압력 그래프 기준은 같다고 보장하지 않습니다. 갱신 간격·읽는 시각·반올림도 차이를 만들 수 있습니다.
 - 커밋된 헬퍼는 arm64·Intel macOS 26 CI에서 실행·스키마 검증을 통과했습니다. Intel의 실제 Paseo 설치·화면은 미검증입니다.
 - 실제 Paseo의 두 에이전트 pill 동시 갱신과 다크 화면의 시스템 수치·상위 10개·개별 프로세스·뒤로 이동을 확인했습니다. 0.6.0 요청형 Luna 검사에서 최근 숫자 이력과 결과·스크롤을 확인했고 사용자 프로세스에 신호를 보내지 않았습니다. 현재 버전의 실제 라이트·compact 배치와 다른 Mac의 호스트 전환은 확인이 남아 있습니다.
-- 서버 설치 경로는 0.10.2의 설치 설정에서 읽습니다. 다른 ID로 설치하는 `--id` 별칭은 지원하지 않습니다.
+- 서버 설치 경로는 데몬의 설치 설정에서 읽습니다. 다른 ID로 설치하는 `--id` 별칭은 지원하지 않습니다.
 - ad-hoc 바이너리가 quarantine으로 차단되면 로컬 빌드/Node 폴백을 사용합니다.

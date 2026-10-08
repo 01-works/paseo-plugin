@@ -1,7 +1,7 @@
 {
   "name": "paseo-agent-browser",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Paseo 워크스페이스의 최근 에이전트 탐색",
   "files": [
     "paseo-plugin.json",
@@ -17,8 +17,8 @@
     "audit": "node test/manual/audit.mjs"
   },
   "devDependencies": {
-    "@getpaseo/client": "0.10.2",
-    "@getpaseo/plugin": "0.10.2",
+    "@getpaseo/client": "0.11.1",
+    "@getpaseo/plugin": "0.11.1",
     "@types/node": "^24.0.0",
     "@types/react": "~19.2.0",
     "@types/react-dom": "19.1.9",

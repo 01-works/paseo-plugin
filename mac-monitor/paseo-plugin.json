@@ -1,6 +1,6 @@
 {
   "id": "mac-monitor",
   "description": "macOS 저부하 시스템 모니터",
-  "requirements": { "paseo": ">=0.10.2" },
+  "requirements": { "paseo": ">=0.10.2 <0.12.0" },
   "build": [["/bin/sh", "native/build.sh"]]
 }

@@ -1,6 +1,6 @@
 # 에이전트 탐색 구현 계획
 
-최신 기준: **0.2.0 · 2026-10-08**. 사용자가 최근순 탐색으로 간소화한 뒤 목록에서 각 대화 닫기와 아이콘 호버 등 사용성 개선을 요청했다. Paseo의 기본 subagent 보기와 중복되는 구조 시각화는 제공하지 않고 최근 목록·검색·대화 이동·ID 복사·확인 후 닫기에 집중한다. 새 이름의 독립 설치 ID로 배포하며, 이전 설계·검증은 [이력](history/VALIDATION.md)에 보존한다.
+최신 기준: **0.2.1 · 2026-10-09**. 사용자가 최근순 탐색으로 간소화한 뒤 목록에서 각 대화 닫기와 아이콘 호버 등 사용성 개선을 요청했다. Paseo의 기본 subagent 보기와 중복되는 구조 시각화는 제공하지 않고 최근 목록·검색·대화 이동·ID 복사·확인 후 닫기에 집중한다. 새 이름의 독립 설치 ID로 배포하며, 이전 설계·검증은 [이력](history/VALIDATION.md)에 보존한다.
 
 위치: `01-works/paseo-plugin/agent-browser/`. 패키지 이름은 `paseo-agent-browser`, 설치 ID는 `agent-browser`, pill ID는 `browser`다. 이전 설치 이름·경로·ID의 호환 계층은 제공하지 않는다. 전체보기 작업 탭과 Command Center 항목은 제거한다. 화면 이름은 `에이전트`다.
 
@@ -41,7 +41,7 @@ Paseo 0.10.2 pill props에는 navigation이 없다. 인스턴스 내부에 host/
 
 ## 4. 공유 구독·수명·부하
 
-client 전용 플러그인이며 SDK와 manifest는 `0.10.2`, `>=0.10.2 <0.11.0`을 유지한다. 기존 `client.paseo`를 빌려 사용하고 그 연결 자체를 닫지 않는다.
+client 전용 플러그인이며 SDK는 `0.11.1`, manifest는 `>=0.10.2 <0.12.0`을 사용한다. `addScreen`·`openScreen`을 우선 사용하고, 이 API가 없는 0.10.2 앱에서는 `addSurface`·`openSurface`로 폴백한다. 기존 `client.paseo`를 빌려 사용하고 그 연결 자체를 닫지 않는다.
 
 호스트별 인스턴스에서 여러 pill·모달이 directory와 owned subscription 하나를 공유한다. 최초 200개씩 최대 10페이지/2,000개를 읽는다. 0.10.2 서버의 구독 update는 전체 filter를 대상으로 하므로 추가 페이지는 구독 없이 조회한다. 정상 상태의 반복 목록 폴링은 없다.
 
@@ -88,4 +88,4 @@ agent-browser/
 - 합성 자료의 라이트/다크·320/390px 목록과 갱신 전후 스크롤 확인. 미리보기를 실제 iPhone 검증으로 주장하지 않기.
 - agent-browser만 로컬 reload하고 로그와 running 확인. 데몬 재시작, mac-monitor 변경, 원격 호스트 설치는 하지 않기. GitHub main 배포는 [DECISIONS](DECISIONS.md)의 사용자 승인에 따른다.
 
-실제 iPhone의 시트·키보드·길게 누르기·VoiceOver·Dynamic Type과 0.11 이상 지원은 미검증 항목으로 남긴다. 구체적인 결과와 범위는 [VALIDATION](VALIDATION.md)에 기록한다.
+실제 0.11.1 앱 화면과 iPhone의 시트·키보드·길게 누르기·VoiceOver·Dynamic Type은 미검증 항목으로 남긴다. 0.11.1 SDK와 구·신 화면 API의 자동 검증 결과는 [VALIDATION](VALIDATION.md)에 기록한다.

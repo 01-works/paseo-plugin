@@ -1,20 +1,21 @@
 # mac-monitor 검증 기록
 
-최종 검증일: 2026-10-08 (KST). 환경: arm64 macOS 26.5.1, 물리 16 GiB,
-페이지 16 KB, 논리 10코어, Node 24, Paseo CLI/daemon 및 플러그인 SDK 0.10.2.
+최종 검증일: 2026-10-09 (KST). 환경: arm64 macOS 26.5.1, 물리 16 GiB,
+페이지 16 KB, 논리 10코어, Node 24.18.0, Paseo 앱·CLI/SDK 0.11.1, 실행 중인 데몬 0.10.2.
+실제 설치·화면·부하 측정은 별도 버전 표시가 없는 경우 이전 버전의 기록이며, 0.6.2는 저장소 소스의 타입·테스트·번들을 검증했다.
 
 ## 완료/남은 검증
 
 | 항목 | 결과 |
 |---|---|
-| PLAN 7절 구조, manifest `>=0.10.2` | 완료 |
+| PLAN 7절 구조, manifest `>=0.10.2 <0.12.0` | 완료 |
 | 타입 검사, DOM lib 제외 | 완료 (`npm run typecheck`) |
-| 계산·오류·헬퍼·숫자 이력·정리 검사·호스트 전환·UI·수동 종료 테스트 | 완료 (0.6.1, 15개 파일, 113개 테스트) |
+| 계산·오류·헬퍼·숫자 이력·정리 검사·호스트 전환·UI·수동 종료 테스트 | 완료 (0.6.2, 16개 파일, 115개 테스트) |
 | client DOM/HTML audit | `npm run audit` AST 검사 0건 (DOM/HTML·fontSize·색 없는 Text·고정 색) |
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
 | 실제 C JSON → Zod 스모크 | 완료, `v:1`, 페이지 16384, errors 없음 |
-| 로컬 install/reload | 완료, `running` |
+| 로컬 install/reload | 0.6.1 완료, `running`. 0.6.2로 설치 교체하지 않음 |
 | 로컬 RPC 100개 동시 요청 | 같은 seq, 오류 없음 |
 | 단일 헬퍼 및 고정 2초 간격 | 실제 RPC/프로세스 검증 완료 |
 | 여러 에이전트 pill 화면을 실제로 열기 | 완료: 실제 두 화면의 값·자동 갱신 동일, 헬퍼 1개, 1999~2000ms |
@@ -41,7 +42,18 @@
 다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: 이력으로 관찰 대기 축소 (0.6.1)
+## 최종 후속 검증: Paseo 0.11.1 호환 (0.6.2)
+
+2026-10-09 KST. SDK·관련 Paseo 의존성을 0.11.1로 갱신하고 manifest를 `>=0.10.2 <0.12.0`으로 설정했다. 새 `addScreen`·`addSidebarHeaderItem`·`SidebarRow`를 사용하며, 해당 메서드가 없는 0.10.2 앱에서는 기존 등록 API로 폴백한다.
+
+- `npm run typecheck`, **16개 파일·115개 테스트**, `npm run audit` 위반 **0건**을 확인했다. 새 사이드바의 활성 표시·화면 열기와 구 API의 등록·구독/RPC cleanup을 추가 검증했다.
+- 최초 샌드박스 실행에서는 macOS 카운터를 읽는 기존 `history-native.test.ts`만 실패했다. 같은 소스의 해당 테스트와 전체 테스트를 샌드박스 밖에서 실행해 모두 통과했다. 네이티브 소스·prebuilt 바이너리는 수정하지 않았다.
+- [Paseo v0.11.1의 실제 컴파일러](https://github.com/getpaseo/paseo/blob/v0.11.1/packages/server/src/server/plugins/compiler.ts)로 client **81,204 bytes**, server **70,316 bytes**의 번들을 생성했다. runtime·shared·type import 경계 검사와 client의 React Native Hermes 컴파일을 통과했다. 이 값은 설치 번들의 크기가 아닌 저장소 소스의 검증 결과다.
+- 검증용 연결 도구의 `appVersion`은 설치된 SDK의 package.json에서 읽게 했다. 현재 소스의 요청형 Luna 검사나 종료 RPC를 실제 사용자 프로세스에 실행하지 않았다.
+- `node test/manual/live-rpc.mjs --seconds=0`으로 SDK 0.11.1에서 기존 데몬 0.10.2의 설치된 mac-monitor 0.6.1 RPC를 읽었다. host 정보는 `native/0.6.1`, 시스템 스냅샷 100개 동시 요청은 동일한 seq **37923**을 반환했다. 이는 기존 설치와의 전송 호환성 검증이다.
+- 기존 로컬 설치 교체·reload·데몬 재시작·전역 설정 수정·다른 Mac 설치·GitHub 배포를 수행하지 않았다. 실제 0.11.1 앱의 다크/라이트·compact 화면 검증은 남아 있다.
+
+## 이전 후속 검증: 이력으로 관찰 대기 축소 (0.6.1)
 
 2026-10-08 03시 KST. 변경 근거는 [PLAN 18절](PLAN.md), [DECISIONS.md](DECISIONS.md),
 자체 리뷰는 [REVIEW.md](REVIEW.md)에 있다. 데몬/전역 설정/다른 Mac은 변경하지 않았다.
