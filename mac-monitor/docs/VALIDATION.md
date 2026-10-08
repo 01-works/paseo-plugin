@@ -1,8 +1,8 @@
 # mac-monitor 검증 기록
 
 최종 검증일: 2026-10-09 (KST). 환경: arm64 macOS 26.5.1, 물리 16 GiB,
-페이지 16 KB, 논리 10코어, Node 24.18.0, Paseo 앱·CLI/SDK 0.11.1, 실행 중인 데몬 0.10.2.
-실제 설치·화면·부하 측정은 별도 버전 표시가 없는 경우 이전 버전의 기록이며, 0.6.2는 저장소 소스의 타입·테스트·번들을 검증했다.
+페이지 16 KB, 논리 10코어, Node 24.18.0, Paseo 앱·CLI/daemon/SDK 0.11.1.
+0.6.2는 소스 검증에 이어 로컬 설치·RPC·네이티브 수집·설치 번들을 검증했다. 실제 화면·부하 측정은 별도 버전 표시가 없는 경우 이전 버전의 기록이다.
 
 ## 완료/남은 검증
 
@@ -15,7 +15,7 @@
 | 모든 Text 색 theme 토큰 | 소스 확인 완료 |
 | universal arm64/x86_64, ad-hoc 서명 | 빌드 및 `lipo`/`codesign --verify` 완료 |
 | 실제 C JSON → Zod 스모크 | 완료, `v:1`, 페이지 16384, errors 없음 |
-| 로컬 install/reload | 0.6.1 완료, `running`. 0.6.2로 설치 교체하지 않음 |
+| 로컬 install/reload | 0.6.2로 교체, 데몬 0.11.1에서 enabled/running |
 | 로컬 RPC 100개 동시 요청 | 같은 seq, 오류 없음 |
 | 단일 헬퍼 및 고정 2초 간격 | 실제 RPC/프로세스 검증 완료 |
 | 여러 에이전트 pill 화면을 실제로 열기 | 완료: 실제 두 화면의 값·자동 갱신 동일, 헬퍼 1개, 1999~2000ms |
@@ -39,10 +39,24 @@
 초기에는 컴퓨터 제어 접근이 시간 초과됐으나, 후속 검증에서 실제 Paseo 앱 화면을 관찰했다.
 데스크톱 다크·라이트 화면과 Activity Monitor를 직접 관찰했고 두 에이전트 pill도 동시에 확인했다.
 현재 기본 모니터의 라이트·compact 실제 배치와 다른 Mac의 Paseo 설치·공식 호스트 전환은 남아 있다.
-다른 Mac에는 설치하지 않았고 데몬 재시작, 전역 설정 직접 변경도 하지 않았다.
+다른 Mac에는 설치하지 않았다. 이번 로컬 교체 후에는 사용자 승인으로 데몬 worker를 재시작했다. 아래 과거 검증의 재시작·설정 변경 여부는 당시 범위다.
 아래 이전 검증 기록은 당시 버전의 결과이며 현재 동작은 다음 최종 검증을 기준으로 한다.
 
-## 최종 후속 검증: Paseo 0.11.1 호환 (0.6.2)
+## 최종 후속 검증: 로컬 교체 및 재시작 (0.6.2)
+
+2026-10-09 KST. 화면 API·폴백·등록 해제·설치 경로와 의존성 변경을 리뷰하고 `476e3be`로 커밋한 뒤, 사용자가 이 Mac의 설치 교체와 데몬 재시작을 승인했다.
+
+- 최초 교체와 plugin reload는 `Plugin mac-monitor did not initialize`로 실패했다. stderr에는 Electron/macOS `SecCodeCopyGuestWithAttributes ... ENOENT`가 먼저 기록됐으며 기존 **0.6.1**로 복구를 시도해도 같은 초기화 실패가 반복됐다. 앱·CLI는 0.11.1인데 daemon worker는 0.10.2였고, worker를 0.11.1로 재시작한 뒤 오류가 사라졌다. 런타임 불일치가 원인이었을 가능성이 높으며 코드 서명 오류 하나만으로 원인을 확정하지 않는다.
+- 같은 `mac-monitor` ID로 `/Users/yw/.paseo/worktrees/3vonmggt/solid-camel/mac-monitor`를 설치했다. package **0.6.2**, enabled/running이며 실제 host RPC가 **darwin/native/0.6.2**를 반환했다. 기존 설치 원본과 사용자 데이터는 보존했고 동일한 데몬 홈·서버 ID를 유지했다.
+- `node test/manual/live-rpc.mjs --processes --seconds=12`에서 **100개 동시 요청이 같은 seq 58**을 반환했다. 이후 6개 샘플은 seq **58~63**, 상태 **ok**, errors **0개**였다. 샘플 시각의 간격은 **1,994~2,001ms**였다. 프로세스 목록은 warming 뒤 ok로 전환됐고 CPU·메모리 상위 목록을 받았다. 이 12초 확인을 새 부하 측정이나 장기 관측으로 주장하지 않는다.
+- 실제 실행 중인 헬퍼는 worktree의 prebuilt **1개(PID 15434)**였다. `lipo -archs`의 arm64/x86_64와 `codesign --verify --strict`를 통과했다. 네이티브 소스·바이너리는 수정하지 않았다.
+- 데몬이 제공한 실제 client 번들 **81,964 bytes** 전체를 Hermes로 컴파일해 종료 코드 0을 확인했다. 최신 로그는 loading·ready·헬퍼 시작·native 수집 활성 **4개**, stderr **0개**였다.
+- 사용자 프로세스 종료와 실제 Luna 정리 검사는 실행하지 않았다. 다른 Mac 설치와 원격 push도 수행하지 않았다.
+- 재시작 전 작업·재개 목록을 저장하고 동일한 에이전트 세션에서 검증을 이어갔다. 재개용 작업이 반복 실행되어 작업을 중단시키는 문제는 해당 launchd 작업 제거와 재실행 방지 조건 추가로 정리했고, 일회성 heartbeat도 삭제했다.
+
+재시작 후 실제 앱 경로로 화면 제어를 다시 시도했으나 연결 시간 초과였다. **0.6.2의 실제 새 사이드바·대시보드·pill·다크/라이트·compact 화면은 미검증**이다. 자동 UI 테스트·설치 번들·RPC 결과를 현재 앱 실화면 확인으로 대체하지 않는다.
+
+## 이전 후속 검증: Paseo 0.11.1 호환 소스 (0.6.2)
 
 2026-10-09 KST. SDK·관련 Paseo 의존성을 0.11.1로 갱신하고 manifest를 `>=0.10.2 <0.12.0`으로 설정했다. 새 `addScreen`·`addSidebarHeaderItem`·`SidebarRow`를 사용하며, 해당 메서드가 없는 0.10.2 앱에서는 기존 등록 API로 폴백한다.
 
@@ -51,7 +65,7 @@
 - [Paseo v0.11.1의 실제 컴파일러](https://github.com/getpaseo/paseo/blob/v0.11.1/packages/server/src/server/plugins/compiler.ts)로 client **81,204 bytes**, server **70,316 bytes**의 번들을 생성했다. runtime·shared·type import 경계 검사와 client의 React Native Hermes 컴파일을 통과했다. 이 값은 설치 번들의 크기가 아닌 저장소 소스의 검증 결과다.
 - 검증용 연결 도구의 `appVersion`은 설치된 SDK의 package.json에서 읽게 했다. 현재 소스의 요청형 Luna 검사나 종료 RPC를 실제 사용자 프로세스에 실행하지 않았다.
 - `node test/manual/live-rpc.mjs --seconds=0`으로 SDK 0.11.1에서 기존 데몬 0.10.2의 설치된 mac-monitor 0.6.1 RPC를 읽었다. host 정보는 `native/0.6.1`, 시스템 스냅샷 100개 동시 요청은 동일한 seq **37923**을 반환했다. 이는 기존 설치와의 전송 호환성 검증이다.
-- 기존 로컬 설치 교체·reload·데몬 재시작·전역 설정 수정·다른 Mac 설치·GitHub 배포를 수행하지 않았다. 실제 0.11.1 앱의 다크/라이트·compact 화면 검증은 남아 있다.
+- 이 소스 검증 단계에서는 기존 로컬 설치 교체·reload·데몬 재시작·전역 설정 수정·다른 Mac 설치·GitHub 배포를 수행하지 않았다. 이후 교체 결과는 위 최종 후속 검증에 기록했다.
 
 ## 이전 후속 검증: 이력으로 관찰 대기 축소 (0.6.1)
 
