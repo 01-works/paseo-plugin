@@ -1,6 +1,7 @@
 # Paseo 플러그인
 
-Paseo용 플러그인을 모은 저장소입니다. 각 플러그인은 독립된 폴더에 manifest·소스·의존성·빌드를 갖습니다.
+Paseo용 플러그인과 사용 안내를 모은 저장소입니다. 자체 플러그인은 독립된 폴더에 manifest·소스·의존성·빌드를 갖습니다.
+외부 커뮤니티 플러그인도 [커뮤니티 플러그인 안내](docs/community-plugins.md)에서 찾아 설치하고 사용할 수 있습니다.
 
 | 플러그인 | 기능 | 검증 환경 |
 |---|---|---|
@@ -23,6 +24,18 @@ paseo plugin install github:01-works/paseo-plugin:agent-browser
 
 agent-browser는 `paseo plugin update agent-browser`로 업데이트하고 `paseo plugin remove agent-browser`로 제거합니다.
 사용법과 실제 iPhone 등 남은 확인 항목은 [에이전트 탐색 안내](agent-browser/README.md)에 있습니다.
+
+## 커뮤니티 플러그인
+
+Claude·ChatGPT 구독 계정을 여러 개 사용하거나 한도에 도달했을 때 계정을 전환하려면
+[ZeroSub 사용 안내](docs/plugins/zerosub.md)를 참고하세요. Kapybara가 관리하는 외부 플러그인입니다.
+
+```sh
+paseo plugin add kapybara-org/zerosub
+```
+
+설치 후 사이드바의 **Accounts (ZeroSub)**에서 계정을 추가합니다.
+다른 외부 플러그인을 찾는 방법, 앱에서 설치하는 방법과 관리 명령은 [커뮤니티 플러그인 안내](docs/community-plugins.md)에 있습니다.
 
 ## 개발
 
