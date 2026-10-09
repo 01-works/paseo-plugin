@@ -1,5 +1,9 @@
 # Paseo 플러그인 API 조사 (로컬 daemon/CLI 0.10.2 기준)
 
+Paseo 0.10.2 조사 당시의 기록입니다. 본문의 온라인 문서·배포 태그는 조사 시점의 값입니다.
+현재 개발 기준은 [Paseo v0.11.1 API](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/reference.md)와
+[플러그인 README](../../README.md)를 확인합니다.
+
 Scratch: /tmp/macmon-research/paseo-api/ (docs 원문 `docs_*.md`, `pkg-0.10.2/`, `pkg-0.10.3/`, `pkg-0.11.0-beta.5/`, `client-0.10.2/`, `src-0.10.2/` = getpaseo/paseo@v0.10.2 shallow clone, `init-test/` = `paseo plugin init` 결과)
 
 ## 0. 가장 중요한 차이: 온라인 문서는 0.10.2와 다름

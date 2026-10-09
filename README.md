@@ -1,54 +1,49 @@
 # Paseo 플러그인
 
-Paseo용 플러그인과 사용 안내를 모은 저장소입니다. 자체 플러그인은 독립된 폴더에 manifest·소스·의존성·빌드를 갖습니다.
-외부 커뮤니티 플러그인도 [커뮤니티 플러그인 안내](docs/community-plugins.md)에서 찾아 설치하고 사용할 수 있습니다.
+Paseo용 자체 플러그인과 외부 커뮤니티 플러그인의 설치·사용 안내를 모은 저장소입니다.
 
-| 플러그인 | 기능 | 검증 환경 |
-|---|---|---|
-| [mac-monitor](mac-monitor/README.md) | 저부하 macOS 시스템 모니터. CPU·메모리·압력·스왑·SSD 용량, 상위 앱 10개와 프로세스 종료 | Paseo SDK 0.11.1, arm64 macOS 26.5.1 |
-| [agent-browser](agent-browser/README.md) | pill에서 현재 워크스페이스의 최근 목록·검색·대화 이동·ID 복사·확인 후 닫기 | Paseo SDK 0.11.1, Hermes·0.10.2 실화면 검증 이력 |
+## 기본 설치 목록
+
+**“이 저장소를 설치해”, “클론해서 설치해”는 아래 목록 전체를 설치하는 요청입니다.**
+앞으로 이 표에 추가된 항목도 함께 설치합니다.
+특정 플러그인만 요청하면 해당 항목을 설치합니다.
+
+| 플러그인 | 기능 | 설치 소스 | 조건·상세 |
+|---|---|---|---|
+| [mac-monitor](mac-monitor/README.md) | 시스템 지표·상위 앱·프로세스 종료·정리 검사 | `github:01-works/paseo-plugin:mac-monitor` | macOS, Paseo 0.10.2~0.11.x |
+| [agent-browser](agent-browser/README.md) | 현재 워크스페이스의 에이전트 목록·검색·대화 이동·닫기 | `github:01-works/paseo-plugin:agent-browser` | Paseo 0.10.2~0.11.x |
+| [ZeroSub](docs/plugins/zerosub.md) | Claude·ChatGPT 구독 계정 선택·한도 도달 시 전환 | `kapybara-org/zerosub` | `claude` 또는 `codex` CLI. 요구 버전·계정 설정은 [개별 안내](docs/plugins/zerosub.md) 참조 |
+
+mac-monitor와 agent-browser는 이 저장소에서 관리하고, ZeroSub는 Kapybara가 배포하는 외부 플러그인입니다.
+다른 커뮤니티 플러그인은 [커뮤니티 안내](docs/community-plugins.md)에서 찾을 수 있습니다.
 
 ## 설치
 
-Paseo 0.10.2~0.11.x의 데몬과 앱에서 플러그인 사용을 활성화한 뒤 사용할 플러그인을 설치합니다. mac-monitor는 macOS 전용입니다.
-두 플러그인은 SDK 0.11.1로 개발하며, 새 화면 API를 우선 사용하고 0.10.2 클라이언트에서는 기존 API를 사용합니다.
+설치할 Paseo 호스트의 **Settings → Plugins → Enable plugins**가 켜져 있는지 확인합니다.
+플러그인은 호스트별로 설치합니다. 이미 설치되어 정상 실행 중인 항목은 재사용합니다.
+
+macOS에서 기본 목록을 설치하는 명령은 다음과 같습니다.
 
 ```sh
 paseo plugin install github:01-works/paseo-plugin:mac-monitor
 paseo plugin install github:01-works/paseo-plugin:agent-browser
-```
-
-업데이트는 `paseo plugin update mac-monitor`, 제거는 `paseo plugin remove mac-monitor`를 사용합니다.
-측정 기준·자체 부하·알려진 한계는 [플러그인 README](mac-monitor/README.md),
-직접 수행한 검증과 남은 확인 항목은 [검증 기록](mac-monitor/docs/VALIDATION.md)에 있습니다.
-
-agent-browser는 `paseo plugin update agent-browser`로 업데이트하고 `paseo plugin remove agent-browser`로 제거합니다.
-사용법과 실제 iPhone 등 남은 확인 항목은 [에이전트 탐색 안내](agent-browser/README.md)에 있습니다.
-
-## 커뮤니티 플러그인
-
-Claude·ChatGPT 구독 계정을 여러 개 사용하거나 한도에 도달했을 때 계정을 전환하려면
-[ZeroSub 사용 안내](docs/plugins/zerosub.md)를 참고하세요. Kapybara가 관리하는 외부 플러그인입니다.
-
-```sh
 paseo plugin add kapybara-org/zerosub
+paseo plugin ls
 ```
 
-설치 후 사이드바의 **Accounts (ZeroSub)**에서 계정을 추가합니다.
-다른 외부 플러그인을 찾는 방법, 앱에서 설치하는 방법과 관리 명령은 [커뮤니티 플러그인 안내](docs/community-plugins.md)에 있습니다.
+각 항목의 상태가 `running`인지 확인합니다. 플랫폼·CLI·버전 조건이 맞지 않는 항목은
+누락 이유와 필요한 준비를 남깁니다. macOS 이외의 호스트에는 mac-monitor를 설치하지 않습니다.
+ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 계정 전환은 별도 설정·검증입니다.
+
+## 사용·검증·관리
+
+- mac-monitor: [사용·관리](mac-monitor/README.md), [측정 기준](mac-monitor/docs/MEASUREMENTS.md), [검증 기록](mac-monitor/docs/VALIDATION.md)
+- agent-browser: [사용·관리](agent-browser/README.md), [현재 설계](agent-browser/docs/PLAN.md), [검증 기록](agent-browser/docs/VALIDATION.md)
+- ZeroSub: [계정 추가·선택·전환·제거](docs/plugins/zerosub.md). 설치 후 사이드바의 **Accounts (ZeroSub)**를 엽니다.
+
+공통 관리 명령·설치 문제 확인은 [커뮤니티 안내](docs/community-plugins.md#관리와-문제-확인)에 있습니다.
 
 ## 개발
 
-Node 24를 사용해 해당 플러그인 폴더에서 검증합니다.
-
-```sh
-cd mac-monitor
-npm ci
-npm run typecheck
-npm test
-npm run build
-```
-
-GitHub Actions는 arm64·Intel macOS에서 타입 검사·단위 테스트·커밋된 헬퍼 실행·universal 빌드·서명·JSON을 확인합니다.
-agent-browser는 별도 workflow에서 타입 검사·단위 테스트·Hermes 번들 컴파일·React Native 경계를 검사합니다.
-로컬 Activity Monitor 대조 결과와 남은 compact·다른 Mac 설치 검증은 [검증 기록](mac-monitor/docs/VALIDATION.md)에 공개합니다.
+자체 플러그인은 각 폴더에 manifest·소스·의존성·빌드를 갖습니다. Node 24에서 개발하며,
+개별 README의 개발·검증 절차를 따릅니다. GitHub Actions는 각 플러그인을 별도 workflow에서 검사합니다.

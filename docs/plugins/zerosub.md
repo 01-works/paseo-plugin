@@ -2,6 +2,7 @@
 
 ZeroSub는 여러 Claude·ChatGPT(Codex) 구독 계정을 Paseo에서 함께 사용하는 [Kapybara의 커뮤니티 플러그인](https://paseo.sh/plugins/kapybara-org/zerosub)입니다.
 계정을 앱에서 추가하고 에이전트별로 선택할 수 있으며, 사용 한도에 도달하면 다른 계정으로 전환합니다.
+이 저장소의 [기본 설치 목록](../../README.md#기본-설치-목록)에 포함됩니다.
 
 | 항목 | 값 |
 |---|---|
@@ -87,6 +88,7 @@ Codex에서 새 에이전트가 생기는 것은 플러그인의 정상 동작�
 - 계정이 하나뿐이면 보통 계정 버튼이 없습니다. **Accounts (ZeroSub)**에서 두 번째 계정을 추가하세요.
 - 계정 로그인은 공식 CLI를 통해 처리됩니다. 추가 계정의 인증 홈은 `$PASEO_HOME/zerosub/homes/`에 따로 있고, 설정·스킬·대화 기록은 주 CLI 홈과 공유합니다.
 - Claude 사용량 조회를 위해 플러그인이 해당 계정의 OAuth 토큰을 읽어 `api.anthropic.com`에 전송합니다. Codex 조회는 `codex app-server`를 사용합니다. Claude의 OAuth 기반 MCP 서버는 계정마다 로그인해야 할 수 있습니다.
+- 1.2.1은 CLI가 제공한 로그인 URL의 도메인을 검사하지 않습니다. 로그인할 때 브라우저의 실제 주소가 공식 제공자의 로그인 페이지인지 확인합니다. [로그인 URL 처리](https://github.com/kapybara-org/zerosub/blob/2354700ad8749bebc3cff142190c37e1a7bd8999/server/claude.ts#L298)
 - Claude 공용 설정에 `apiKeyHelper`나 API 키 환경 설정이 있으면 구독 대신 그 키가 사용될 수 있습니다.
 - 유휴 Claude 계정의 사용량은 이전 값일 수 있고 조회 제한도 있습니다. 필요한 경우 화면에서 새로고침합니다.
 - 암호로 보호된 데몬에서는 계정 전환에 쓰는 `paseo agent reload`가 인증할 수 없어 다음 세션 시작 때 적용될 수 있습니다.
@@ -95,12 +97,7 @@ Codex에서 새 에이전트가 생기는 것은 플러그인의 정상 동작�
 
 ## 관리와 제거
 
-```sh
-paseo plugin logs zerosub
-paseo plugin reload zerosub
-paseo plugin update zerosub
-paseo plugin disable zerosub
-```
+상태·로그·업데이트·비활성화 등 공통 명령은 [관리 안내](../community-plugins.md#관리와-문제-확인)를 따릅니다. 관리 ID는 `zerosub`입니다.
 
 제거하려면 Accounts 화면에서 추가 계정을 먼저 삭제해 로그아웃한 뒤 실행합니다.
 Codex 대화가 남아 있는 계정은 해당 대화를 보관하거나 다른 곳에서 이어간 뒤 삭제할 수 있습니다.

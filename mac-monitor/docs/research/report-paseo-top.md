@@ -1,5 +1,7 @@
 # paseo-top: source analysis report
 
+npm `@xpufx/paseo-top` 0.4.3을 분석한 당시 기록입니다. 소스 위치·최신 버전·로컬 환경 설명은 조사 시점의 값입니다.
+
 ## Where the source is
 - Log: `"pluginId":"top"`, `[top v0.4.0+a50ea39]`, node v24.20.0, pid 67471. No install-source line was found in daemon.log, and `~/.paseo/plugins/sources.json` is `{}`.
 - `npm view paseo-top` returns 404. The real package is **`@xpufx/paseo-top`** (versions 0.4.0 to 0.4.4; 0.4.3 published 2026-09-24).

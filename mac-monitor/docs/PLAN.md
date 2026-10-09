@@ -1,8 +1,10 @@
-# mac-monitor 구현 계획
+# mac-monitor 설계 이력
 
 작성: 2026-10-06 · 대상 Paseo 0.10.2 (`@getpaseo/plugin` 0.10.2 = 0.10.3 dist 동일)
 
-현재 범위는 2026-10-07~08 후속 요청을 기록한 15~18절을 따른다. 13·14절의 자동 관리 설계는 이전 결정 기록이다.
+이 문서는 최초 설계와 0.6.1까지의 후속 요청을 보존한 이력입니다. 현재 설치·사용·SDK 기준은
+[README](../README.md), 측정 규칙은 [MEASUREMENTS](MEASUREMENTS.md), 최신 검증은 [VALIDATION](VALIDATION.md)을 따릅니다.
+13·14절의 자동 관리 설계는 0.4.0에서 제거되었습니다.
 
 ## 0. 목적
 

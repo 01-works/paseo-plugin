@@ -1,4 +1,7 @@
-# mac-monitor 다각도 리뷰
+# mac-monitor 개발 리뷰 이력
+
+0.2.1~0.6.1 당시의 검토와 수정 기록입니다. 현재 사용 안내는 [README](../README.md),
+최신 구현의 검증과 남은 항목은 [VALIDATION](VALIDATION.md)을 확인합니다.
 
 ## 0.6.1 · 이력으로 관찰 대기 축소
 
