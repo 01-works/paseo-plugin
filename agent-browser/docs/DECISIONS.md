@@ -10,6 +10,9 @@
 
 제품은 호스트 제공 라이브러리와 로컬 코드만 사용하므로 manifest의 `npm ci` 준비 명령을 제거합니다.
 개발·CI의 `npm ci`와 lockfile은 유지합니다. 기준은 [공식 Git 배포 안내](https://paseo.sh/docs/plugins/publishing#share-through-github-or-git)입니다.
+Paseo 0.11.1은 타입 전용 import도 검사하므로 제품에서 `@getpaseo/client`를 직접 참조하면 Git 설치가 실패합니다.
+API·목록·에이전트·구독 타입은 호스트 제공 `@getpaseo/plugin/client`의 `PluginClientContext['paseo']`에서 유도합니다.
+배포 사본 테스트는 타입 import까지 제공 모듈 경계를 검사하며, 실제 호스트 빌더 검증은 깨끗한 설치로 별도 수행합니다.
 
 ## 0.3.0 · 오래된 대화 일괄 정리
 

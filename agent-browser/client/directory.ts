@@ -1,4 +1,4 @@
-import type { OwnedSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } from '@getpaseo/client';
+import type { AgentSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } from './paseo-types';
 import { normalizeAgent, sameAgent } from './normalize';
 import type { Agent, AgentKey } from '../shared/types';
 import { isCleanupCandidate, type CleanupPlan, type CleanupOutcome, type CleanupResult } from '../shared/cleanup';
@@ -19,7 +19,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   const listeners = new Set<Listener>();
   const lifetime = new AbortController();
   let pageAbort: AbortController | undefined;
-  let lease: OwnedSubscription<PaseoAgentListResult> | undefined;
+  let lease: AgentSubscription | undefined;
   let observer: Listener | undefined;
   let starting: Promise<StartResult> | undefined;
   let retrying: Promise<StartResult> | undefined;

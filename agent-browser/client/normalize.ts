@@ -1,4 +1,4 @@
-import type { PaseoAgent } from '@getpaseo/client';
+import type { PaseoAgent } from './paseo-types';
 import { agentKey, type Agent, type AgentState } from '../shared/types';
 
 export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
