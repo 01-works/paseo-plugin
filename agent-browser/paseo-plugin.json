@@ -3,13 +3,5 @@
   "description": "Paseo 최근 에이전트 탐색",
   "requirements": {
     "paseo": ">=0.10.2 <0.12.0"
-  },
-  "build": [
-    [
-      "npm",
-      "ci",
-      "--no-audit",
-      "--no-fund"
-    ]
-  ]
+  }
 }

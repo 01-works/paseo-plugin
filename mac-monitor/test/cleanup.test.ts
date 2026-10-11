@@ -124,11 +124,26 @@ it('검사 결과의 후보만 명시 선택·최신 재확인 뒤 신호를 한
   expect((await h.cleanup.terminate(state.id, [observed])).results[0].sent).toBe(false);
   expect(h.source.terminateInspected).toHaveBeenCalledExactlyOnceWith(observed.pid, observed.start);
 });
-it('유지/판단 어려움·변경된 명령·CPU 활동·만료된 결과에는 신호를 보내지 않음', async () => {
-  for (const decision of ['keep', 'uncertain'] as const) {
-    const h = harness(async input => ({ decisions: input.items.map(p => ({ key: processKey(p), decision, reason: '근거 부족' })) }));
-    const state = h.cleanup.start(); await h.observe(); expect((await h.cleanup.terminate(state.id, [observed])).results[0].sent).toBe(false);
+it.each(['keep', 'uncertain'] as const)('%s 항목은 명시적인 경고 확인이 있어야 종료 가능하며 중복 요청은 거절', async decision => {
+  const h = harness(async input => ({ decisions: input.items.map(p => ({ key: processKey(p), decision, reason: '근거 부족' })) }));
+  const state = h.cleanup.start(); await h.observe();
+  expect((await h.cleanup.terminate(state.id, [observed])).results[0]).toMatchObject({ sent: false, error: '정리 권장 외 항목은 경고를 확인한 뒤 종료하세요' });
+  expect(h.source.terminateInspected).not.toHaveBeenCalled();
+  expect((await h.cleanup.terminate(state.id, [observed], true)).results[0].sent).toBe(true);
+  expect((await h.cleanup.terminate(state.id, [observed], true)).results[0].sent).toBe(false);
+  expect(h.source.terminateInspected).toHaveBeenCalledExactlyOnceWith(observed.pid, observed.start);
+});
+it('비권장 항목 경고 확인도 목록 밖 대상·변경된 실행 정보·CPU 활동·보호 대상을 허용하지 않음', async () => {
+  for (const changed of [{ args: ['node', 'new.js'] }, { cpuPercent: 1 }, { start: '1' }, { protected: true }]) {
+    const h = harness(async input => ({ decisions: input.items.map(p => ({ key: processKey(p), decision: 'keep', reason: '사용 중인 서비스' })) }));
+    const state = h.cleanup.start(); await h.observe();
+    expect((await h.cleanup.terminate(state.id, [{ ...observed, pid: 999 }], true)).results[0].sent).toBe(false);
+    h.source.inspectProcess.mockResolvedValue({ ...metadata, ...changed });
+    expect((await h.cleanup.terminate(state.id, [observed], true)).results[0].sent).toBe(false);
+    expect(h.source.terminateInspected).not.toHaveBeenCalled();
   }
+});
+it('변경된 명령·CPU 활동·만료된 결과에는 신호를 보내지 않음', async () => {
   for (const changed of [{ args: ['node', 'new.js'] }, { cpuPercent: 1 }, { start: '1' }]) {
     const h = harness(), state = h.cleanup.start(); await h.observe(); h.source.inspectProcess.mockResolvedValue({ ...metadata, ...changed });
     expect((await h.cleanup.terminate(state.id, [observed])).results[0].sent).toBe(false); expect(h.source.terminateInspected).not.toHaveBeenCalled();

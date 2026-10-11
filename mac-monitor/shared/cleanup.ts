@@ -45,6 +45,7 @@ export const cleanupGetRpc = defineRpc({ name: 'mac-monitor.cleanup.get', input:
 export const cleanupCancelRpc = defineRpc({ name: 'mac-monitor.cleanup.cancel', input: id, output: z.object({ cancelled: z.boolean() }) });
 export const cleanupTerminateRpc = defineRpc({ name: 'mac-monitor.cleanup.terminate', input: id.extend({
   targets: z.array(target).min(1).max(CLEANUP_LIMIT).refine(items => new Set(items.map(processKey)).size === items.length, '중복 대상'),
+  confirmNonRecommended: z.boolean().optional(),
 }), output: z.object({ results: z.array(target.extend({ sent: z.boolean(), error: z.string().optional() })) }) });
 export function processKey(process: { pid: number; start: string }): string { return `${process.pid}:${process.start}`; }
 export type ObservedProcess = z.infer<typeof observedProcessSchema>;

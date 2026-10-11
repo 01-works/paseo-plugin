@@ -80,6 +80,13 @@ it('React portal 본문·정렬·복사·닫기 확인과 취소·대화 이동�
   expect(document.querySelector('#portal [aria-label="c 대화 닫기"]')).toBeNull();
   expect(document.getElementById('portal').textContent).toContain('2개');
   expect(press).toHaveBeenCalledTimes(1); expect(openSurface).not.toHaveBeenCalled();
+  await click(document.querySelector('#portal [aria-label="오래된 에이전트 정리"]'));
+  expect(document.querySelector('#portal [aria-label="오래된 에이전트 보관 확인"]')).toBeTruthy();
+  await click(document.querySelector('#portal [aria-label="14일 정리 기준"]'));
+  await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '취소'));
+  expect(document.querySelector('#portal [aria-label="오래된 에이전트 보관 확인"]')).toBeNull();
+  expect(document.querySelector('#portal [aria-label="오래된 에이전트 정리"]')).toBeTruthy();
+  expect(archive).toHaveBeenCalledOnce(); expect(press).toHaveBeenCalledTimes(1);
   await click(document.querySelector('#portal [aria-label="b ID 복사"]'));
   expect(openSurface).not.toHaveBeenCalled();
   await click(document.querySelector('#portal [aria-label="b"]'));

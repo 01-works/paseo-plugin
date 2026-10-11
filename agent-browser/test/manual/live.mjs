@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 import { createPaseoClient } from '@getpaseo/client';
 import { createAgentDirectory } from '../../client/directory.ts';
 import { workspaceAgents } from '../../shared/browser.ts';
+import { createCleanupPlan } from '../../shared/cleanup.ts';
 const sdkVersion = JSON.parse(readFileSync(new URL('../../node_modules/@getpaseo/client/package.json', import.meta.url), 'utf8')).version;
 const taskPaseoHome = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
@@ -33,11 +34,19 @@ try {
   const initialReads = reads;
   await new Promise(resolve => setTimeout(resolve, 5000));
   assert.equal(reads, initialReads, '정상 연결에서 반복 목록 조회 없음');
+  const idleReads = reads - initialReads;
+  // 존재하지 않는 상위 label로 조회해 필터를 무시하는 호스트에서 정리하지 않음을 확인한다.
+  const filtered = await api.agents.list({ filter: { includeArchived: false,
+    labels: { 'paseo.parent-agent-id': 'agent-browser-validation-missing-parent-' + Date.now() } }, page: { limit: 1 } });
+  assert.equal(filtered.entries.length, 0); assert.equal(filtered.pageInfo.hasMore, false);
   const workspaces = [...new Set(snapshot.agents.map(agent => agent.workspaceId).filter(Boolean))];
   const counts = workspaces.map(workspaceId => ({ workspaceId,
-    total: workspaceAgents(snapshot.agents, workspaceId, 'updated').length }));
+    total: workspaceAgents(snapshot.agents, workspaceId, 'updated').length,
+    cleanupCandidates: createCleanupPlan(snapshot.agents, workspaceId,
+      snapshot.agents.find(agent => agent.workspaceId === workspaceId)?.id ?? '', 7).agents.length }));
   console.log(JSON.stringify({ loaded: snapshot.loaded, partial: snapshot.partial, agents: snapshot.agents.length,
-    reads, leases, idleReads: reads - initialReads, workspaceCount: counts.length, largestWorkspaces: counts.sort((a, b) => b.total - a.total).slice(0, 5) }, null, 2));
+    reads, leases, idleReads, childFilterReads: 1, workspaceCount: counts.length,
+    largestWorkspaces: counts.sort((a, b) => b.total - a.total).slice(0, 5) }, null, 2));
 } finally {
   releaseWatch?.(); await directory?.dispose(); await transport.close();
 }

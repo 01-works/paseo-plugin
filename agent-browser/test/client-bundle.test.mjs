@@ -1,7 +1,7 @@
 import { afterAll, expect, it } from 'vitest';
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -27,8 +27,14 @@ it('iOS Hermes는 이전 pill 로드 실패를 일으킨 미변환 클래스 문
   expect(result.stderr).toContain('Invalid expression');
 });
 
-it('실제 client entry 전체 번들이 iOS Hermes에서 문법 오류 없이 컴파일됨', async () => {
+it('개발 의존성이 없는 배포 사본의 client entry가 번들링되고 iOS Hermes에서 컴파일됨', async () => {
+  const pluginDirectory = path.join(directory, 'plugin');
+  mkdirSync(pluginDirectory);
+  for (const name of ['index.client.tsx', 'client', 'shared']) {
+    cpSync(name, path.join(pluginDirectory, name), { recursive: true });
+  }
   const result = await build({
+    absWorkingDir: pluginDirectory,
     entryPoints: ['index.client.tsx'], bundle: true, format: 'cjs', jsx: 'automatic', platform: 'neutral', target: 'es2020',
     supported: { 'async-await': false },
     external: ['@getpaseo/plugin', '@getpaseo/plugin/client', '@getpaseo/plugin/client/react-native', '@getpaseo/plugin/client/ui',

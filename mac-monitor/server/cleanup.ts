@@ -106,20 +106,21 @@ export class Cleanup {
       if (!signal.aborted) { job.metadata.clear(); job.state = { ...job.state, phase: 'error', items: [], error: redact(error instanceof Error ? error.message : String(error)).slice(0, 300) }; }
     } finally { release(); if (signal.aborted) job.metadata.clear(); }
   }
-  async terminate(id: string, targets: { pid: number; start: string }[]) {
+  async terminate(id: string, targets: { pid: number; start: string }[], confirmNonRecommended = false) {
     const job = this.requireJob(id);
     if (job.terminating) throw new Error('종료 요청이 이미 진행 중입니다');
-    const operation = this.terminateSelected(job, targets); job.terminating = operation;
+    const operation = this.terminateSelected(job, targets, confirmNonRecommended); job.terminating = operation;
     try { return await operation; } finally { if (job.terminating === operation) job.terminating = undefined; }
   }
-  private async terminateSelected(job: Job, targets: { pid: number; start: string }[]) {
+  private async terminateSelected(job: Job, targets: { pid: number; start: string }[], confirmNonRecommended: boolean) {
     const denied = (error: string) => ({ results: targets.map(p => ({ ...p, sent: false, error })) });
     const state = this.get(job.state.id);
     if (this.stopped || job.abort.signal.aborted || state.phase !== 'ready' || !targets.length || targets.length > CLEANUP_LIMIT
       || new Set(targets.map(processKey)).size !== targets.length) return denied('최신 검사 결과와 선택한 대상이 필요합니다');
     for (const p of targets) {
       const key = processKey(p), item = state.items.find(value => processKey(value) === key), metadata = job.metadata.get(key);
-      if (item?.decision !== 'candidate' || !metadata || job.attempted.has(key)) return denied('검사에서 선택할 수 없는 대상이거나 이미 종료를 요청했습니다');
+      if (!item || !metadata || job.attempted.has(key)) return denied('검사에서 선택할 수 없는 대상이거나 이미 종료를 요청했습니다');
+      if (item.decision !== 'candidate' && !confirmNonRecommended) return denied('정리 권장 외 항목은 경고를 확인한 뒤 종료하세요');
       try {
         if (!sameMetadata(metadata, await this.source.inspectProcess(p.pid, p.start))) return denied('실행 정보 또는 활동이 변경되었습니다. 다시 검사하세요');
       } catch { return denied('대상의 최신 실행 정보를 확인할 수 없습니다'); }

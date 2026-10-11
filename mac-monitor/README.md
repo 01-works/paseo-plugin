@@ -38,6 +38,7 @@ git clone https://github.com/01-works/paseo-plugin.git
 cd paseo-plugin/mac-monitor
 npm ci
 npm run typecheck
+npm run build
 npm test
 npm run audit
 paseo plugin install "$PWD"
@@ -49,10 +50,14 @@ paseo plugin install "$PWD"
 git pull
 npm ci
 npm run typecheck
+npm run build
 npm test
 paseo plugin reload mac-monitor
 paseo plugin logs mac-monitor
 ```
+
+C 소스 변경을 검증할 때는 빌드 후 테스트합니다. GitHub Actions도 client audit와 커밋된 prebuilt의 실행 확인을 거친 뒤,
+새 universal 헬퍼를 빌드하고 네이티브 이력 검사를 포함한 전체 테스트를 실행합니다.
 
 ```sh
 paseo plugin disable mac-monitor
@@ -115,14 +120,17 @@ CLI 대조 도구는 플러그인과 별도의 헬퍼를 잠시 띄우므로 실
 ## 요청할 때 정리 검사
 
 상세 화면의 **정리 검사**를 누르면 현재 대상과 최근 숫자 이력을 확인하고,
-`gpt-6-luna`가 한 번 검토해 **정리 후보 / 유지 권장 / 판단 어려움**과 이유를 보여줍니다.
+`gpt-6-luna`가 한 번 검토해 **정리 권장 / 유지 권장 / 판단 어려움**과 이유를 보여줍니다.
 검토 범위의 대상 모두에 연속 두 회 이상·최근 90초 이내의 유효한 이력이 있으면 12초 추가 관찰을 생략합니다.
 이력이 부족하거나 현재 CPU가 확인 불가이면 약 12초 관찰로 보완합니다.
 CPU 기준점이 없으면 현재 목록 확인에 보통 2~4초가 필요하며, 이미 준비됐으면 더 짧을 수 있습니다.
 Luna 실행 시간은 별도입니다.
 결과 목록은 높이 320의 스크롤 영역이며 검사 완료 뒤에는 갱신하지 않습니다.
-정리 후보를 선택하고 **선택 종료 → 종료**로 확인하면 해당 PID에 SIGTERM을 보냅니다.
-선택·취소만으로는 신호를 보내지 않습니다. 화면을 닫거나 기기를 바꾸면 해당 검사를 취소합니다.
+정리 권장 항목은 자동 선택되며 **선택 정리**를 누르면 추가 확인 없이 해당 PID에 SIGTERM을 보냅니다.
+체크를 해제하거나 다른 항목을 추가할 수 있습니다. **유지 권장 / 판단 어려움** 항목을 포함하면
+작업 손실·서비스 중단 경고와 선택한 대상 목록을 표시하고 **종료**로 확인한 뒤 요청합니다.
+체크박스는 배경을 채우지 않은 16px 윤곽선으로 표시하고, 보이지 않는 클릭·터치 여유 영역을 둡니다.
+검사 완료·선택·취소만으로는 신호를 보내지 않습니다. 화면을 닫거나 기기를 바꾸면 해당 검사를 취소합니다.
 
 Codex CLI **0.160.0**과 기존 로그인으로 실제 검증했습니다. 서버에서 `codex`를 실행할 수 있고
 `gpt-6-luna`를 사용할 수 있어야 합니다. 실행·인증·모델·측정 오류는 화면에 표시하며 종료를 진행하지 않습니다.

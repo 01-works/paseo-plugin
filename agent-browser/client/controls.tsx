@@ -20,22 +20,28 @@ function useFeedback(disabled: boolean) {
     },
   };
 }
-export function Button({ theme, children, onPress, active = false, disabled = false, label, danger = false }: {
-  theme: PluginTheme; children: ReactNode; onPress: () => void; active?: boolean; disabled?: boolean; label?: string; danger?: boolean;
+export function Button({ theme, children, onPress, active = false, disabled = false, label, hint, danger = false, variant = 'text', icon }: {
+  theme: PluginTheme; children: ReactNode; onPress: () => void; active?: boolean; disabled?: boolean; label?: string; hint?: string;
+  danger?: boolean; variant?: 'text' | 'outline'; icon?: string;
 }) {
   const c = theme.colors;
   const compact = useContext(CompactControls);
   const feedback = useFeedback(disabled);
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active, disabled }}
+  const outlined = variant === 'outline';
+  const color = danger ? c.statusDanger : active || outlined ? c.foreground : c.foregroundMuted;
+  const border = danger ? c.statusDanger : c.border, focusBorder = danger ? c.statusDanger : c.accent;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={hint}
+    accessibilityState={outlined ? { disabled } : { selected: active, disabled }}
     disabled={disabled} onPress={onPress} {...feedback.events} style={({ pressed }) => ({
-      minHeight: compact ? 44 : 32, minWidth: compact ? 44 : 32, paddingHorizontal: spacing.small, paddingVertical: 6,
+      minHeight: compact ? 44 : 32, minWidth: compact ? 44 : 32, paddingHorizontal: outlined ? spacing.inset : spacing.small, paddingVertical: 6,
+      flexDirection: 'row', gap: spacing.gap, flexShrink: outlined ? 1 : undefined,
       justifyContent: 'center', alignItems: 'center', borderRadius: spacing.small,
-      borderWidth: 1, borderColor: feedback.focused ? danger ? c.statusDanger : c.accent : 'transparent',
+      borderWidth: 1, borderColor: feedback.focused ? focusBorder : outlined ? border : 'transparent',
       outlineWidth: Platform.OS === 'web' && feedback.focused ? 0 : undefined,
-      backgroundColor: active || !disabled && (pressed || feedback.highlighted) ? c.surface2 : 'transparent', opacity: disabled ? 0.45 : 1,
+      backgroundColor: active || !disabled && (pressed || feedback.highlighted) ? c.surface2 : outlined ? c.surface1 : 'transparent', opacity: disabled ? 0.45 : 1,
     })}>
-    <Text style={{ color: danger ? c.statusDanger : active ? c.foreground : c.foregroundMuted,
-      fontWeight: active ? '600' : '400' }}>{children}</Text>
+    {icon ? <Icon name={icon} size={16} color={color} /> : null}
+    <Text style={{ color, fontWeight: active || outlined ? '600' : '400', flexShrink: 1 }}>{children}</Text>
   </Pressable>;
 }
 export function IconButton({ theme, name, label, hint, onPress, active = false, disabled = false, danger = false }: {

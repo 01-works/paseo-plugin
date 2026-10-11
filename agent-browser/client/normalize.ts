@@ -2,6 +2,7 @@ import type { PaseoAgent } from '@getpaseo/client';
 import { agentKey, type Agent, type AgentState } from '../shared/types';
 
 export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
+  const parentId = raw.labels?.['paseo.parent-agent-id']?.trim() || null;
   const attention = raw.requiresAttention === true ? raw.attentionReason : null;
   let state: AgentState = 'unknown';
   if (raw.status === 'closed') state = 'closed';
@@ -17,9 +18,11 @@ export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
     workspaceId: raw.workspaceId ?? null, title: raw.title?.trim() || raw.provider + ' · ' + raw.id.slice(0, 8),
     createdAt: raw.createdAt, updatedAt: raw.updatedAt,
     state, archived: Boolean(raw.archivedAt),
+    parentId, cleanupSafe: (raw.status === 'idle' || raw.status === 'closed' || raw.status === 'error') &&
+      !raw.activeTurn && !raw.pendingPermissions?.length && attention !== 'permission',
   };
 }
 export const sameAgent = (a: Agent | undefined, b: Agent) => a !== undefined &&
   a.key === b.key && a.workspaceId === b.workspaceId && a.title === b.title &&
   a.createdAt === b.createdAt && a.updatedAt === b.updatedAt &&
-  a.state === b.state && a.archived === b.archived;
+  a.state === b.state && a.archived === b.archived && a.parentId === b.parentId && a.cleanupSafe === b.cleanupSafe;

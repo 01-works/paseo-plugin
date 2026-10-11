@@ -8,7 +8,7 @@ import { useStableQuery } from './data';
 import { appPercent, gib } from './format';
 import { Badge, Card, type Theme } from './visuals';
 
-const labels = { candidate: '정리 후보', keep: '유지 권장', uncertain: '판단 어려움' } as const;
+const labels = { candidate: '정리 권장', keep: '유지 권장', uncertain: '판단 어려움' } as const;
 export function elapsedLabel(seconds: number): string {
   if (seconds >= 86400) return `${Math.floor(seconds / 86400)}일 ${Math.floor(seconds % 86400 / 3600)}시간`;
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)}시간 ${Math.floor(seconds % 3600 / 60)}분`;
@@ -21,8 +21,10 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
   const [initial, setInitial] = useState<CleanupState>();
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectionId = useRef<string | undefined>(undefined);
   const [confirmation, setConfirmation] = useState<CleanupItem[] | null>(null);
   const [pending, setPending] = useState(false);
+  const sending = useRef(false);
   const [result, setResult] = useState<{ results: { pid: number; start: string; sent: boolean; error?: string }[] }>();
   const [polling, setPolling] = useState(true);
   useEffect(() => {
@@ -44,17 +46,29 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
   const state = query.data ?? initial;
   useEffect(() => {
     if (query.error || (state && state.phase !== 'observing' && state.phase !== 'reviewing')) setPolling(false);
+    if (state?.phase === 'ready' && selectionId.current !== state.id) {
+      selectionId.current = state.id;
+      setSelected(new Set(state.items.filter(item => item.decision === 'candidate').map(processKey)));
+    }
   }, [state, query.error]);
   const busy = !error && !query.error && (!state || state.phase === 'observing' || state.phase === 'reviewing');
-  const checked = state?.items.filter(item => selected.has(processKey(item)) && item.decision === 'candidate') ?? [];
+  const checked = state?.items.filter(item => selected.has(processKey(item))) ?? [];
   const toggle = (key: string) => setSelected(previous => { const next = new Set(previous); next.has(key) ? next.delete(key) : next.add(key); return next; });
-  const send = async () => {
-    if (!state || !confirmation?.length || pending || result) return;
+  const send = async (targets: CleanupItem[], confirmNonRecommended = false) => {
+    if (state?.phase !== 'ready' || !targets.length || sending.current || result || query.error
+      || (!confirmNonRecommended && targets.some(item => item.decision !== 'candidate'))) return;
+    sending.current = true;
     setPending(true); setError('');
-    try { const value = await terminate({ id: state.id, targets: confirmation.map(({ pid, start }) => ({ pid, start })) });
+    try { const value = await terminate({ id: state.id, targets: targets.map(({ pid, start }) => ({ pid, start })),
+      ...(confirmNonRecommended ? { confirmNonRecommended: true } : {}) });
       if (lifetime.current.mounted) setResult(value);
     } catch (err) { if (lifetime.current.mounted) setError(`종료 요청 실패: ${String(err)}`); }
-    finally { if (lifetime.current.mounted) setPending(false); }
+    finally { sending.current = false; if (lifetime.current.mounted) setPending(false); }
+  };
+  const requestCleanup = () => {
+    if (!checked.length || sending.current || result || query.error) return;
+    if (checked.some(item => item.decision !== 'candidate')) setConfirmation(checked);
+    else void send(checked);
   };
   return <Card theme={theme}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -71,11 +85,13 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
         {result.results.filter(p => !p.sent).map(p => <Text key={processKey(p)} style={{ color: c.foregroundMuted }}>PID {p.pid} · {p.error}</Text>)}
       </> : confirmation ? <>
         <Text style={{ color: c.foreground, fontWeight: '600' }}>{confirmation.length}개 종료</Text>
-        <Text style={{ color: c.foregroundMuted }}>저장하지 않은 작업을 잃을 수 있습니다.</Text>
-        {confirmation.map(p => <Text key={processKey(p)} numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.name} · PID {p.pid}</Text>)}
+        <Text style={{ color: c.statusDanger }}>정리 권장 외 항목 {confirmation.filter(p => p.decision !== 'candidate').length}개가 포함되어 있습니다.</Text>
+        <Text style={{ color: c.foregroundMuted }}>저장하지 않은 작업을 잃거나 사용 중인 서비스가 중단될 수 있습니다.</Text>
+        {confirmation.map(p => <Text key={processKey(p)} numberOfLines={1} style={{ color: c.foregroundMuted }}>{p.name} · PID {p.pid} · {labels[p.decision]}</Text>)}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
-          <Pressable accessibilityRole="button" disabled={pending} onPress={() => setConfirmation(null)}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="선택한 정리 후보 종료 확인" disabled={pending} onPress={() => void send()}>
+          <Pressable accessibilityRole="button" disabled={pending} onPress={() => setConfirmation(null)} style={{ minHeight: 32, paddingHorizontal: 8, justifyContent: 'center' }}><Text style={{ color: c.foreground }}>취소</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="선택한 항목 종료 확인" disabled={pending} onPress={() => void send(confirmation, true)}
+            style={{ minHeight: 32, paddingHorizontal: 8, justifyContent: 'center' }}>
             <Text style={{ color: pending ? c.foregroundMuted : c.statusDanger }}>{pending ? '요청 중' : '종료'}</Text>
           </Pressable>
         </View>
@@ -85,20 +101,26 @@ export function CleanupPanel({ theme, hostId, name, onBack }: { theme: Theme; ho
         <Pressable accessibilityRole="button" accessibilityLabel="정리 검사 취소" onPress={onBack} style={{ padding: 8 }}><Text style={{ color: c.foregroundMuted }}>취소</Text></Pressable>
       </View> : state?.phase === 'ready' ? <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <Badge theme={theme} label={`정리 후보 ${state.items.filter(p => p.decision === 'candidate').length}개`} />
-          <Pressable accessibilityRole="button" accessibilityLabel="선택한 정리 후보 종료 선택" disabled={!checked.length || Boolean(query.error)}
-            onPress={() => setConfirmation(checked)} style={{ paddingVertical: 8 }}>
-            <Text style={{ color: checked.length && !query.error ? c.foreground : c.foregroundMuted }}>선택 종료{checked.length ? ` (${checked.length})` : ''}</Text>
+          <Badge theme={theme} label={`정리 권장 ${state.items.filter(p => p.decision === 'candidate').length}개`} />
+          <Pressable accessibilityRole="button" accessibilityLabel="선택한 항목 정리" disabled={!checked.length || pending || Boolean(query.error)}
+            onPress={requestCleanup} style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 8 }}>
+            <Text style={{ color: checked.length && !pending && !query.error ? c.foreground : c.foregroundMuted }}>{pending ? '요청 중' : `선택 정리${checked.length ? ` (${checked.length})` : ''}`}</Text>
           </Pressable>
         </View>
         {!state.items.length ? <Text style={{ color: c.foregroundMuted }}>이번 검사 범위에서 검토할 대상이 없습니다.</Text> : null}
         {[...state.items].sort((a, b) => Number(b.decision === 'candidate') - Number(a.decision === 'candidate')).map(p =>
           <View key={processKey(p)} style={{ gap: 6, paddingVertical: 8, borderBottomWidth: 1, borderColor: c.border }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {p.decision === 'candidate' ? <Pressable accessibilityRole="checkbox" accessibilityLabel={`${p.name} PID ${p.pid} 정리 선택`}
-                accessibilityState={{ checked: selected.has(processKey(p)) }} onPress={() => toggle(processKey(p))} style={{ padding: 6 }}>
-                <Text style={{ color: selected.has(processKey(p)) ? c.accent : c.foregroundMuted }}>{selected.has(processKey(p)) ? '☑' : '☐'}</Text>
-              </Pressable> : null}
+              <Pressable accessibilityRole="checkbox" accessibilityLabel={`${p.name} PID ${p.pid} 정리 선택`} disabled={pending} hitSlop={8}
+                accessibilityState={{ checked: selected.has(processKey(p)), disabled: pending }} onPress={() => toggle(processKey(p))}
+                style={{ width: 28, height: 28, flexShrink: 0, alignItems: 'center', justifyContent: 'center', opacity: pending ? 0.5 : 1 }}>
+                <View pointerEvents="none" style={{ width: 16, height: 16, borderWidth: 1, borderRadius: 3,
+                  borderColor: selected.has(processKey(p)) ? c.accent : c.foregroundMuted,
+                  alignItems: 'center', justifyContent: 'center' }}>
+                  {selected.has(processKey(p)) ? <View style={{ width: 5, height: 8, borderRightWidth: 1.5, borderBottomWidth: 1.5,
+                    borderColor: c.accent, transform: [{ rotate: '45deg' }], marginTop: -2 }} /> : null}
+                </View>
+              </Pressable>
               <Text numberOfLines={1} style={{ color: c.foreground, flex: 1 }}>{p.name} · PID {p.pid}</Text>
               <Badge theme={theme} label={labels[p.decision]} />
             </View>

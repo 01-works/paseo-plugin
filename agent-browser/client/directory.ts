@@ -1,6 +1,7 @@
 import type { OwnedSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } from '@getpaseo/client';
 import { normalizeAgent, sameAgent } from './normalize';
 import type { Agent, AgentKey } from '../shared/types';
+import { isCleanupCandidate, type CleanupPlan, type CleanupOutcome, type CleanupResult } from '../shared/cleanup';
 
 export type DirectorySnapshot = {
   agents: readonly Agent[]; loaded: boolean; loading: boolean; partial: boolean; stale: boolean; error: string | null;
@@ -22,6 +23,8 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   let observer: Listener | undefined;
   let starting: Promise<StartResult> | undefined;
   let retrying: Promise<StartResult> | undefined;
+  let startRetryTimer: ReturnType<(typeof setTimeout)> | undefined;
+  let startRetryDelay = 1000;
   let generation = 0;
   let deltas = new Map<AgentKey, Delta>();
   let hydrating = false;
@@ -32,6 +35,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   let watchTimer: ReturnType<(typeof setInterval)> | undefined;
   let snapshot: DirectorySnapshot = { agents: [], loaded: false, loading: true, partial: false, stale: false, error: null };
   const archiving = new Map< string, Promise< void>>();
+  let cleanupTask: Promise<CleanupResult> | undefined;
   const getSnapshot = () => snapshot;
   const subscribe = (listener: Listener) => {
     listeners.add(listener);
@@ -62,15 +66,26 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
       if (!viewers) { clearInterval(watchTimer); watchTimer = undefined; }
     };
   };
-  const start = (): Promise<StartResult> => {
+  function clearStartRetry() {
+    clearTimeout(startRetryTimer); startRetryTimer = undefined;
+  }
+  function scheduleStartRetry() {
+    if (disposed || lease || startRetryTimer !== undefined) return;
+    // 첫 목록을 받기 전에는 pill도 없다. 구독 수립 실패만 늦춰 재시도한다.
+    startRetryTimer = setTimeout(() => { startRetryTimer = undefined; void start(); }, startRetryDelay);
+    startRetryDelay = Math.min(startRetryDelay * 2, 30000);
+  }
+  const startAttempt = (): Promise<StartResult> => {
     if (disposed || starting || lease) return starting ?? Promise.resolve();
+    clearStartRetry();
     emit({ loading: true, error: null });
     starting = api.agents.list({
       filter: { includeArchived: false }, sort: [{ key: 'created_at', direction: 'desc' }],
       page: { limit: PAGE_SIZE }, subscribe: {}, signal: lifetime.signal,
     }).then(result => {
-      if (disposed) { void result.subscription.release().catch(() => {}); return; }
+      if (disposed) return result.subscription.release().catch(() => {});
       lease = result.subscription;
+      startRetryDelay = 1000;
       observer = result.subscription.subscribe({
         snapshot: value => { void bootstrap(value); },
         update: message => {
@@ -82,9 +97,10 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
         error: () => { generation++; pageAbort?.abort(); hydrating = false; emit({ stale: true, loading: false, error: '목록 갱신 실패' }); },
       });
     }).catch(() => { emit({ stale: true, loading: false, error: '에이전트 목록을 읽지 못했습니다' }); })
-      .finally(() => { starting = undefined; });
+      .finally(() => { starting = undefined; scheduleStartRetry(); });
     return starting;
   };
+  const start = (): Promise<StartResult> => retrying ?? startAttempt();
   function put(target: Map<AgentKey, Agent>, agent: Agent) {
     const old = target.get(agent.key);
     if (old && old.updatedAt > agent.updatedAt) return false;
@@ -169,17 +185,19 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   const retry = (): Promise<StartResult> => {
     if (disposed || starting) return starting ?? Promise.resolve();
     if (retrying) return retrying;
+    clearStartRetry();
     emit({ loading: true });
     retrying = (async () => {
       generation++; pageAbort?.abort(); observer?.(); observer = undefined;
       const oldLease = lease; lease = undefined;
       await oldLease?.release().catch(() => {});
-      if (!disposed) await start();
+      if (!disposed) await startAttempt();
     })().finally(() => { retrying = undefined; });
     return retrying;
   };
   // 닫기는 기존 연결의 공개 보관 API를 쓴다. 캐시만 믿고 다른 workspace의 대화를 닫지 않는다.
   const archive = (id: string, workspaceId: string): Promise< void> => {
+    if (cleanupTask) return Promise.reject(actionError('오래된 에이전트 정리가 진행 중입니다'));
     const active = agents.get(JSON.stringify([hostId, id]));
     if (disposed || !snapshot.loaded || snapshot.stale) return Promise.reject(actionError('연결 상태를 확인한 뒤 다시 시도해 주세요'));
     if (!active || active.archived || active.workspaceId !== workspaceId) return Promise.reject(actionError('이 대화는 현재 워크스페이스에 없습니다'));
@@ -199,15 +217,86 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     archiving.set(id, task);
     return task;
   };
+  const cleanupAvailable = () => !disposed && snapshot.loaded && !snapshot.loading && !snapshot.partial &&
+    !snapshot.stale && !snapshot.error && lease?.subscriptionId !== null;
+  const cleanup = (plan: CleanupPlan, options: {
+    signal?: AbortSignal; onProgress?: (outcomes: readonly CleanupOutcome[]) => void;
+  } = {}): Promise<CleanupResult> => {
+    if (!cleanupAvailable()) return Promise.reject(actionError('목록을 모두 읽고 연결 상태를 확인한 뒤 다시 시도해 주세요'));
+    if (cleanupTask || archiving.size) return Promise.reject(actionError('진행 중인 대화 정리가 끝난 뒤 다시 시도해 주세요'));
+    const targets = [...new Map(plan.agents.map(agent => [agent.id, agent])).values()];
+    const available = () => cleanupAvailable() && !options.signal?.aborted;
+    const hasLinkedChild = (id: string) => [...agents.values()].some(agent => !agent.archived && agent.parentId === id);
+    cleanupTask = (async () => {
+      const outcomes: CleanupOutcome[] = [];
+      const report = (target: Agent, status: CleanupOutcome['status'], message?: string) => {
+        outcomes.push({ id: target.id, title: target.title, status, ...(message ? { message } : {}) });
+        options.onProgress?.([...outcomes]);
+      };
+      for (const target of targets) {
+        if (!available()) break;
+        const cached = agents.get(target.key);
+        if (!cached || !isCleanupCandidate(cached, plan)) {
+          report(target, 'skipped', '상태나 최근 활동이 바뀌어 제외했습니다'); continue;
+        }
+        if (hasLinkedChild(target.id)) {
+          report(target, 'skipped', '연결된 하위 대화가 남아 있어 제외했습니다'); continue;
+        }
+        let archiveRequested = false;
+        try {
+          // 하위를 먼저 보관한 뒤 남은 연결이 없는지 서버에서 확인한다.
+          // 새로 생긴 하위·실패한 하위·다른 workspace의 하위도 상위 보관을 막는다.
+          const children = await api.agents.list({
+            filter: { includeArchived: false, labels: { 'paseo.parent-agent-id': target.id } },
+            page: { limit: 1 }, signal: options.signal ?? lifetime.signal,
+          });
+          if (!available()) break;
+          if (children.entries.length || children.pageInfo.hasMore) {
+            report(target, 'skipped', '연결된 하위 대화가 남아 있어 제외했습니다'); continue;
+          }
+          const handle = api.agents.ref(target.id);
+          const result = await handle.refresh();
+          if (!available()) break;
+          const current = result?.agent;
+          if (!current || current.id !== target.id) {
+            report(target, 'skipped', '이 대화를 찾을 수 없어 제외했습니다'); continue;
+          }
+          upsert(current);
+          const latest = agents.get(target.key);
+          if (!isCleanupCandidate(normalizeAgent(current, hostId), plan) || !latest || !isCleanupCandidate(latest, plan)) {
+            report(target, 'skipped', '상태나 최근 활동이 바뀌어 제외했습니다'); continue;
+          }
+          if (hasLinkedChild(target.id)) {
+            report(target, 'skipped', '연결된 하위 대화가 남아 있어 제외했습니다'); continue;
+          }
+          archiveRequested = true;
+          await handle.archive();
+          if (!disposed) { remove(target.id); clearTimeout(batch); batch = undefined; emit(); }
+          report(target, 'archived');
+        } catch {
+          if (archiveRequested) {
+            report(target, 'failed', '보관 결과를 확인하지 못했습니다. 대상을 다시 확인해 주세요');
+            if (!available()) break;
+            continue;
+          }
+          if (!available()) break;
+          report(target, 'failed', '보관하지 못했습니다. 대상을 다시 확인한 뒤 재시도해 주세요');
+        }
+      }
+      return { outcomes, stopped: outcomes.length < targets.length };
+    })().finally(() => { cleanupTask = undefined; });
+    return cleanupTask;
+  };
   const dispose = async () => {
     if (disposed) return;
     disposed = true; generation++; lifetime.abort(); pageAbort?.abort();
+    clearStartRetry();
     clearTimeout(batch); clearInterval(watchTimer);
     observer?.(); listeners.clear();
     await lease?.release().catch(() => {});
     await retrying?.catch(() => {});
     agents.clear();
   };
-  return { hostId, getSnapshot, subscribe, watch, start, retry, archive, dispose };
+  return { hostId, getSnapshot, subscribe, watch, start, retry, archive, cleanup, dispose };
 }
 export type AgentDirectory = ReturnType< typeof createAgentDirectory>;

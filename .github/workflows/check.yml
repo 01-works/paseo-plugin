@@ -46,8 +46,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: 타입 검사
         run: npm run typecheck
-      - name: 단위 테스트
-        run: npm test
+      - name: React Native 경계와 테마·기본 폰트 검사
+        run: npm run audit
       - name: 커밋된 prebuilt 바이너리 실행
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
@@ -73,6 +73,8 @@ jobs:
           npm run build
           lipo bin/macmon-helper -verify_arch arm64 x86_64
           codesign --verify --strict bin/macmon-helper
+      - name: 전체 테스트 (새 헬퍼의 네이티브 이력·타이머 회귀 포함)
+        run: npm test
       - name: 네이티브 JSON 스키마 확인
         run: |
           bin/macmon-helper --once | node --import tsx --input-type=module -e '

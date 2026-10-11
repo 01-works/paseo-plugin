@@ -11,7 +11,7 @@ Paseo용 자체 플러그인과 외부 커뮤니티 플러그인의 설치·사�
 | 플러그인 | 기능 | 설치 소스 | 조건·상세 |
 |---|---|---|---|
 | [mac-monitor](mac-monitor/README.md) | 시스템 지표·상위 앱·프로세스 종료·정리 검사 | `github:01-works/paseo-plugin:mac-monitor` | macOS, Paseo 0.10.2~0.11.x |
-| [agent-browser](agent-browser/README.md) | 현재 워크스페이스의 에이전트 목록·검색·대화 이동·닫기 | `github:01-works/paseo-plugin:agent-browser` | Paseo 0.10.2~0.11.x |
+| [agent-browser](agent-browser/README.md) | 현재 워크스페이스의 에이전트 목록·검색·대화 이동·닫기·오래된 대화 정리 | `github:01-works/paseo-plugin:agent-browser` | Paseo 0.10.2~0.11.x |
 | [ZeroSub](docs/plugins/zerosub.md) | Claude·ChatGPT 구독 계정 선택·한도 도달 시 전환 | `kapybara-org/zerosub` | `claude` 또는 `codex` CLI. 요구 버전·계정 설정은 [개별 안내](docs/plugins/zerosub.md) 참조 |
 
 mac-monitor와 agent-browser는 이 저장소에서 관리하고, ZeroSub는 Kapybara가 배포하는 외부 플러그인입니다.

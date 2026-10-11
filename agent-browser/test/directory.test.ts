@@ -10,7 +10,7 @@ function harness(first = page([raw('a')]), next?: (cursor?: string) => Promise<P
   const release = vi.fn(async () => {});
   const lease = { subscriptionId: 's', ready: Promise.resolve({ ...first, subscriptionId: 's' }),
     subscribe: vi.fn((value: Observer) => { observer = value; value.snapshot({ ...first, subscriptionId: 's' }); return vi.fn(); }), release };
-  const list = vi.fn(async (options: { subscribe?: {}; page?: { cursor?: string } }) =>
+  const list = vi.fn(async (options: { subscribe?: {}; page?: { cursor?: string }; signal?: AbortSignal }) =>
     options.subscribe ? { ...first, subscription: lease } : next ? await next(options.page?.cursor) : page([]));
   const directory = createAgentDirectory({ agents: { list } } as unknown as PaseoApi, 'h');
   directories.push(directory);
@@ -25,6 +25,62 @@ describe('공유 directory', () => {
     await Promise.all([h.directory.start(), h.directory.start(), h.directory.start()]);
     const off = h.directory.watch(); await vi.advanceTimersByTimeAsync(60000); off();
     expect(h.list).toHaveBeenCalledOnce(); expect(h.lease.subscribe).toHaveBeenCalledOnce();
+  });
+  it('구독 수립 실패는 1·2·4초부터 최대 30초 간격으로 재시도하고 성공 뒤 멈춤', async () => {
+    vi.useFakeTimers(); const h = harness();
+    const delays = [1000, 2000, 4000, 8000, 16000, 30000, 30000];
+    for (const _ of delays) h.list.mockRejectedValueOnce(new Error('offline'));
+    await h.directory.start();
+    expect(h.directory.getSnapshot()).toMatchObject({ loaded: false, loading: false, stale: true });
+    for (const [index, delay] of delays.entries()) {
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(h.list).toHaveBeenCalledTimes(index + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.list).toHaveBeenCalledTimes(index + 2);
+    }
+    expect(h.directory.getSnapshot()).toMatchObject({ loaded: true, loading: false, stale: false, error: null });
+    expect(h.lease.subscribe).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(h.list).toHaveBeenCalledTimes(8);
+  });
+  it.each(['start', 'retry'] as const)('예약 중 %s는 즉시 재시도하고 동시 요청·기존 타이머를 합침', async method => {
+    vi.useFakeTimers(); const h = harness();
+    let finish!: (result: PaseoAgentListResult & { subscription: typeof h.lease }) => void;
+    h.list.mockRejectedValueOnce(new Error('offline'));
+    h.list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await h.directory.start();
+    const requested = h.directory[method](), started = h.directory.start(), retried = h.directory.retry();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(h.list).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+    finish({ ...page([raw('a')]), subscription: h.lease });
+    await Promise.all([requested, started, retried]);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(h.list).toHaveBeenCalledTimes(2); expect(h.lease.subscribe).toHaveBeenCalledOnce();
+  });
+  it('dispose는 예약된 재시도를 취소하고 이후 start·retry도 요청하지 않음', async () => {
+    vi.useFakeTimers(); const h = harness(); h.list.mockRejectedValueOnce(new Error('offline'));
+    await h.directory.start(); expect(vi.getTimerCount()).toBe(1);
+    await h.directory.dispose();
+    await Promise.all([h.directory.start(), h.directory.retry()]);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(h.list).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each(['resolve', 'reject'])('자동 재시도 도중 dispose는 요청을 abort하고 늦은 %s 뒤 재시도하지 않음', async result => {
+    vi.useFakeTimers(); const h = harness();
+    let finish!: (value: PaseoAgentListResult & { subscription: typeof h.lease }) => void;
+    let fail!: (reason: Error) => void;
+    h.list.mockRejectedValueOnce(new Error('offline'));
+    h.list.mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject; }));
+    await h.directory.start(); await vi.advanceTimersByTimeAsync(1000);
+    const pending = h.directory.start(), signal = h.list.mock.calls[1][0].signal;
+    expect(signal?.aborted).toBe(false);
+    await h.directory.dispose(); expect(signal?.aborted).toBe(true);
+    if (result === 'resolve') finish({ ...page([raw('a')]), subscription: h.lease });
+    else fail(new Error('aborted'));
+    await pending; await vi.advanceTimersByTimeAsync(60000);
+    expect(h.list).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+    expect(h.lease.subscribe).not.toHaveBeenCalled(); expect(h.release).toHaveBeenCalledTimes(result === 'resolve' ? 1 : 0);
   });
   it('200개 이후 페이지와 그 밖의 update를 같은 map에 반영', async () => {
     vi.useFakeTimers();
@@ -114,6 +170,8 @@ describe('공유 directory', () => {
     h.release.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
     const first = h.directory.retry(), second = h.directory.retry();
     expect(first).toBe(second); expect(h.directory.getSnapshot().loading).toBe(true);
+    const started = h.directory.start(); expect(started).toBe(first);
+    expect(h.list).toHaveBeenCalledOnce();
     finish(); await first;
     expect(h.list).toHaveBeenCalledTimes(2); expect(h.release).toHaveBeenCalledOnce();
   });

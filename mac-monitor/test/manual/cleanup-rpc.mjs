@@ -27,7 +27,9 @@ try {
   assert.equal((await rpc('get',{id})).id,id);
   await assert.rejects(rpc('get',{id:'00000000-0000-4000-a000-000000000001'}));
   await assert.rejects(rpc('terminate',{id,targets:[]}));
+  await assert.rejects(rpc('terminate',{id,targets:[{pid:process.pid,start:'0'}],confirmNonRecommended:'yes'}));
   const denied=await rpc('terminate',{id,targets:[{pid:process.pid,start:'0'}]});assert.equal(denied.results[0].sent,false);
+  const confirmed=await rpc('terminate',{id,targets:[{pid:process.pid,start:'0'}],confirmNonRecommended:true});assert.equal(confirmed.results[0].sent,false);
   assert.equal((await rpc('cancel',{id})).cancelled,true);assert.equal((await rpc('get',{id})).phase,'cancelled');id=undefined;
   const catalog=await client.getPluginCatalog(), installed=catalog.find(plugin=>plugin.id==='mac-monitor');assert.ok(installed);
   writeFileSync('/tmp/mac-monitor-installed-client.js',installed.clientBundle);

@@ -43,7 +43,11 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const snapshot = page(entries);
   const release = vi.fn(async () => {});
   const lease = { subscriptionId: 's', subscribe: (value: typeof observer) => { observer = value; value.snapshot({ ...snapshot, subscriptionId: 's' }); return vi.fn(); }, release };
-  const list = vi.fn(async () => ({ ...snapshot, subscription: lease }));
+  const list = vi.fn(async (options: { subscribe?: {}; filter?: { labels?: Record<string, string> } }) => {
+    if (options.filter?.labels) return page(entries.filter(agent => !agent.archivedAt &&
+      Object.entries(options.filter!.labels!).every(([key, value]) => agent.labels[key]?.trim() === value)));
+    return { ...snapshot, subscription: lease };
+  });
   const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
   const ref = vi.fn((id: string) => ({ refresh: async () => {
     const agent = entries.find(entry => entry.id === id);
@@ -106,6 +110,41 @@ it.each([false, true])('entry부터 대화 이동까지 구·신 화면 API로 �
   }
   expect(release).toHaveBeenCalledOnce(); expect(removeScreen).toHaveBeenCalledOnce();
   for (const button of buttons.values()) expect(button.remove).toHaveBeenCalledOnce();
+});
+it('실제 entry의 첫 조회 실패로 pill이 없어도 자동 재시도 성공 뒤 목록을 열 수 있음', async () => {
+  const snapshot = page([raw('a')]), release = vi.fn(async () => {});
+  const lease = { subscriptionId: 'recovered', release,
+    subscribe: vi.fn((observer: SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>) => {
+      observer.snapshot({ ...snapshot, subscriptionId: 'recovered' }); return vi.fn();
+    }) };
+  const list = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...snapshot, subscription: lease });
+  const removePill = vi.fn(), removeScreen = vi.fn();
+  const addComposerPill = vi.fn((_: { button: PluginButton }) => ({ update: vi.fn(), remove: removePill }));
+  const client = { paseo: { agents: { list } }, addScreen: vi.fn(() => removeScreen), openScreen: vi.fn(), addComposerPill } as unknown as PluginClientContext;
+  const cleanup = contribute(client);
+  try {
+    await act(async () => {});
+    expect(list).toHaveBeenCalledOnce(); expect(addComposerPill).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    expect(list).toHaveBeenCalledOnce(); expect(addComposerPill).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(list).toHaveBeenCalledTimes(2); expect(lease.subscribe).toHaveBeenCalledOnce();
+    expect(addComposerPill).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'a', workspaceId: 'w' }));
+    const button = addComposerPill.mock.calls[0][0].button, Icon = button.icon as React.ComponentType<PluginButtonIconProps>;
+    await act(async () => { renderer = create(<Icon {...props} />); });
+    if (button.behavior.kind !== 'action') throw new Error('action 필요');
+    const action = button.behavior;
+    await act(async () => action.onPress());
+    expect(renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id)).toEqual(['a']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(list).toHaveBeenCalledTimes(2); expect(addComposerPill).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => renderer?.unmount()); renderer = undefined;
+    await cleanup();
+  }
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(list).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+  expect(removePill).toHaveBeenCalledOnce(); expect(removeScreen).toHaveBeenCalledOnce(); expect(release).toHaveBeenCalledOnce();
 });
 it('보이는 pill 3개도 구독 하나를 공유하고 같은 라벨을 다시 갱신하지 않음', async () => {
   const h = await setup();
@@ -373,7 +412,7 @@ it('대화 이동을 위한 화면 열기 실패는 pill과 검색·정렬을 �
   await act(async () => row().props.onPress());
   expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(1);
   expect(h.agentNavigation.getSnapshot()).toBeNull();
-  expect(store.getSnapshot()).toEqual({ browserSort: 'created', browserQuery: 'b' });
+  expect(store.getSnapshot()).toEqual({ browserSort: 'created', browserQuery: 'b', cleanupDays: 7 });
   await act(async () => row().props.onPress());
   expect(h.agentNavigation.getSnapshot()).toMatchObject({ serverId: 'h', workspaceId: 'w', agentId: 'a', targetId: 'b' });
   expect(h.openPanel).not.toHaveBeenCalled(); expect(renderer!.root.findAllByType(AgentModal)).toHaveLength(0);
@@ -424,11 +463,71 @@ it('다른 workspace로 바뀐 대상은 목록·pill·공개 surface에서 이�
 });
 it('검색·정렬·스크롤은 호스트·workspace·에이전트별로 보존', () => {
   const views = createBrowserViews(), first = views.forAgent('h', 'w', 'a');
-  expect(first.getSnapshot()).toEqual({ browserSort: 'updated', browserQuery: '' });
-  first.set({ browserSort: 'created', browserQuery: '검토' }); first.browserScroll.modal = 160;
+  expect(first.getSnapshot()).toEqual({ browserSort: 'updated', browserQuery: '', cleanupDays: 7 });
+  first.set({ browserSort: 'created', browserQuery: '검토', cleanupDays: 14 }); first.browserScroll.modal = 160;
   expect(views.forAgent('h', 'w', 'a')).toBe(first);
   expect(views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(160);
+  expect(views.forAgent('h', 'w', 'a').getSnapshot().cleanupDays).toBe(14);
   for (const other of [views.forAgent('other', 'w', 'a'), views.forAgent('h', 'other', 'a'), views.forAgent('h', 'w', 'b')]) {
     expect(other).not.toBe(first); expect(other.getSnapshot().browserQuery).toBe('');
+    expect(other.getSnapshot().cleanupDays).toBe(7);
   }
+});
+
+it.each([{ compact: false, platform: 'web' }, { compact: true, platform: 'ios' }] as const)
+('$platform 정리 미리보기는 검색과 별도로 현재 workspace의 7일 대상을 보여주며 기간 변경·취소는 보관하지 않음', async layout => {
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z')); Platform.OS = layout.platform;
+  const h = await setup([raw('a'), raw('b', { updatedAt: '2026-10-02T12:00:00Z' }),
+    raw('c', { updatedAt: '2026-09-25T12:00:00Z' }), raw('recent', { updatedAt: '2026-10-09T12:00:00Z' }),
+    raw('running', { status: 'running' }), raw('foreign', { workspaceId: 'other' })]);
+  const store = h.views.forAgent('h', 'w', 'a'); store.set({ browserQuery: 'recent', browserSort: 'created' }); store.browserScroll.modal = 160;
+  await act(async () => { renderer = create(<AgentContent {...props} layout={layout} directory={h.directory}
+    views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
+  const button = (label: string) => renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.accessibilityLabel === label);
+  const preview = () => renderer!.root.find(node => node.type === ('FlatList' as React.ElementType) && node.props.accessibilityLabel === '정리할 에이전트 목록');
+  await act(async () => button('오래된 에이전트 정리').props.onPress());
+  expect(preview().props.data.map((agent: { id: string }) => agent.id)).toEqual(['c', 'b']);
+  expect(button('7일 정리 기준').props.accessibilityState.selected).toBe(true);
+  expect(button('오래된 에이전트 보관 확인').props.accessibilityState.disabled).toBe(false);
+  await act(async () => button('14일 정리 기준').props.onPress());
+  expect(preview().props.data.map((agent: { id: string }) => agent.id)).toEqual(['c']);
+  await act(async () => button('30일 정리 기준').props.onPress());
+  expect(preview().props.data).toEqual([]); expect(button('오래된 에이전트 보관 확인').props.disabled).toBe(true);
+  const cancel = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
+    node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소'));
+  await act(async () => cancel.props.onPress());
+  expect(h.archive).not.toHaveBeenCalled(); expect(h.ref).not.toHaveBeenCalled(); expect(h.list).toHaveBeenCalledOnce();
+  expect(store.getSnapshot()).toEqual({ browserQuery: 'recent', browserSort: 'created', cleanupDays: 30 });
+  expect(store.browserScroll.modal).toBe(160);
+});
+it('정리 확인창의 목록을 고정하고 중복 실행·닫기를 막으며 중단 후 이미 처리한 결과를 유지', async () => {
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+  const h = await setup([raw('a'), raw('b'), raw('c')]);
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory}
+    views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
+  const button = (label: string) => renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.accessibilityLabel === label);
+  await act(async () => button('오래된 에이전트 정리').props.onPress());
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('new'), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(250);
+  });
+  const preview = renderer!.root.find(node => node.type === ('FlatList' as React.ElementType) && node.props.accessibilityLabel === '정리할 에이전트 목록');
+  expect(preview.props.data.map((agent: { id: string }) => agent.id)).toEqual(['b', 'c']);
+  let finish!: () => void;
+  h.archive.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ archivedAt: '2026-10-10T12:00:00Z' }); }));
+  await act(async () => {
+    button('오래된 에이전트 보관 확인').props.onPress(); button('오래된 에이전트 보관 확인').props.onPress();
+  });
+  expect(h.archive).toHaveBeenCalledOnce();
+  await act(async () => renderer!.root.findByType('Modal' as React.ElementType).props.onOpenChange(false));
+  expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(1);
+  await act(async () => button('에이전트 정리 중단').props.onPress());
+  await act(async () => finish());
+  expect(h.archive).toHaveBeenCalledOnce(); expect(h.ref).toHaveBeenCalledExactlyOnceWith('b');
+  expect(h.directory.getSnapshot().agents.map(agent => agent.id)).toEqual(['a', 'c', 'new']);
+  expect(renderer!.root.findAllByType('Text' as React.ElementType).some(text => text.props.children === '1개 보관 · 0개 건너뜀 · 0개 실패')).toBe(true);
+  const review = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
+    node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '대상 다시 확인'));
+  await act(async () => review.props.onPress());
+  expect(preview.props.data.map((agent: { id: string }) => agent.id)).toEqual(['c', 'new']);
 });

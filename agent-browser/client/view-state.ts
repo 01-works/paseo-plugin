@@ -1,10 +1,11 @@
 import type { AgentSort } from '../shared/browser';
+import type { CleanupDays } from '../shared/cleanup';
 type Listener = () => void;
-export type BrowserState = { browserSort: AgentSort; browserQuery: string };
+export type BrowserState = { browserSort: AgentSort; browserQuery: string; cleanupDays: CleanupDays };
 
 // 0.10.2의 모바일 번들에서도 미변환 클래스 문법을 남기지 않는다.
 export function createBrowserViewState() {
-  let state: BrowserState = { browserSort: 'updated', browserQuery: '' };
+  let state: BrowserState = { browserSort: 'updated', browserQuery: '', cleanupDays: 7 };
   const listeners = new Set<Listener>();
   const browserScroll = { modal: 0 };
   const getSnapshot = () => state;

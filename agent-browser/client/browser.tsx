@@ -8,6 +8,7 @@ import type { BrowserViewState } from './view-state';
 import type { Agent } from '../shared/types';
 import { Button, ControlLayout, IconButton, RowButton, Status } from './controls';
 import { spacing } from './spacing';
+import { AgentCleanup } from './cleanup';
 export function AgentBrowser(props: PluginHostProps & {
   directory: AgentDirectory; store: BrowserViewState; workspaceId: string; agentId: string;
   onNavigate?: (id: string) => void;
@@ -126,6 +127,8 @@ export function AgentBrowser(props: PluginHostProps & {
         </View>
       </View>}
     />
+    <AgentCleanup key={JSON.stringify([props.host.id, workspaceId, agentId])} {...props} directory={directory} snapshot={snapshot} store={store} state={state}
+      disabled={closeTarget !== null || closingId !== null} />
     {closeTarget ? <Modal title="대화 닫기" open onOpenChange={open => { if (!open && !closeBusy.current) setCloseTarget(null); }}>
       <Modal.Content contentContainerStyle={{ padding: spacing.section }}>
         <ControlLayout compact={layout.compact}><View style={{ gap: spacing.inset }}>
