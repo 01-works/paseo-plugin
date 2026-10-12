@@ -4,6 +4,8 @@ export type Agent = {
   key: AgentKey; id: string; workspaceId: string | null;
   title: string;
   createdAt: string; updatedAt: string; state: AgentState; archived: boolean;
+  replyRevision: string; working: boolean;
+  lastReplyAt?: string | null; replyStatus?: 'pending' | 'ready' | 'error';
   parentId: string | null; cleanupSafe: boolean;
 };
 export const agentKey = (hostId: string, agentId: string): AgentKey => JSON.stringify([hostId, agentId]);

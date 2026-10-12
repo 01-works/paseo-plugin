@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { FlatList, Modal, useToast } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
-import { agentTime, browserTime } from '../shared/browser';
+import { agentChangedTime, browserTime } from '../shared/browser';
 import { cleanupPeriods, createCleanupPlan, type CleanupOutcome, type CleanupPlan, type CleanupResult } from '../shared/cleanup';
 import type { AgentDirectory, DirectorySnapshot } from './directory';
 import type { BrowserState, BrowserViewState } from './view-state';
@@ -93,7 +93,7 @@ export function AgentCleanup({ theme, layout, directory, snapshot, store, state,
                   {outcome ? <Text style={{ color: outcome.status === 'failed' ? c.statusDanger : c.foregroundMuted }}>
                     {outcome.status === 'archived' ? '보관 완료' : outcome.status === 'skipped' ? '건너뜀' : '실패'}
                   </Text> : <Status state={item.state} theme={theme} stale={snapshot.stale} />}
-                  <Text style={{ flex: 1, textAlign: 'right', color: c.foregroundMuted }}>{browserTime(agentTime(item, 'updated'), layout.compact)}</Text>
+                  <Text style={{ flex: 1, textAlign: 'right', color: c.foregroundMuted }}>{browserTime(agentChangedTime(item), layout.compact)}</Text>
                 </View>
                 {outcome?.message ? <Text style={{ color: c.foregroundMuted }}>{outcome.message}</Text> : null}
               </View>;

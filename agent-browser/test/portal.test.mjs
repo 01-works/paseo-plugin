@@ -31,7 +31,7 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
 import { createAgentDirectory } from '../client/directory';
 import { contributePills } from '../client/pill';
 import { createBrowserViews } from '../client/view-state';
-import { page, raw } from './fixtures';
+import { emptyTimeline, page, raw } from './fixtures';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 let root, directory, stop;
 afterEach(async () => {
@@ -48,7 +48,7 @@ it('React portal 본문·정렬·복사·닫기 확인과 취소·대화 이동�
   }, release: async () => {} };
   const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
   directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }),
-    ref: id => ({ refresh: async () => ({ agent: snapshot.entries.find(entry => entry.agent.id === id).agent, project: {} }), archive }) } }, 'h');
+    ref: id => ({ timeline: emptyTimeline(), refresh: async () => ({ agent: snapshot.entries.find(entry => entry.agent.id === id).agent, project: {} }), archive }) } }, 'h');
   const views = createBrowserViews(); let button;
   const openSurface = vi.fn();
   const client = { openSurface, addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };

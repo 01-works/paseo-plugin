@@ -29,6 +29,8 @@ export function AgentBrowser(props: PluginHostProps & {
     return term ? all.filter(agent => agent.title.toLocaleLowerCase().includes(term) || agent.id.toLocaleLowerCase().includes(term)) : all;
   }, [all, state.browserQuery]);
   useEffect(() => directory.watch(), [directory]);
+  useEffect(() => state.browserSort === 'updated' ? directory.watchReplies(workspaceId) : undefined,
+    [directory, workspaceId, state.browserSort]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const copyId = async (id: string) => {
     try { await copyText(id); toast.show('에이전트 ID 복사됨', { durationMs: 1800 }); }
@@ -77,11 +79,18 @@ export function AgentBrowser(props: PluginHostProps & {
         <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted }}>{snapshot.loaded ?
           (state.browserQuery.trim() ? rows.length + ' / ' : '') + all.length + '개' + (snapshot.partial ? ' · 일부' : '') : snapshot.error ? '목록 확인 불가' : '불러오는 중'}</Text>
         <View style={{ flexDirection: 'row', gap: spacing.small }}>
-          <Button theme={theme} label="최근 활동순" active={state.browserSort === 'updated'} onPress={() => store.set({ browserSort: 'updated' })}>활동순</Button>
+          <Button theme={theme} label="마지막 답변 기준 활동순" active={state.browserSort === 'updated'} onPress={() => store.set({ browserSort: 'updated' })}>활동순</Button>
           <Button theme={theme} label="최신 생성순" active={state.browserSort === 'created'} onPress={() => store.set({ browserSort: 'created' })}>생성순</Button>
         </View>
       </View>
     </View>
+    {state.browserSort === 'updated' && all.some(agent => agent.replyStatus !== 'ready') ?
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset }}>
+        <Text style={{ flex: 1, color: c.foregroundMuted }}>{all.some(agent => agent.replyStatus === 'error')
+          ? '일부 답변 시각 확인 실패 · 확인된 시각 또는 생성 시각으로 표시' : '답변 시각 확인 중'}</Text>
+        {all.some(agent => agent.replyStatus === 'error') ?
+          <Button theme={theme} onPress={() => directory.retryReplies(workspaceId)}>답변 시각 다시 읽기</Button> : null}
+      </View> : null}
     {snapshot.stale || snapshot.error || snapshot.partial || snapshot.loading && snapshot.loaded ?
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset,
         paddingVertical: spacing.small, backgroundColor: c.surface1, borderRadius: spacing.gap }}>

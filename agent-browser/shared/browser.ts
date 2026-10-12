@@ -1,8 +1,10 @@
 import type { Agent } from './types';
 export type AgentSort = 'updated' | 'created';
-const stamp = (value: string) => { const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : 0; };
+const stamp = (value?: string | null) => { const parsed = Date.parse(value ?? ''); return Number.isFinite(parsed) ? parsed : 0; };
 export const agentTime = (agent: Agent, sort: AgentSort) => sort === 'created'
-  ? stamp(agent.createdAt) : Math.max(stamp(agent.updatedAt), stamp(agent.createdAt));
+  ? stamp(agent.createdAt) : stamp(agent.lastReplyAt) || stamp(agent.createdAt);
+// 보관의 최근 변경 보호는 답변 정렬과 독립적으로 유지한다.
+export const agentChangedTime = (agent: Agent) => Math.max(stamp(agent.updatedAt), stamp(agent.createdAt));
 export function workspaceAgents(agents: readonly Agent[], workspaceId: string, sort: AgentSort, query = '') {
   if (!workspaceId.trim()) return [];
   const term = query.trim().toLocaleLowerCase();

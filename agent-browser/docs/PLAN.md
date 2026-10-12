@@ -1,15 +1,27 @@
 # agent-browser 현재 설계
 
-기준: **0.3.0 · Paseo SDK 0.11.1**. 설치·사용은 [README](../README.md), 변경 이유는
+기준: **0.3.1 · Paseo SDK 0.11.1**. 설치·사용은 [README](../README.md), 변경 이유는
 [DECISIONS](DECISIONS.md), 실제 검증 결과와 남은 항목은 [VALIDATION](VALIDATION.md)을 따릅니다.
 
 ## 구성과 데이터
 
 - client 전용 플러그인입니다. manifest 지원 범위는 `>=0.10.2 <0.12.0`입니다.
 - [entry](../index.client.tsx)는 `addScreen`·`openScreen`을 우선 사용합니다. 해당 API가 없는 0.10.2 앱에는 기존 surface API를 사용합니다. 새 API 호출 실패를 구 API로 재시도하지 않습니다.
-- 호스트별 [directory](../client/directory.ts)를 여러 pill·모달이 공유합니다. Paseo의 기존 연결과 구독 하나를 사용하고, 플러그인이 만든 구독만 해제합니다.
+- 호스트별 [directory](../client/directory.ts)를 여러 pill·모달이 공유합니다. Paseo의 기존 연결과 에이전트 목록 구독 하나를 사용하고, 플러그인이 만든 구독만 해제합니다.
 - 최초 목록은 200개씩 최대 10페이지, 호스트 전체 미보관 에이전트 2,000개까지 읽습니다. 추가 페이지는 구독 없이 조회하며, 목록 표시 범위는 현재 workspace ID와 일치하는 항목입니다.
-- 활동순은 유효한 `updatedAt`·`createdAt` 중 최신 값, 생성순은 `createdAt`입니다. 동률은 생성 시각·ID로 정렬하고, 잘못된 시각을 현재 시각으로 대체하지 않습니다.
+- 활동순은 타임라인의 마지막 비어 있지 않은 `assistant_message` 시각이며 답변이 없으면 `createdAt`입니다. 생성순은 `createdAt`입니다. 동률은 생성 시각·ID로 정렬하고, 잘못된 시각을 현재 시각으로 대체하지 않습니다.
+
+## 답변 시각
+
+[답변 캐시](../client/reply-times.ts)는 활동순을 연 workspace만 읽고 호스트별 directory에서 공유합니다.
+타임라인 tail부터 100개씩 before로 읽으며 최대 3개 에이전트를 동시에 조회합니다. 이력 본문은 보관하지 않습니다.
+조회 전후의 세대·workspace 수요·에이전트 존재 여부를 확인하고 창 종료·삭제·보관·단절·dispose 뒤 결과는 버립니다.
+오류·누락 이력·반복 cursor·잘못된 시각은 답변 없음으로 처리하지 않고 실패 안내와 재시도를 제공합니다.
+완료된 캐시는 재사용하고 원래 status·lastUserMessageAt·activeTurn ID가 바뀌거나 목록 snapshot이 재연결되면 무효화합니다.
+250ms 배치 사이에 시작·종료된 턴도 개별 update에서 기록합니다. updatedAt과 attention 변경은 무효화 기준에 넣지 않습니다.
+현재 목록의 작업 중 에이전트만 timeline을 구독하고 ready 이후 이력을 조회합니다. 새 assistant_message는 서버 timestamp로 반영하며,
+과거 페이지가 새 스트림 시각을 덮지 않게 합니다. replacement·subscription_restored는 이력을 다시 확인합니다.
+생성순·창 종료·단절에서는 타임라인 구독을 해제합니다. SDK에는 refetch 취소 signal이 없어 보낸 요청은 완료될 수 있습니다.
 
 ## 이동과 닫기
 

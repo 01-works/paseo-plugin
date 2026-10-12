@@ -5,7 +5,7 @@ import type { PluginButton, PluginButtonIconProps, PluginClientContext, PluginSu
 import type { PaseoApi, PaseoAgentListResult, SubscriptionObserver } from '@getpaseo/client';
 import { createAgentDirectory } from '../client/directory';
 import { createBrowserViews } from '../client/view-state';
-import { page, raw } from './fixtures';
+import { emptyTimeline, page, raw, timelinePage } from './fixtures';
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable', Platform: { OS: 'web' } }));
 vi.mock('@getpaseo/plugin/client/react-native', async () => {
   const { createElement } = await import('react');
@@ -49,10 +49,14 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
     return { ...snapshot, subscription: lease };
   });
   const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
-  const ref = vi.fn((id: string) => ({ refresh: async () => {
+  const replyTimes = new Map(entries.map(agent => [agent.id, agent.updatedAt]));
+  const refresh = vi.fn(async (id: string) => {
     const agent = entries.find(entry => entry.id === id);
     return agent ? { agent, project: {} } : null;
-  }, archive }));
+  });
+  const refetch = vi.fn(async (id: string) => timelinePage(replyTimes.get(id) ?? null));
+  const ref = vi.fn((id: string) => ({ refresh: () => refresh(id), archive,
+    timeline: { ...emptyTimeline(), refetch: () => refetch(id) } }));
   const directory = createAgentDirectory({ agents: { list, ref } } as unknown as PaseoApi, 'h');
   const views = createBrowserViews();
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
@@ -64,7 +68,7 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const agentNavigation = createAgentNavigation(client);
   cleanups.push(contributePills(client, directory, views, agentNavigation)); cleanups.push(() => directory.dispose()); cleanups.push(() => agentNavigation.dispose());
   await directory.start();
-  return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, archive };
+  return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, refresh, refetch, replyTimes, archive };
 }
 it.each([false, true])('entry부터 대화 이동까지 구·신 화면 API로 실행하고 구독을 해제 (신 API: %s)', async modern => {
   const snapshot = page([raw('a'), raw('b')]), release = vi.fn(async () => {});
@@ -77,7 +81,7 @@ it.each([false, true])('entry부터 대화 이동까지 구·신 화면 API로 �
   const addSurface = vi.fn((_: string, Component: typeof Screen) => { Screen = Component; return removeScreen; });
   const addScreen = vi.fn(({ Component }: { Component: typeof Screen }) => { Screen = Component; return removeScreen; });
   const buttons = new Map<string, { button: PluginButton; remove: ReturnType<typeof vi.fn> }>();
-  const client = { paseo: { agents: { list } }, addSurface, openSurface,
+  const client = { paseo: { agents: { list, ref: () => ({ timeline: emptyTimeline() }) } }, addSurface, openSurface,
     ...(modern ? { addScreen, openScreen } : {}),
     addComposerPill: ({ agentId, button }: { agentId: string; button: PluginButton }) => {
       const registration = { update: vi.fn(), remove: vi.fn() }; buttons.set(agentId, { button, remove: registration.remove }); return registration;
@@ -120,7 +124,7 @@ it('실제 entry의 첫 조회 실패로 pill이 없어도 자동 재시도 성�
   const list = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ...snapshot, subscription: lease });
   const removePill = vi.fn(), removeScreen = vi.fn();
   const addComposerPill = vi.fn((_: { button: PluginButton }) => ({ update: vi.fn(), remove: removePill }));
-  const client = { paseo: { agents: { list } }, addScreen: vi.fn(() => removeScreen), openScreen: vi.fn(), addComposerPill } as unknown as PluginClientContext;
+  const client = { paseo: { agents: { list, ref: () => ({ timeline: emptyTimeline() }) } }, addScreen: vi.fn(() => removeScreen), openScreen: vi.fn(), addComposerPill } as unknown as PluginClientContext;
   const cleanup = contribute(client);
   try {
     await act(async () => {});
@@ -241,16 +245,26 @@ it('첫 진입은 현재 workspace 탐색이고 iOS 행 탭은 공개 surface를
   await act(async () => renderer!.update(<AgentSurface {...ios} agentNavigation={h.agentNavigation} directory={h.directory} navigation={{ openAgent, openWorkspace: vi.fn() }} />));
   expect(openAgent).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
 });
-it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동작하고 조회를 늘리지 않음', async () => {
+it('답변순·생성순·검색은 현재 workspace에서 동작하고 메타데이터 변경은 답변을 재조회하지 않음', async () => {
   const h = await setup([raw('a', { createdAt: '2026-02-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z' }), raw('b')]);
   await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   const ids = () => renderer!.root.findByType('FlatList' as React.ElementType).props.data.map((agent: { id: string }) => agent.id);
   expect(ids()).toEqual(['a', 'b']);
   const list = renderer!.root.findByType('FlatList' as React.ElementType);
   await act(async () => list.props.onScroll({ nativeEvent: { contentOffset: { y: 92 } } }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  const initialReads = h.refetch.mock.calls.length;
   await act(async () => {
     h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('b', { updatedAt: '2026-03-01T00:00:00Z' }), project: {} } } as Parameters<typeof h.observer.update>[0]);
     await vi.advanceTimersByTimeAsync(250);
+  });
+  expect(ids()).toEqual(['a', 'b']); expect(h.refetch).toHaveBeenCalledTimes(initialReads);
+  h.replyTimes.set('b', '2026-03-01T00:00:00Z');
+  await act(async () => {
+    h.observer.update({ type: 'agent_update', payload: { kind: 'upsert', agent: raw('b', {
+      updatedAt: '2026-03-01T00:00:00Z', lastUserMessageAt: '2026-02-28T00:00:00Z',
+    }), project: {} } } as Parameters<typeof h.observer.update>[0]);
+    await vi.advanceTimersByTimeAsync(500);
   });
   expect(ids()).toEqual(['b', 'a']); expect(h.views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(92);
   const press = (name: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.findAllByType('Text' as React.ElementType).some(text => text.props.children === name));
@@ -263,6 +277,22 @@ it('탐색 정렬·검색·시각 업데이트는 현재 workspace 안에서 동
     workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
   expect(ids()).toEqual(['b']); expect(h.views.forAgent('h', 'w', 'a').browserScroll.modal).toBe(92);
   expect(h.list).toHaveBeenCalledOnce();
+});
+it('답변 조회 실패를 표시하고 재시도로 복구하면서 목록·검색을 유지', async () => {
+  const h = await setup(); h.refetch.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  const displayedText = () => renderer!.root.findAllByType('Text' as React.ElementType).map(node => node.props.children).join(' ');
+  expect(displayedText()).toContain('일부 답변 시각 확인 실패');
+  const input = renderer!.root.findByType('TextInput' as React.ElementType);
+  await act(async () => input.props.onChangeText('a'));
+  const retry = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
+    n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '답변 시각 다시 읽기'));
+  await act(async () => { retry.props.onPress(); await vi.advanceTimersByTimeAsync(500); });
+  expect(displayedText()).not.toContain('일부 답변 시각 확인 실패');
+  expect(h.views.forAgent('h', 'w', 'a').getSnapshot().browserQuery).toBe('a');
+  expect(h.list).toHaveBeenCalledOnce(); expect(h.refresh).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
 });
 it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우기는 이동하지 않음', async () => {
   const h = await setup([raw('a', { title: 'API 검토' }), raw('b', { title: '문서 정리' })]);
@@ -301,7 +331,7 @@ it('호버와 포커스는 피드백만 표시하고 이동·복사·닫기·재
   await act(async () => input.props.onFocus());
   await act(async () => input.props.onBlur());
   expect(renderer!.root.findByType('FlatList' as React.ElementType)).toBe(list);
-  expect(onNavigate).not.toHaveBeenCalled(); expect(h.ref).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
+  expect(onNavigate).not.toHaveBeenCalled(); expect(h.refresh).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
   expect(copyText).toHaveBeenCalledTimes(copies); expect(h.list).toHaveBeenCalledOnce();
   expect(h.views.forAgent('h', 'w', 'a').getSnapshot().browserSort).toBe('updated');
 });
@@ -332,7 +362,7 @@ it('행 닫기는 확인만 열고 취소하면 검색·정렬·스크롤·목�
   const button = (label: string) => renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) && n.props.accessibilityLabel === label);
   await act(async () => button('b 대화 닫기').props.onPress());
   expect(renderer!.root.findByType('Modal' as React.ElementType).props.title).toBe('대화 닫기');
-  expect(h.ref).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
+  expect(h.refresh).not.toHaveBeenCalled(); expect(h.archive).not.toHaveBeenCalled();
   const cancel = renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
     n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소'));
   await act(async () => cancel.props.onPress());
@@ -351,7 +381,7 @@ it('닫기 확인의 중복 클릭은 한 번 실행하고 성공 뒤에만 선�
   await act(async () => button('b 대화 닫기').props.onPress());
   const confirm = button('선택한 대화 닫기 확인');
   await act(async () => { confirm.props.onPress(); confirm.props.onPress(); });
-  expect(h.ref).toHaveBeenCalledExactlyOnceWith('b'); expect(h.archive).toHaveBeenCalledOnce();
+  expect(h.refresh).toHaveBeenCalledExactlyOnceWith('b'); expect(h.archive).toHaveBeenCalledOnce();
   expect(button('선택한 대화 닫기 확인').props.disabled).toBe(true);
   expect(renderer!.root.find(n => n.type === ('Pressable' as React.ElementType) &&
     n.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소')).props.disabled).toBe(true);
@@ -496,7 +526,7 @@ it.each([{ compact: false, platform: 'web' }, { compact: true, platform: 'ios' }
   const cancel = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
     node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소'));
   await act(async () => cancel.props.onPress());
-  expect(h.archive).not.toHaveBeenCalled(); expect(h.ref).not.toHaveBeenCalled(); expect(h.list).toHaveBeenCalledOnce();
+  expect(h.archive).not.toHaveBeenCalled(); expect(h.refresh).not.toHaveBeenCalled(); expect(h.list).toHaveBeenCalledOnce();
   expect(store.getSnapshot()).toEqual({ browserQuery: 'recent', browserSort: 'created', cleanupDays: 30 });
   expect(store.browserScroll.modal).toBe(160);
 });
@@ -523,7 +553,7 @@ it('정리 확인창의 목록을 고정하고 중복 실행·닫기를 막으�
   expect(renderer!.root.findAllByType('Modal' as React.ElementType)).toHaveLength(1);
   await act(async () => button('에이전트 정리 중단').props.onPress());
   await act(async () => finish());
-  expect(h.archive).toHaveBeenCalledOnce(); expect(h.ref).toHaveBeenCalledExactlyOnceWith('b');
+  expect(h.archive).toHaveBeenCalledOnce(); expect(h.refresh).toHaveBeenCalledExactlyOnceWith('b');
   expect(h.directory.getSnapshot().agents.map(agent => agent.id)).toEqual(['a', 'c', 'new']);
   expect(renderer!.root.findAllByType('Text' as React.ElementType).some(text => text.props.children === '1개 보관 · 0개 건너뜀 · 0개 실패')).toBe(true);
   const review = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&

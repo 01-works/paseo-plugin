@@ -1,4 +1,4 @@
-import { agentTime } from './browser';
+import { agentChangedTime } from './browser';
 import type { Agent } from './types';
 
 export const cleanupPeriods = [7, 14, 30] as const;
@@ -12,7 +12,7 @@ export function isCleanupCandidate(agent: Agent, scope: CleanupScope) {
   return Boolean(scope.workspaceId.trim() && scope.currentAgentId && Number.isFinite(scope.cutoff) &&
     !agent.archived && agent.workspaceId === scope.workspaceId && agent.id !== scope.currentAgentId && agent.cleanupSafe &&
     Number.isFinite(Date.parse(agent.createdAt)) && Number.isFinite(Date.parse(agent.updatedAt)) &&
-    agentTime(agent, 'updated') > 0 && agentTime(agent, 'updated') <= scope.cutoff);
+    agentChangedTime(agent) > 0 && agentChangedTime(agent) <= scope.cutoff);
 }
 
 /** 하위부터 보관한다. 제외된 자손·다른 workspace·순환 관계가 있는 상위는 계획에 넣지 않는다. */
@@ -24,7 +24,7 @@ export function createCleanupPlan(agents: readonly Agent[], workspaceId: string,
   const children = new Map<string, number>();
   for (const agent of active) if (agent.parentId) children.set(agent.parentId, (children.get(agent.parentId) ?? 0) + 1);
   const queue = [...eligible.values()].filter(agent => !children.get(agent.id))
-    .sort((a, b) => agentTime(a, 'updated') - agentTime(b, 'updated') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    .sort((a, b) => agentChangedTime(a) - agentChangedTime(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   for (let index = 0; index < queue.length; index++) {
     const parentId = queue[index].parentId;
     if (!parentId) continue;

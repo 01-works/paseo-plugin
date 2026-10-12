@@ -1,5 +1,6 @@
 import type { AgentSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } from './paseo-types';
 import { normalizeAgent, sameAgent } from './normalize';
+import { createReplyTimes } from './reply-times';
 import type { Agent, AgentKey } from '../shared/types';
 import { isCleanupCandidate, type CleanupPlan, type CleanupOutcome, type CleanupResult } from '../shared/cleanup';
 
@@ -36,6 +37,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   let snapshot: DirectorySnapshot = { agents: [], loaded: false, loading: true, partial: false, stale: false, error: null };
   const archiving = new Map< string, Promise< void>>();
   let cleanupTask: Promise<CleanupResult> | undefined;
+  const replies = createReplyTimes(api, schedule);
   const getSnapshot = () => snapshot;
   const subscribe = (listener: Listener) => {
     listeners.add(listener);
@@ -43,7 +45,10 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   };
   function emit(patch: Partial<DirectorySnapshot> = {}) {
     if (disposed) return;
-    snapshot = { ...snapshot, ...patch, agents: [...agents.values()] };
+    const values = [...agents.values()];
+    snapshot = { ...snapshot, ...patch };
+    replies.sync(values, snapshot.loaded && !snapshot.stale && !snapshot.loading);
+    snapshot = { ...snapshot, agents: values.map(replies.decorate) };
     for (const listener of listeners) listener();
   }
   function schedule() {
@@ -111,6 +116,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   function upsert(raw: PaseoAgent) {
     const agent = normalizeAgent(raw, hostId);
     if ((agents.get(agent.key)?.updatedAt ?? '') > agent.updatedAt) return;
+    replies.observe(agent);
     if (hydrating) recordDelta(agent.key, agent.archived ? null : agent);
     if (!agents.has(agent.key) && agents.size >= MAX_AGENTS && !agent.archived) {
       if (!snapshot.partial) emit({ partial: true });
@@ -132,6 +138,8 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     pageAbort?.abort(); pageAbort = new AbortController();
     const signal = pageAbort.signal;
     hydrating = true; deltas = new Map(); deltaOverflow = false;
+    // 재연결 동안 놓친 답변은 메타데이터가 같아도 다시 확인한다.
+    replies.reset();
     const collected = new Map<AgentKey, Agent>();
     let page = first, pages = 1;
     const ingest = (value: PaseoAgentListResult) => {
@@ -290,6 +298,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
   const dispose = async () => {
     if (disposed) return;
     disposed = true; generation++; lifetime.abort(); pageAbort?.abort();
+    replies.dispose();
     clearStartRetry();
     clearTimeout(batch); clearInterval(watchTimer);
     observer?.(); listeners.clear();
@@ -297,6 +306,7 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     await retrying?.catch(() => {});
     agents.clear();
   };
-  return { hostId, getSnapshot, subscribe, watch, start, retry, archive, cleanup, dispose };
+  return { hostId, getSnapshot, subscribe, watch, watchReplies: replies.watch, retryReplies: replies.retry,
+    start, retry, archive, cleanup, dispose };
 }
 export type AgentDirectory = ReturnType< typeof createAgentDirectory>;

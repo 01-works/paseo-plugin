@@ -17,6 +17,8 @@ export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
     key: agentKey(hostId, raw.id), id: raw.id,
     workspaceId: raw.workspaceId ?? null, title: raw.title?.trim() || raw.provider + ' · ' + raw.id.slice(0, 8),
     createdAt: raw.createdAt, updatedAt: raw.updatedAt,
+    replyRevision: JSON.stringify([raw.status, raw.lastUserMessageAt ?? null, raw.activeTurn?.turnId ?? null]),
+    working: raw.status === 'running' || raw.status === 'initializing' || Boolean(raw.activeTurn),
     state, archived: Boolean(raw.archivedAt),
     parentId, cleanupSafe: (raw.status === 'idle' || raw.status === 'closed' || raw.status === 'error') &&
       !raw.activeTurn && !raw.pendingPermissions?.length && attention !== 'permission',
@@ -25,4 +27,5 @@ export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
 export const sameAgent = (a: Agent | undefined, b: Agent) => a !== undefined &&
   a.key === b.key && a.workspaceId === b.workspaceId && a.title === b.title &&
   a.createdAt === b.createdAt && a.updatedAt === b.updatedAt &&
+  a.replyRevision === b.replyRevision && a.working === b.working &&
   a.state === b.state && a.archived === b.archived && a.parentId === b.parentId && a.cleanupSafe === b.cleanupSafe;

@@ -57,7 +57,7 @@ import { View, Text } from 'react-native';
 import { AgentContent } from ${JSON.stringify(path.join(root, 'client/content.tsx'))};
 import { createAgentDirectory } from ${JSON.stringify(path.join(root, 'client/directory.ts'))};
 import { createBrowserViews } from ${JSON.stringify(path.join(root, 'client/view-state.ts'))};
-import { page, raw } from ${JSON.stringify(path.join(root, 'test/fixtures.ts'))};
+import { page, raw, emptyTimeline, timelinePage } from ${JSON.stringify(path.join(root, 'test/fixtures.ts'))};
 const params = new URLSearchParams(location.search), compact = params.get('compact') !== '0', light = params.get('theme') === 'light';
 const total = Math.max(0, Number(params.get('nodes') ?? 12));
 const titles = ['API 응답 검증', 'UI 레이아웃 검토', '회귀 테스트', '문서 정리', '성능 측정', '오류 처리'];
@@ -78,7 +78,10 @@ const directory = createAgentDirectory({ agents: {
       Object.entries(options.filter.labels).every(([key, value]) => agent.labels[key]?.trim() === value)));
     return { ...snapshot, subscription: lease };
   },
-  ref: id => ({ refresh: async () => {
+  ref: id => ({ timeline: { ...emptyTimeline(), refetch: async () => {
+    if (params.get('replyError') === '1') throw new Error('예시 답변 조회 오류');
+    return timelinePage(entries.find(entry => entry.id === id)?.updatedAt ?? null);
+  } }, refresh: async () => {
     const agent = entries.find(entry => entry.id === id);
     return agent ? { agent, project: {} } : null;
   }, archive: async () => {
