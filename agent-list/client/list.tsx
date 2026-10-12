@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { Text, View } from 'react-native';
 import { copyText, FlatList, Icon, Modal, TextInput, useToast } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
-import { agentTime, browserTime, workspaceAgents } from '../shared/browser';
+import { agentTime, listTime, workspaceAgents } from '../shared/list';
 import type { AgentDirectory } from './directory';
-import type { BrowserViewState } from './view-state';
+import type { ListViewState } from './view-state';
 import type { Agent } from '../shared/types';
 import { Button, ControlLayout, IconButton, RowButton, Status } from './controls';
 import { spacing } from './spacing';
 import { AgentCleanup } from './cleanup';
-export function AgentBrowser(props: PluginHostProps & {
-  directory: AgentDirectory; store: BrowserViewState; workspaceId: string; agentId: string;
+export function AgentList(props: PluginHostProps & {
+  directory: AgentDirectory; store: ListViewState; workspaceId: string; agentId: string;
   onNavigate?: (id: string) => void;
 }) {
   const { theme, layout, directory, store, workspaceId, agentId, onNavigate } = props;
@@ -22,15 +22,15 @@ export function AgentBrowser(props: PluginHostProps & {
   const [closeError, setCloseError] = useState< string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const closeBusy = useRef(false), mounted = useRef(true);
-  const all = useMemo(() => workspaceAgents(snapshot.agents, workspaceId, state.browserSort),
-    [snapshot.agents, workspaceId, state.browserSort]);
+  const all = useMemo(() => workspaceAgents(snapshot.agents, workspaceId, state.listSort),
+    [snapshot.agents, workspaceId, state.listSort]);
   const rows = useMemo(() => {
-    const term = state.browserQuery.trim().toLocaleLowerCase();
+    const term = state.listQuery.trim().toLocaleLowerCase();
     return term ? all.filter(agent => agent.title.toLocaleLowerCase().includes(term) || agent.id.toLocaleLowerCase().includes(term)) : all;
-  }, [all, state.browserQuery]);
+  }, [all, state.listQuery]);
   useEffect(() => directory.watch(), [directory]);
-  useEffect(() => state.browserSort === 'updated' ? directory.watchReplies(workspaceId) : undefined,
-    [directory, workspaceId, state.browserSort]);
+  useEffect(() => state.listSort === 'updated' ? directory.watchReplies(workspaceId) : undefined,
+    [directory, workspaceId, state.listSort]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const copyId = async (id: string) => {
     try { await copyText(id); toast.show('에이전트 ID 복사됨', { durationMs: 1800 }); }
@@ -66,25 +66,25 @@ export function AgentBrowser(props: PluginHostProps & {
       <View style={{ minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset,
         borderWidth: 1, borderColor: searchFocused ? c.accent : c.border, borderRadius: spacing.gap }}>
         <Icon name="Search" size={16} color={c.foregroundMuted} />
-        <TextInput accessibilityLabel="워크스페이스 에이전트 검색" placeholder="이름 또는 ID 검색" value={state.browserQuery}
-          onChangeText={browserQuery => store.set({ browserQuery })} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
+        <TextInput accessibilityLabel="워크스페이스 에이전트 검색" placeholder="이름 또는 ID 검색" value={state.listQuery}
+          onChangeText={listQuery => store.set({ listQuery })} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
           onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
           onSubmitEditing={() => { if (rows.length === 1) navigate(rows[0].id); }}
           placeholderTextColor={c.foregroundMuted} selectionColor={c.accent}
           style={{ flex: 1, minWidth: 0, minHeight: layout.compact ? 44 : 40, padding: 0, color: c.foreground,
             outlineWidth: layout.platform === 'web' && searchFocused ? 0 : undefined }} />
-        {state.browserQuery ? <IconButton theme={theme} name="X" label="검색 지우기" onPress={() => store.set({ browserQuery: '' })} /> : null}
+        {state.listQuery ? <IconButton theme={theme} name="X" label="검색 지우기" onPress={() => store.set({ listQuery: '' })} /> : null}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset }}>
         <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted }}>{snapshot.loaded ?
-          (state.browserQuery.trim() ? rows.length + ' / ' : '') + all.length + '개' + (snapshot.partial ? ' · 일부' : '') : snapshot.error ? '목록 확인 불가' : '불러오는 중'}</Text>
+          (state.listQuery.trim() ? rows.length + ' / ' : '') + all.length + '개' + (snapshot.partial ? ' · 일부' : '') : snapshot.error ? '목록 확인 불가' : '불러오는 중'}</Text>
         <View style={{ flexDirection: 'row', gap: spacing.small }}>
-          <Button theme={theme} label="마지막 답변 기준 활동순" active={state.browserSort === 'updated'} onPress={() => store.set({ browserSort: 'updated' })}>활동순</Button>
-          <Button theme={theme} label="최신 생성순" active={state.browserSort === 'created'} onPress={() => store.set({ browserSort: 'created' })}>생성순</Button>
+          <Button theme={theme} label="마지막 답변 기준 활동순" active={state.listSort === 'updated'} onPress={() => store.set({ listSort: 'updated' })}>활동순</Button>
+          <Button theme={theme} label="최신 생성순" active={state.listSort === 'created'} onPress={() => store.set({ listSort: 'created' })}>생성순</Button>
         </View>
       </View>
     </View>
-    {state.browserSort === 'updated' && all.some(agent => agent.replyStatus !== 'ready') ?
+    {state.listSort === 'updated' && all.some(agent => agent.replyStatus !== 'ready') ?
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset }}>
         <Text style={{ flex: 1, color: c.foregroundMuted }}>{all.some(agent => agent.replyStatus === 'error')
           ? '일부 답변 시각 확인 실패 · 확인된 시각 또는 생성 시각으로 표시' : '답변 시각 확인 중'}</Text>
@@ -102,17 +102,17 @@ export function AgentBrowser(props: PluginHostProps & {
     {!onNavigate ? <Text style={{ color: c.foregroundMuted, paddingHorizontal: spacing.inset }}>이 화면에서는 대화 이동을 지원하지 않습니다.</Text> : null}
     <FlatList data={rows} keyExtractor={agent => agent.key} initialNumToRender={12} maxToRenderPerBatch={12} windowSize={5}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-      contentOffset={{ x: 0, y: store.browserScroll.modal }}
-      onScroll={event => { store.browserScroll.modal = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={64}
+      contentOffset={{ x: 0, y: store.listScroll.modal }}
+      onScroll={event => { store.listScroll.modal = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={64}
       style={{ flex: layout.compact ? 1 : undefined, minHeight: 0,
         height: !layout.compact ? Math.min(400, Math.max(160, all.length * 80)) : undefined,
         borderTopWidth: 1, borderColor: c.border }}
       contentContainerStyle={{ flexGrow: rows.length ? undefined : 1 }}
-      extraData={{ agentId, stale: snapshot.stale, sort: state.browserSort, onNavigate, closingId }}
+      extraData={{ agentId, stale: snapshot.stale, sort: state.listSort, onNavigate, closingId }}
       getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
       ListEmptyComponent={<View style={{ flex: 1, minHeight: 88, alignItems: 'center', justifyContent: 'center', padding: spacing.inset }}>
         <Text style={{ color: c.foregroundMuted }}>{!snapshot.loaded ? snapshot.error ? '목록을 읽지 못했습니다' : '목록 불러오는 중' :
-          state.browserQuery.trim() ? '검색 결과가 없습니다' : '이 워크스페이스에 에이전트가 없습니다'}</Text>
+          state.listQuery.trim() ? '검색 결과가 없습니다' : '이 워크스페이스에 에이전트가 없습니다'}</Text>
       </View>}
       renderItem={({ item }) => <View style={{ height: 80, flexDirection: 'row', alignItems: 'center', gap: spacing.gap,
         paddingHorizontal: spacing.small, paddingVertical: spacing.small,
@@ -125,8 +125,8 @@ export function AgentBrowser(props: PluginHostProps & {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
             <Status state={item.state} theme={theme} stale={snapshot.stale} />
             {item.id === agentId ? <Text style={{ color: c.accent }}>현재</Text> : null}
-            <Text numberOfLines={1} accessibilityLabel={browserTime(agentTime(item, state.browserSort))}
-              style={{ flex: 1, minWidth: 0, textAlign: 'right', color: c.foregroundMuted }}>{browserTime(agentTime(item, state.browserSort), layout.compact)}</Text>
+            <Text numberOfLines={1} accessibilityLabel={listTime(agentTime(item, state.listSort))}
+              style={{ flex: 1, minWidth: 0, textAlign: 'right', color: c.foregroundMuted }}>{listTime(agentTime(item, state.listSort), layout.compact)}</Text>
           </View>
         </RowButton>
         <View style={{ flexDirection: 'row', gap: spacing.small }}>

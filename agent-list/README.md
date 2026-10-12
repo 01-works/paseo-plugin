@@ -1,6 +1,6 @@
-# agent-browser
+# agent-list
 
-현재 워크스페이스의 Paseo 에이전트를 최근순으로 찾아 대화로 이동하고 오래된 대화를 정리하는 플러그인입니다. **Paseo SDK 0.11.1 · 플러그인 0.3.1** 기준이며, 지원 범위는 `>=0.10.2 <0.12.0`입니다.
+현재 워크스페이스의 Paseo 에이전트를 최근순으로 찾아 대화로 이동하고 오래된 대화를 정리하는 플러그인입니다. **Paseo SDK 0.11.1 · 플러그인 0.3.2** 기준이며, 지원 범위는 `>=0.10.2 <0.12.0`입니다.
 
 ## 설치·업데이트
 
@@ -8,13 +8,13 @@ Paseo 0.10.2~0.11.x의 데몬과 앱에서 플러그인 사용을 활성화한 �
 Git 설치·업데이트에서는 개발 의존성을 설치하지 않습니다. 실행에 필요한 라이브러리는 Paseo가 제공합니다.
 
 ```sh
-paseo plugin install github:01-works/paseo-plugin:agent-browser
-paseo plugin update agent-browser
+paseo plugin install github:01-works/paseo-plugin:agent-list
+paseo plugin update agent-list
 ```
 
 에이전트 입력창의 **에이전트 N** pill을 누릅니다. N은 현재 워크스페이스의 미보관 에이전트 수입니다.
 
-비활성화·복귀는 `paseo plugin disable agent-browser`, `paseo plugin enable agent-browser`입니다. 제거는 `paseo plugin remove agent-browser`입니다.
+비활성화·복귀는 `paseo plugin disable agent-list`, `paseo plugin enable agent-list`입니다. 제거는 `paseo plugin remove agent-list`입니다.
 
 ## 사용
 
@@ -51,17 +51,17 @@ paseo plugin update agent-browser
 ## 개발·검증
 
 ```sh
-cd agent-browser
+cd agent-list
 npm ci
 npm run typecheck
 npm test
 npm run audit
 paseo plugin install "$PWD"
 # 로컬 소스 변경 후
-paseo plugin reload agent-browser
+paseo plugin reload agent-list
 ```
 
-`npm run bench`는 합성 자료의 목록 처리 비용을, `node --import tsx test/manual/live.mjs`는 로컬 데몬의 목록·구독을 읽기 전용으로 확인합니다. `--replies`를 추가하면 현재 worktree의 답변 시각 조회도 검증합니다. 다른 workspace는 `AGENT_BROWSER_WORKSPACE_ID`로 지정합니다. 테스트에는 제품 entry의 Hermes 컴파일, 구독 수명, 검색·정렬·복사·대화 이동·닫기 대상 검증과 portal 클릭 경계가 포함됩니다.
+`npm run bench`는 합성 자료의 목록 처리 비용을, `node --import tsx test/manual/live.mjs`는 로컬 데몬의 목록·구독을 읽기 전용으로 확인합니다. `--replies`를 추가하면 현재 worktree의 답변 시각 조회도 검증합니다. 다른 workspace는 `AGENT_LIST_WORKSPACE_ID`로 지정합니다. 테스트에는 제품 entry의 Hermes 컴파일, 구독 수명, 검색·정렬·복사·대화 이동·닫기 대상 검증과 portal 클릭 경계가 포함됩니다.
 
 0.11.1에서는 공개 `addScreen`·`openScreen`을 사용합니다. 이 API가 없는 0.10.2 클라이언트에서는 `addSurface`·`openSurface`를 사용합니다. pill에는 여전히 navigation이 없어 경유 화면에서 `openAgent`를 호출합니다. API 기준은 [Paseo v0.11.1 플러그인 문서](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/reference.md)입니다.
 

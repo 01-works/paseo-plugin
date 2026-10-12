@@ -30,7 +30,7 @@ vi.mock('@getpaseo/plugin/client/react-native', async () => {
 });
 import { createAgentDirectory } from '../client/directory';
 import { contributePills } from '../client/pill';
-import { createBrowserViews } from '../client/view-state';
+import { createListViews } from '../client/view-state';
 import { emptyTimeline, page, raw } from './fixtures';
 import { copyText } from '@getpaseo/plugin/client/react-native';
 let root, directory, stop;
@@ -49,7 +49,7 @@ it('React portal 본문·정렬·복사·닫기 확인과 취소·대화 이동�
   const archive = vi.fn(async () => ({ archivedAt: '2026-10-07T07:00:00Z' }));
   directory = createAgentDirectory({ agents: { list: async () => ({ ...snapshot, subscription: lease }),
     ref: id => ({ timeline: emptyTimeline(), refresh: async () => ({ agent: snapshot.entries.find(entry => entry.agent.id === id).agent, project: {} }), archive }) } }, 'h');
-  const views = createBrowserViews(); let button;
+  const views = createListViews(); let button;
   const openSurface = vi.fn();
   const client = { openSurface, addComposerPill: input => { if (input.agentId === 'a') button = input.button; return { update() {}, remove() {} }; } };
   stop = contributePills(client, directory, views); await directory.start();
@@ -68,7 +68,7 @@ it('React portal 본문·정렬·복사·닫기 확인과 취소·대화 이동�
   await click([...document.querySelectorAll('#portal span')].find(node => node.textContent === '3개'));
   expect(press).toHaveBeenCalledTimes(1);
   expect(copyText).toHaveBeenLastCalledWith('b');
-  expect(views.forAgent('h', 'w', 'a').getSnapshot().browserSort).toBe('created');
+  expect(views.forAgent('h', 'w', 'a').getSnapshot().listSort).toBe('created');
   expect(document.getElementById('portal').textContent).toContain('3개');
   await click(document.querySelector('#portal [aria-label="c 대화 닫기"]'));
   expect(archive).not.toHaveBeenCalled();

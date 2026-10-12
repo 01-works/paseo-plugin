@@ -1,6 +1,6 @@
-# agent-browser 현재 설계
+# agent-list 현재 설계
 
-기준: **0.3.1 · Paseo SDK 0.11.1**. 설치·사용은 [README](../README.md), 변경 이유는
+기준: **0.3.2 · Paseo SDK 0.11.1**. 설치·사용은 [README](../README.md), 변경 이유는
 [DECISIONS](DECISIONS.md), 실제 검증 결과와 남은 항목은 [VALIDATION](VALIDATION.md)을 따릅니다.
 
 ## 구성과 데이터

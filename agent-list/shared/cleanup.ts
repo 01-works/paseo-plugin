@@ -1,4 +1,4 @@
-import { agentChangedTime } from './browser';
+import { agentChangedTime } from './list';
 import type { Agent } from './types';
 
 export const cleanupPeriods = [7, 14, 30] as const;

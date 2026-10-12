@@ -2,12 +2,12 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { Icon } from '@getpaseo/plugin/client/react-native';
 import type { PluginButtonIconProps, PluginButtonRegistration, PluginClientContext } from '@getpaseo/plugin/client';
 import type { AgentDirectory } from './directory';
-import type { BrowserViews } from './view-state';
+import type { ListViews } from './view-state';
 import { AgentModal } from './modal';
 import { createAgentNavigation, type AgentNavigation } from './navigation';
 type Listener = () => void;
 type Pill = { workspaceId: string; registration: PluginButtonRegistration; label: string };
-export function contributePills(client: PluginClientContext, directory: AgentDirectory, views: BrowserViews, agentNavigation: AgentNavigation = createAgentNavigation(client)) {
+export function contributePills(client: PluginClientContext, directory: AgentDirectory, views: ListViews, agentNavigation: AgentNavigation = createAgentNavigation(client)) {
   const pills = new Map<string, Pill>();
   let stopped = false;
   let counted: ReturnType<AgentDirectory['getSnapshot']>['agents'] | null = null;
@@ -60,7 +60,7 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
           open onOpenChange={setOpen} onNavigate={navigate} /> : null}
       </>;
     }
-    const registration = client.addComposerPill({ id: 'browser', workspaceId, agentId: id,
+    const registration = client.addComposerPill({ id: 'list', workspaceId, agentId: id,
       button: { title: '에이전트', label: '에이전트 …', icon: AgentIcon, behavior: { kind: 'action', onPress: () => setOpen(true) } } });
     pills.set(id, { workspaceId, registration, label: '에이전트 …' });
   };

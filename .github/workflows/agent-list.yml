@@ -1,20 +1,20 @@
-name: agent-browser 검증
+name: agent-list 검증
 on:
   push:
     branches: [main]
-    paths: ['agent-browser/**', '.github/workflows/agent-browser.yml']
+    paths: ['agent-list/**', '.github/workflows/agent-list.yml']
   pull_request:
-    paths: ['agent-browser/**', '.github/workflows/agent-browser.yml']
+    paths: ['agent-list/**', '.github/workflows/agent-list.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  agent-browser:
+  agent-list:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: agent-browser
+        working-directory: agent-list
     steps:
       - name: 소스 받기
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: agent-browser/package-lock.json
+          cache-dependency-path: agent-list/package-lock.json
       - name: 의존성 설치
         run: npm ci --no-audit --no-fund
       - name: 타입 검사

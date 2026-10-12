@@ -1,6 +1,16 @@
-# agent-browser 검증 기록
+# agent-list 검증 기록
 
-최신 기준: 0.3.1 · 2026-10-12. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo 앱·CLI/daemon/SDK 0.11.1.
+최신 기준: 0.3.2 · 2026-10-12. 환경: arm64 macOS 26.5.1, Node 24.18.0, Paseo 앱·CLI/daemon/SDK 0.11.1.
+
+## 2026-10-12 · agent-list 이름 전환
+
+- 폴더·manifest ID·패키지·CI·코드의 목록 관련 이름·수동 검증 도구를 `agent-list` 기준으로 변경했습니다.
+- 새 폴더에서 타입 검사, **9개 파일·109개 테스트**(배포 사본 번들·Hermes 컴파일 포함), client audit **0건** 통과.
+- 전역 `pluginsEnabled: true`, 로컬 데몬 **0.11.1**을 확인하고 현재 worktree의 `agent-list` 디렉터리를 설치했습니다.
+  **17:16:53 KST** `running`·`Plugin ready`, 로그 2개·stderr 0개 확인 후 기존 `agent-browser` 등록을 제거했습니다.
+  최종 목록에서 `agent-list`만 남고 mac-monitor·ZeroSub도 계속 `running`임을 확인했습니다.
+- Git 원격 배포와 실제 앱 화면·모바일 화면은 이번 변경에서 검증하지 않았습니다.
+  아래 과거 검증 기록의 설치 ID·경로는 당시 이름을 보존합니다.
 
 ## 2026-10-12 · 마지막 답변 기준 활동순
 

@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-const root = process.cwd(), output = path.join(tmpdir(), 'agent-browser-ui');
+const root = process.cwd(), output = path.join(tmpdir(), 'agent-list-ui');
 const option = name => process.argv.find(value => value.startsWith(name + '='))?.slice(name.length + 1);
 const require = createRequire(path.join(option('--modules') ?? root, 'package.json'));
 const web = require.resolve('react-native-web');
@@ -56,7 +56,7 @@ import { createRoot } from 'react-dom/client';
 import { View, Text } from 'react-native';
 import { AgentContent } from ${JSON.stringify(path.join(root, 'client/content.tsx'))};
 import { createAgentDirectory } from ${JSON.stringify(path.join(root, 'client/directory.ts'))};
-import { createBrowserViews } from ${JSON.stringify(path.join(root, 'client/view-state.ts'))};
+import { createListViews } from ${JSON.stringify(path.join(root, 'client/view-state.ts'))};
 import { page, raw, emptyTimeline, timelinePage } from ${JSON.stringify(path.join(root, 'test/fixtures.ts'))};
 const params = new URLSearchParams(location.search), compact = params.get('compact') !== '0', light = params.get('theme') === 'light';
 const total = Math.max(0, Number(params.get('nodes') ?? 12));
@@ -93,7 +93,7 @@ const directory = createAgentDirectory({ agents: {
     return { archivedAt: new Date().toISOString() };
   } })
 } }, 'h');
-const views = createBrowserViews(), store = views.forAgent('h', 'w', 'supervisor-001');
+const views = createListViews(), store = views.forAgent('h', 'w', 'supervisor-001');
 const colors = light ? { foreground: '#22272e', foregroundMuted: '#616b78', surface0: '#ffffff', surface1: '#f3f5f7', surface2: '#e7ebf1', border: '#d5dbe3', accent: '#395ec6', statusSuccess: '#28754c', statusWarning: '#9b6500', statusDanger: '#b83a40' }
   : { foreground: '#e5e7eb', foregroundMuted: '#a3adb9', surface0: '#181c21', surface1: '#20262d', surface2: '#303943', border: '#3a434d', accent: '#98b5ff', statusSuccess: '#7dce9b', statusWarning: '#eeb756', statusDanger: '#ee858a' };
 document.body.style.background = colors.surface0;
@@ -123,7 +123,7 @@ await build({ entryPoints: [path.join(output, 'entry.tsx')], bundle: true, forma
   alias: { 'react-native': web, '@getpaseo/plugin/client/react-native': path.join(output, 'host.tsx'),
     react: path.join(root, 'node_modules/react'), 'react-dom': path.join(root, 'node_modules/react-dom') },
   outfile: path.join(output, 'preview.js'), logLevel: 'warning' });
-await writeFile(path.join(output, 'index.html'), '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-browser 화면 검증</title><style>html,body,#root{margin:0;width:100%;height:100%;}#root{display:flex;flex-direction:column;font:14px system-ui;}*{box-sizing:border-box;}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>');
+await writeFile(path.join(output, 'index.html'), '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-list 화면 검증</title><style>html,body,#root{margin:0;width:100%;height:100%;}#root{display:flex;flex-direction:column;font:14px system-ui;}*{box-sizing:border-box;}</style><div id="root"></div><script type="module" src="/preview.js"></script></html>');
 const server = createServer(async (request, response) => {
   try {
     const file = request.url?.split('?')[0] === '/preview.js' ? 'preview.js' : 'index.html';

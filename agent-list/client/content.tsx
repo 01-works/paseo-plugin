@@ -3,13 +3,13 @@ import { View } from 'react-native';
 import { useToast } from '@getpaseo/plugin/client/react-native';
 import type { PluginHostProps } from '@getpaseo/plugin/client';
 import type { AgentDirectory } from './directory';
-import type { BrowserViews } from './view-state';
+import type { ListViews } from './view-state';
 import { ControlLayout } from './controls';
 import { spacing } from './spacing';
-import { AgentBrowser } from './browser';
+import { AgentList } from './list';
 
 export type AgentContentProps = PluginHostProps & {
-  directory: AgentDirectory; views: BrowserViews; workspaceId: string; agentId: string;
+  directory: AgentDirectory; views: ListViews; workspaceId: string; agentId: string;
   onNavigate?: (id: string) => void;
 };
 export function AgentContent(props: AgentContentProps) {
@@ -23,6 +23,6 @@ export function AgentContent(props: AgentContentProps) {
   } : undefined;
   return <ControlLayout compact={props.layout.compact}><View style={{ flex: props.layout.compact ? 1 : undefined,
     minHeight: 0, gap: spacing.inset, backgroundColor: c.surface0, width: '100%' }}>
-    <AgentBrowser {...props} store={store} onNavigate={navigate} />
+    <AgentList {...props} store={store} onNavigate={navigate} />
   </View></ControlLayout>;
 }
