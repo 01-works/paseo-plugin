@@ -14,7 +14,7 @@ import ts from 'typescript';
 const hostModules = ['@getpaseo/plugin', '@getpaseo/plugin/client', '@getpaseo/plugin/client/react-native', '@getpaseo/plugin/client/ui',
   '@tanstack/react-query', 'react', 'react/jsx-runtime', 'react-native', 'zod'];
 const require = createRequire(import.meta.url);
-const directory = mkdtempSync(path.join(tmpdir(), 'agent-browser-hermes-'));
+const directory = mkdtempSync(path.join(tmpdir(), 'agent-list-hermes-'));
 const binary = { darwin: 'osx-bin/hermesc', linux: 'linux64-bin/hermesc', win32: 'win64-bin/hermesc.exe' }[process.platform];
 if (!binary) throw new Error('Hermes 검증을 지원하지 않는 운영체제입니다');
 const hermesc = path.join(path.dirname(require.resolve('react-native/package.json')), 'sdks/hermesc', binary);

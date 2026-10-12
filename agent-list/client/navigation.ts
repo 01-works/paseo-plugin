@@ -1,15 +1,15 @@
 import type { PluginClientContext } from '@getpaseo/plugin/client';
 export const navigationSurfaceId = 'navigate';
-export type BrowserContext = {
+export type ListContext = {
   serverId: string; workspaceId: string; agentId: string; targetId: string; sequence: number;
 };
 // pill에는 navigation props가 없다. 공개 화면으로 이동 의도만 넘기고 그곳에서 openAgent를 호출한다.
 export function createAgentNavigation(client: Pick<PluginClientContext, 'openSurface'> & Partial<Pick<PluginClientContext, 'openScreen'>>) {
-  let context: BrowserContext | null = null, sequence = 0, consumed = 0;
+  let context: ListContext | null = null, sequence = 0, consumed = 0;
   const listeners = new Set<() => void>();
   const getSnapshot = () => context;
   const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-  const open = (input: Omit<BrowserContext, 'sequence'>) => {
+  const open = (input: Omit<ListContext, 'sequence'>) => {
     const previous = context;
     context = { ...input, sequence: ++sequence };
     try {
@@ -19,7 +19,7 @@ export function createAgentNavigation(client: Pick<PluginClientContext, 'openSur
     catch (error) { context = previous; throw error; }
     for (const listener of listeners) listener();
   };
-  const takeTarget = (current: BrowserContext) => {
+  const takeTarget = (current: ListContext) => {
     if (current.sequence !== context?.sequence || consumed >= current.sequence) return null;
     consumed = current.sequence;
     return current.targetId;

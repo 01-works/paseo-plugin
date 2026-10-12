@@ -1,4 +1,4 @@
-# agent-browser 레퍼런스
+# agent-list 레퍼런스
 
 개발 기준은 `@getpaseo/plugin`·`@getpaseo/client` **0.11.1**입니다. 0.10.2 문서는 이전 화면 API의 호환 경로를 확인할 때 사용합니다.
 

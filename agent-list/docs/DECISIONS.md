@@ -1,6 +1,13 @@
-# agent-browser 설계 결정
+# agent-list 설계 결정
 
-현재 기준: **0.3.1 · 2026-10-12**. 구현 구조는 [PLAN](PLAN.md), 검증 범위는 [VALIDATION](VALIDATION.md)을 따릅니다.
+현재 기준: **0.3.2 · 2026-10-12**. 구현 구조는 [PLAN](PLAN.md), 검증 범위는 [VALIDATION](VALIDATION.md)을 따릅니다.
+
+## 0.3.2 · agent-list로 이름 변경
+
+웹 브라우저 자동화 스킬 `agent-browser`와의 혼동을 줄이기 위해 폴더·설치 ID를 `agent-list`,
+패키지를 `paseo-agent-list`, pill ID를 `list`로 변경했습니다. 코드의 목록 컴포넌트·상태 이름,
+수동 검증용 환경 변수와 임시 경로, CI 경로도 함께 바꿨습니다. 화면의 한국어 `에이전트` 표시는 유지합니다.
+과거 검증 당시의 ID·경로와 고정 커밋 링크는 원래 이름을 보존합니다.
 
 ## 0.3.1 · 마지막 답변 기준 활동순
 

@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { normalizeAgent } from '../../client/normalize';
-import { workspaceAgents } from '../../shared/browser';
+import { workspaceAgents } from '../../shared/list';
 import { raw } from '../fixtures';
 const agents = Array.from({ length: 2000 }, (_, i) => ({ ...normalizeAgent(raw(String(i), {
   title: '검토 ' + i, workspaceId: i % 5 ? 'w' : 'other',

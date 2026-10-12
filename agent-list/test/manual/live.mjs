@@ -6,12 +6,12 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { createPaseoClient } from '@getpaseo/client';
 import { createAgentDirectory } from '../../client/directory.ts';
-import { workspaceAgents } from '../../shared/browser.ts';
+import { workspaceAgents } from '../../shared/list.ts';
 import { createCleanupPlan } from '../../shared/cleanup.ts';
 const sdkVersion = JSON.parse(readFileSync(new URL('../../node_modules/@getpaseo/client/package.json', import.meta.url), 'utf8')).version;
 const taskPaseoHome = process.env.PASEO_HOME ?? path.join(homedir(), '.paseo');
 const transport = createPaseoClient({
-  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-browser-local-validation', clientType: 'cli', appVersion: sdkVersion,
+  url: 'ws://127.0.0.1:6767/ws', clientId: 'agent-list-local-validation', clientType: 'cli', appVersion: sdkVersion,
   localCredential: () => readFileSync(path.join(taskPaseoHome, 'local-credential'), 'utf8').trim(),
   webSocketFactory: (url, options) => new WebSocket(url, options?.protocols, { headers: options?.headers }),
   reconnect: { enabled: false }, connectTimeoutMs: 5000,
@@ -51,7 +51,7 @@ try {
   const idleReads = reads - initialReads;
   let replyValidation;
   if (process.argv.includes('--replies')) {
-    const workspaceId = process.env.AGENT_BROWSER_WORKSPACE_ID ?? currentWorkspace;
+    const workspaceId = process.env.AGENT_LIST_WORKSPACE_ID ?? currentWorkspace;
     assert(workspaceId, '현재 worktree의 workspace를 찾지 못했습니다');
     releaseReplies = directory.watchReplies(workspaceId);
     const replyDeadline = Date.now() + 45000;
@@ -68,7 +68,7 @@ try {
   }
   // 존재하지 않는 상위 label로 조회해 필터를 무시하는 호스트에서 정리하지 않음을 확인한다.
   const filtered = await api.agents.list({ filter: { includeArchived: false,
-    labels: { 'paseo.parent-agent-id': 'agent-browser-validation-missing-parent-' + Date.now() } }, page: { limit: 1 } });
+    labels: { 'paseo.parent-agent-id': 'agent-list-validation-missing-parent-' + Date.now() } }, page: { limit: 1 } });
   assert.equal(filtered.entries.length, 0); assert.equal(filtered.pageInfo.hasMore, false);
   const workspaces = [...new Set(snapshot.agents.map(agent => agent.workspaceId).filter(Boolean))];
   const counts = workspaces.map(workspaceId => ({ workspaceId,

@@ -15,7 +15,7 @@ export function workspaceAgents(agents: readonly Agent[], workspaceId: string, s
       (a.agent.id < b.agent.id ? -1 : a.agent.id > b.agent.id ? 1 : 0))
     .map(row => row.agent);
 }
-export function browserTime(value: number, compact = false, now = Date.now()) {
+export function listTime(value: number, compact = false, now = Date.now()) {
   if (!value) return '시각 확인 불가';
   const date = new Date(value), pad = (n: number) => String(n).padStart(2, '0');
   if (compact) {
