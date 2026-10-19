@@ -2,6 +2,11 @@
 
 현재 기준: **0.3.3 · 2026-10-19**. 구현 구조는 [PLAN](PLAN.md), 검증 범위는 [VALIDATION](VALIDATION.md)을 따릅니다.
 
+## 0.3.3 · Paseo 상한 제거 (2026-10-20)
+
+manifest를 `>=0.10.2`로 바꿔 상한을 두지 않습니다. Paseo는 데몬 시작·reload 때도 범위를 검사하고 앱이 스스로 업데이트되어, 다음 마이너를 미리 막으면 업데이트 순간 모든 기기에서 플러그인이 멈춥니다. [공식 기준](https://paseo.sh/docs/plugins/reference#requirements)도 상한은 실제 비호환 릴리스에만 붙이도록 합니다.
+깨지는 릴리스는 [Paseo 새 버전 검사](../../.github/workflows/paseo-next.yml)가 `latest`·`beta` SDK로 미리 찾습니다. 코드 변경이 없어 플러그인 버전은 유지합니다.
+
 ## 0.3.3 · Paseo 0.12 지원 범위
 
 Paseo 0.12.0(2026-10-19)이 배포되어 기존 manifest `<0.12.0`으로는 0.12 호스트의 지원 범위를 벗어납니다. `@getpaseo/plugin`·`@getpaseo/client`를 0.12.0으로 올리고 manifest를 `>=0.10.2 <0.13.0`으로 넓힙니다.

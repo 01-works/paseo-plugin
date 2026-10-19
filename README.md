@@ -62,7 +62,8 @@ manifest의 `requirements.paseo`에는 최소 버전만 적습니다(`>=0.10.2`)
 ([공식 기준](https://paseo.sh/docs/plugins/reference#requirements)).
 
 대신 [Paseo 새 버전 검사](.github/workflows/paseo-next.yml)가 매일 `@getpaseo/plugin`·`@getpaseo/client`의
-`latest`·`beta`로 각 플러그인의 타입 검사·테스트·audit을 돌립니다. 고정한 개발용 SDK와 같은 버전은 건너뜁니다.
+`latest`·`beta`로 각 플러그인의 타입 검사·테스트·audit을 돌립니다. 고정한 개발용 SDK와 같은 버전과 latest와 같은 beta는
+건너뛰므로, 새 버전이 없는 날에는 ubuntu에서 버전만 확인하고 끝납니다.
 실패하면 정식 배포 전에 수정하고, 고칠 수 없으면 그 버전 미만으로 상한을 붙여 배포합니다.
 
 main에 merge해도 bootstrap 기기에는 바로 배포되지 않습니다. CI 통과를 확인한 뒤 bootstrap에서

@@ -13,18 +13,61 @@ permissions:
   contents: read
 
 jobs:
+  # 검사할 조합을 ubuntu에서 먼저 고른다. 고정 SDK와 같거나 latest와 같은 beta는 빼서
+  # 새 버전이 없는 날에는 macOS runner를 쓰지 않는다.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            mac-monitor/package.json
+            agent-list/package.json
+          sparse-checkout-cone-mode: false
+      - name: 검사할 SDK 버전 고르기
+        id: plan
+        shell: node {0}
+        run: |
+          const { execFileSync } = require("node:child_process");
+          const { appendFileSync, readFileSync } = require("node:fs");
+          const plugins = { "mac-monitor": "macos-latest", "agent-list": "ubuntu-latest" };
+          const packages = ["@getpaseo/plugin", "@getpaseo/client"];
+          const view = (spec) => execFileSync("npm", ["view", spec, "version"], { encoding: "utf8" }).trim();
+          const target = {};
+          for (const tag of ["latest", "beta"]) {
+            target[tag] = Object.fromEntries(packages.map((pkg) => [pkg, view(`${pkg}@${tag}`)]));
+          }
+          const include = [];
+          for (const [plugin, runner] of Object.entries(plugins)) {
+            const pinned = JSON.parse(readFileSync(`${plugin}/package.json`, "utf8")).devDependencies;
+            const used = packages.filter((pkg) => pinned[pkg]);
+            const seen = new Set();
+            for (const tag of ["latest", "beta"]) {
+              const specs = used.map((pkg) => `${pkg}@${target[tag][pkg]}`).join(" ");
+              const changed = used.some((pkg) => target[tag][pkg] !== pinned[pkg]);
+              if (!changed || seen.has(specs)) {
+                console.log(`${plugin} ${tag}: ${specs} - 이미 검사함, 건너뜀`);
+                continue;
+              }
+              seen.add(specs);
+              console.log(`${plugin} ${tag}: ${specs} - 검사`);
+              include.push({ plugin, runner, tag, specs });
+            }
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ include })}\n`);
+
   check:
+    needs: plan
+    if: needs.plan.outputs.matrix != '{"include":[]}'
     name: ${{ matrix.plugin }} (${{ matrix.tag }})
     strategy:
       fail-fast: false
-      matrix:
-        plugin: [mac-monitor, agent-list]
-        tag: [latest, beta]
-        include:
-          - plugin: mac-monitor
-            runner: macos-latest
-          - plugin: agent-list
-            runner: ubuntu-latest
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     defaults:
@@ -41,40 +84,15 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: ${{ matrix.plugin }}/package-lock.json
-      - name: 검사할 SDK 버전 확인
-        id: sdk
+      - name: 의존성 설치 (${{ matrix.specs }})
         env:
-          TAG: ${{ matrix.tag }}
-        run: |
-          set -euo pipefail
-          specs=""
-          changed=false
-          for pkg in @getpaseo/plugin @getpaseo/client; do
-            pinned="$(node -p "require('./package.json').devDependencies['$pkg'] ?? ''")"
-            [ -n "$pinned" ] || continue
-            target="$(npm view "$pkg@$TAG" version)"
-            echo "$pkg: 고정 $pinned, $TAG $target"
-            specs="$specs $pkg@$target"
-            [ "$target" = "$pinned" ] || changed=true
-          done
-          echo "specs=$specs" >>"$GITHUB_OUTPUT"
-          echo "changed=$changed" >>"$GITHUB_OUTPUT"
-          if [ "$changed" = false ]; then
-            echo "::notice::$TAG SDK가 고정 버전과 같아 기본 CI가 이미 검사한다. 건너뛴다."
-          fi
-      - name: 의존성 설치
-        if: steps.sdk.outputs.changed == 'true'
-        env:
-          SPECS: ${{ steps.sdk.outputs.specs }}
+          SPECS: ${{ matrix.specs }}
         run: |
           npm ci --no-audit --no-fund
           npm install --no-save --no-audit --no-fund $SPECS
       - name: 타입 검사
-        if: steps.sdk.outputs.changed == 'true'
         run: npm run typecheck
       - name: 테스트
-        if: steps.sdk.outputs.changed == 'true'
         run: npm test
       - name: React Native 경계와 기본 폰트 검사
-        if: steps.sdk.outputs.changed == 'true'
         run: npm run audit
