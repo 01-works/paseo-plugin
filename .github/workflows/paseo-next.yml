@@ -1,0 +1,80 @@
+name: Paseo 새 버전 검사
+
+# 플러그인 manifest는 Paseo 상한을 두지 않는다(README의 "Paseo 새 버전").
+# 새 정식·beta SDK로 미리 검사해, 깨지는 릴리스를 기기에 퍼지기 전에 찾는다.
+on:
+  schedule:
+    - cron: '17 0 * * *'
+  pull_request:
+    paths: ['.github/workflows/paseo-next.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.plugin }} (${{ matrix.tag }})
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [mac-monitor, agent-list]
+        tag: [latest, beta]
+        include:
+          - plugin: mac-monitor
+            runner: macos-latest
+          - plugin: agent-list
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ matrix.plugin }}
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Node 24 준비
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ${{ matrix.plugin }}/package-lock.json
+      - name: 검사할 SDK 버전 확인
+        id: sdk
+        env:
+          TAG: ${{ matrix.tag }}
+        run: |
+          set -euo pipefail
+          specs=""
+          changed=false
+          for pkg in @getpaseo/plugin @getpaseo/client; do
+            pinned="$(node -p "require('./package.json').devDependencies['$pkg'] ?? ''")"
+            [ -n "$pinned" ] || continue
+            target="$(npm view "$pkg@$TAG" version)"
+            echo "$pkg: 고정 $pinned, $TAG $target"
+            specs="$specs $pkg@$target"
+            [ "$target" = "$pinned" ] || changed=true
+          done
+          echo "specs=$specs" >>"$GITHUB_OUTPUT"
+          echo "changed=$changed" >>"$GITHUB_OUTPUT"
+          if [ "$changed" = false ]; then
+            echo "::notice::$TAG SDK가 고정 버전과 같아 기본 CI가 이미 검사한다. 건너뛴다."
+          fi
+      - name: 의존성 설치
+        if: steps.sdk.outputs.changed == 'true'
+        env:
+          SPECS: ${{ steps.sdk.outputs.specs }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund $SPECS
+      - name: 타입 검사
+        if: steps.sdk.outputs.changed == 'true'
+        run: npm run typecheck
+      - name: 테스트
+        if: steps.sdk.outputs.changed == 'true'
+        run: npm test
+      - name: React Native 경계와 기본 폰트 검사
+        if: steps.sdk.outputs.changed == 'true'
+        run: npm run audit
