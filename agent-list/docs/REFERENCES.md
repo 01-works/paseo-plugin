@@ -1,6 +1,6 @@
 # agent-list 레퍼런스
 
-개발 기준은 `@getpaseo/plugin`·`@getpaseo/client` **0.11.1**입니다. 0.10.2 문서는 이전 화면 API의 호환 경로를 확인할 때 사용합니다.
+개발 기준은 `@getpaseo/plugin`·`@getpaseo/client` **0.12.0**입니다. 0.12.0의 plugin client 타입은 0.11.1과 같으며, 0.11.1 문서를 화면 API 기준으로 함께 사용합니다. 0.10.2 문서는 이전 화면 API의 호환 경로를 확인할 때 사용합니다.
 
 - [Paseo 0.11.1 플러그인 API](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/reference.md): screen·composer pill·공개 navigation·수명주기·React Native 요소.
 - [Paseo 0.11.1 배포](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/publishing.md): Git 저장소 하위 경로 설치와 manifest build.

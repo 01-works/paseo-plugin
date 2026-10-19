@@ -53,3 +53,12 @@ describe('원시 카운터 계산', () => {
     expect(sampleStatus(0, false, true)).toBe('error'); expect(sampleStatus(null, false, false, true)).toBe('unsupported');
   });
 });
+
+describe('버전 표기', () => {
+  it('host 정보의 VERSION은 package.json 버전과 같음', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { VERSION } = await import('../shared/contracts');
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(VERSION).toBe(pkg.version);
+  });
+});

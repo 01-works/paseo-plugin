@@ -1,11 +1,11 @@
 # agent-list 현재 설계
 
-기준: **0.3.2 · Paseo SDK 0.11.1**. 설치·사용은 [README](../README.md), 변경 이유는
+기준: **0.3.3 · Paseo SDK 0.12.0**. 설치·사용은 [README](../README.md), 변경 이유는
 [DECISIONS](DECISIONS.md), 실제 검증 결과와 남은 항목은 [VALIDATION](VALIDATION.md)을 따릅니다.
 
 ## 구성과 데이터
 
-- client 전용 플러그인입니다. manifest 지원 범위는 `>=0.10.2 <0.12.0`입니다.
+- client 전용 플러그인입니다. manifest 지원 범위는 `>=0.10.2 <0.13.0`입니다.
 - [entry](../index.client.tsx)는 `addScreen`·`openScreen`을 우선 사용합니다. 해당 API가 없는 0.10.2 앱에는 기존 surface API를 사용합니다. 새 API 호출 실패를 구 API로 재시도하지 않습니다.
 - 호스트별 [directory](../client/directory.ts)를 여러 pill·모달이 공유합니다. Paseo의 기존 연결과 에이전트 목록 구독 하나를 사용하고, 플러그인이 만든 구독만 해제합니다.
 - 최초 목록은 200개씩 최대 10페이지, 호스트 전체 미보관 에이전트 2,000개까지 읽습니다. 추가 페이지는 구독 없이 조회하며, 목록 표시 범위는 현재 workspace ID와 일치하는 항목입니다.
