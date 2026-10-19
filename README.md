@@ -17,6 +17,11 @@ Paseo용 자체 플러그인과 외부 커뮤니티 플러그인의 설치·사�
 mac-monitor와 agent-list는 이 저장소에서 관리하고, ZeroSub는 Kapybara가 배포하는 외부 플러그인입니다.
 다른 커뮤니티 플러그인은 [커뮤니티 안내](docs/community-plugins.md)에서 찾을 수 있습니다.
 
+[bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
+[플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.
+설치할 플러그인과 버전(커밋·레지스트리 버전)을 bootstrap의 `paseo` 단계가 모든 기기에 맞춥니다.
+그런 Mac에서는 아래 명령 대신 `~/dev/bootstrap/bootstrap.sh --only paseo`를 실행합니다.
+
 ## 설치
 
 설치할 Paseo 호스트의 **Settings → Plugins → Enable plugins**가 켜져 있는지 확인합니다.
@@ -47,3 +52,18 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 
 자체 플러그인은 각 폴더에 manifest·소스·의존성·빌드를 갖습니다. Node 24에서 개발하며,
 개별 README의 개발·검증 절차를 따릅니다. GitHub Actions는 각 플러그인을 별도 workflow에서 검사합니다.
+
+main에 merge해도 bootstrap 기기에는 바로 배포되지 않습니다. CI 통과를 확인한 뒤 bootstrap에서
+`node scripts/paseo-plugins.mjs --bump`로 버전을 올리고 push하면 자동 갱신으로 모든 기기에 적용됩니다
+([배포 절차](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#새-버전-배포)).
+
+개발하는 기기에서는 bootstrap이 설치한 것을 지우고 고정된 클론 경로에서 폴더 설치합니다.
+Paseo 작업 폴더(`~/.paseo/worktrees/…`)는 workspace를 정리하면 사라지므로 설치 경로로 쓰지 않습니다.
+
+```sh
+paseo plugin remove <id>
+paseo plugin install ~/dev/paseo-plugin/<id>
+```
+
+폴더 설치는 bootstrap이 건드리지 않습니다. 개발이 끝나면 `paseo plugin remove <id>` 후
+`~/dev/bootstrap/bootstrap.sh --only paseo`로 bootstrap 목록의 버전을 다시 설치합니다.
