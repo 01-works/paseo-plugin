@@ -10,7 +10,7 @@ ZeroSub는 여러 Claude·ChatGPT(Codex) 구독 계정을 Paseo에서 함께 사
 | 관리 ID | `zerosub` |
 | npm 패키지 | `@kapybara/zerosub` |
 | 제작자 저장소 | [kapybara-org/zerosub](https://github.com/kapybara-org/zerosub) |
-| 문서 확인 기준 | 2026-10-09, 공식 목록의 npm 배포 `1.2.1` |
+| 문서 확인 기준 | 2026-10-20, 공식 목록의 npm 배포 `1.3.0` |
 | 최소 Paseo 버전 | `>=0.9.1` (해당 배포의 manifest) |
 
 ## 설치
@@ -29,7 +29,7 @@ paseo plugin ls
 레지스트리 식별자를 지원하지 않는 호스트에서는 확인한 동일 배포 버전을 명시해 설치할 수 있습니다.
 
 ```sh
-paseo plugin install npm:@kapybara/zerosub@1.2.1
+paseo plugin install npm:@kapybara/zerosub@1.3.0
 ```
 
 이 버전은 문서 확인 시점의 공식 목록 기준입니다. 나중에 설치할 때는 목록의 현재 버전과 요구 조건을 다시 확인합니다.
@@ -58,6 +58,7 @@ ChatGPT 코드 로그인은 해당 계정의 **Settings → Security**에서 활
 `work`는 Accounts 화면에서 지정한 실제 계정 이름으로 바꿉니다.
 `/account default`는 기본 계정을 따르는 설정으로 돌아갑니다.
 Accounts의 **Make default**는 새 에이전트와 기본 계정을 따르는 에이전트에 적용됩니다.
+1.3.0부터 열려 있는 Claude 에이전트도 바로 옮기며, 작업 중이면 현재 턴이 끝난 뒤 옮깁니다.
 ⌘K에서도 **Make … the default**를 찾을 수 있습니다.
 
 설정은 Accounts 화면 또는 **Settings → Plugins → zerosub → ZeroSub preferences**에서 조절합니다.
@@ -65,6 +66,7 @@ Accounts의 **Make default**는 새 에이전트와 기본 계정을 따르는 �
 | 설정 | 기본값 | 동작 |
 |---|---|---|
 | Automatic switching | 켜짐 | CLI가 사용 한도를 알리면 같은 제공자의 여유 있는 계정으로 전환 |
+| Move open agents when the default changes | 켜짐 | 기본 계정을 바꾸면 열려 있는 Claude 에이전트도 새 기본 계정으로 이동. 끄면 열린 에이전트는 사용 중인 계정에 고정되며, 그 계정이 로그아웃·비활성·한도 도달이면 전환 (1.3.0) |
 | 전환 후 자동 계속 (`autoContinue`) | 켜짐 | 전환 후 후속 프롬프트를 보내 중단된 작업을 이어감 |
 | 새 에이전트 분산 (`balanceNewAgents`) | 꺼짐 | 기본 계정 대신 여유가 가장 많은 계정에서 새 에이전트를 시작 |
 | Use banked resets when every account is out | 꺼짐 | 제공자의 모든 계정이 한도에 도달하면 보유한 리셋을 자동 사용 |
@@ -88,7 +90,7 @@ Codex에서 새 에이전트가 생기는 것은 플러그인의 정상 동작�
 - 계정이 하나뿐이면 보통 계정 버튼이 없습니다. **Accounts (ZeroSub)**에서 두 번째 계정을 추가하세요.
 - 계정 로그인은 공식 CLI를 통해 처리됩니다. 추가 계정의 인증 홈은 `$PASEO_HOME/zerosub/homes/`에 따로 있고, 설정·스킬·대화 기록은 주 CLI 홈과 공유합니다.
 - Claude 사용량 조회를 위해 플러그인이 해당 계정의 OAuth 토큰을 읽어 `api.anthropic.com`에 전송합니다. Codex 조회는 `codex app-server`를 사용합니다. Claude의 OAuth 기반 MCP 서버는 계정마다 로그인해야 할 수 있습니다.
-- 1.2.1은 CLI가 제공한 로그인 URL의 도메인을 검사하지 않습니다. 로그인할 때 브라우저의 실제 주소가 공식 제공자의 로그인 페이지인지 확인합니다. [로그인 URL 처리](https://github.com/kapybara-org/zerosub/blob/2354700ad8749bebc3cff142190c37e1a7bd8999/server/claude.ts#L298)
+- 1.3.0도 CLI가 제공한 로그인 URL의 도메인을 검사하지 않습니다. 로그인할 때 브라우저의 실제 주소가 공식 제공자의 로그인 페이지인지 확인합니다. [로그인 URL 처리](https://github.com/kapybara-org/zerosub/blob/a124511e5c47a7704ce262283356d378b1fc77e8/server/claude.ts#L320)
 - Claude 공용 설정에 `apiKeyHelper`나 API 키 환경 설정이 있으면 구독 대신 그 키가 사용될 수 있습니다.
 - 유휴 Claude 계정의 사용량은 이전 값일 수 있고 조회 제한도 있습니다. 필요한 경우 화면에서 새로고침합니다.
 - 암호로 보호된 데몬에서는 계정 전환에 쓰는 `paseo agent reload`가 인증할 수 없어 다음 세션 시작 때 적용될 수 있습니다.
@@ -112,10 +114,22 @@ paseo plugin remove zerosub
 ## 출처와 검증 기준
 
 설치·사용 설명은 [공식 플러그인 소개](https://paseo.sh/plugins/kapybara-org/zerosub)와
-[1.2.1 배포 README·소스](https://www.npmjs.com/package/@kapybara/zerosub/v/1.2.1)를 기준으로 작성했습니다.
+[1.3.0 배포 README·소스](https://www.npmjs.com/package/@kapybara/zerosub/v/1.3.0)를 기준으로 작성했습니다.
 최신 변경과 이슈는 [제작자 저장소](https://github.com/kapybara-org/zerosub)에서 확인합니다.
 
-### 로컬 설치 검증 (2026-10-09)
+### 1.3.0 확인 (2026-10-20)
+
+macOS, 기존 호스트 CLI·앱·데몬 `0.11.4`. 1.2.1과의 차이는 기본 계정 변경 시 열린 에이전트 이동 옵션과 CLI 출력 처리·로그인 프로세스 종료 보완입니다. manifest 요구 버전은 `>=0.9.1`로 같습니다.
+
+| 확인 항목 | 결과 |
+|---|---|
+| 공식 목록 | `1.3.0` 표시 |
+| 설치된 배포 파일 | 설치 lockfile의 SHA-512가 npm `1.3.0`의 `dist.integrity`와 일치, `gitHead`는 태그 `v1.3.0`과 일치 |
+| 실행 상태 | `running` |
+| Paseo 0.12.0 | npm CLI 0.12.0 임시 데몬(별도 home·포트)에서 `paseo plugin add kapybara-org/zerosub`로 `running`·`Plugin ready`. `zerosub.state`가 기존 CLI 계정을 `ready`로 인식 |
+| 실제 앱 화면·추가 로그인·계정 전환 | 미검증 |
+
+### 로컬 설치 검증 (2026-10-09, 1.2.1)
 
 macOS에서 CLI·앱·데몬 `0.11.1`을 기준으로 확인했습니다.
 

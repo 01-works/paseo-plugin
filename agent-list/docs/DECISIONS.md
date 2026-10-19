@@ -1,6 +1,12 @@
 # agent-list 설계 결정
 
-현재 기준: **0.3.2 · 2026-10-12**. 구현 구조는 [PLAN](PLAN.md), 검증 범위는 [VALIDATION](VALIDATION.md)을 따릅니다.
+현재 기준: **0.3.3 · 2026-10-19**. 구현 구조는 [PLAN](PLAN.md), 검증 범위는 [VALIDATION](VALIDATION.md)을 따릅니다.
+
+## 0.3.3 · Paseo 0.12 지원 범위
+
+Paseo 0.12.0(2026-10-19)이 배포되어 기존 manifest `<0.12.0`으로는 0.12 호스트의 지원 범위를 벗어납니다. `@getpaseo/plugin`·`@getpaseo/client`를 0.12.0으로 올리고 manifest를 `>=0.10.2 <0.13.0`으로 넓힙니다.
+0.11.1→0.12.0 SDK의 차이는 server ACP·provider 정의의 선택 필드 추가뿐이며 plugin client 타입은 같습니다. 0.12.0 릴리스 노트의 Plugins 항목도 버그 수정이라 코드는 바꾸지 않습니다.
+0.10.2 폴백과 0.10.2~0.11.x Git 설치를 위한 타입 유도 방식(`client/paseo-types.ts`)은 유지합니다.
 
 ## 0.3.2 · agent-list로 이름 변경
 
