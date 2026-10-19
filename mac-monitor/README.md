@@ -3,13 +3,13 @@
 macOS 전용 Paseo 시스템 모니터 플러그인입니다. CPU·메모리·OS 메모리 압력·스왑과
 SSD 용량·앱 그룹별 CPU/메모리 상위 10개를 보여줍니다. 개별 프로세스와 앱 그룹의 수동 종료,
 요청할 때만 Luna가 검토하는 정리 검사를 제공합니다.
-[Paseo SDK 0.11.1](https://github.com/getpaseo/paseo/blob/v0.11.1/public-docs/plugins/reference.md)을 사용하며 `paseo-top`과 독립적입니다. 현재 플러그인 버전은 0.6.2입니다.
+[Paseo SDK 0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/public-docs/plugins/reference.md)을 사용하며 `paseo-top`과 독립적입니다. 현재 플러그인 버전은 0.6.3입니다.
 
 ## 설치·업데이트·제거
 
 사용할 Mac의 Paseo 데몬에서 플러그인 사용이 활성화되어 있어야 합니다.
-지원 범위는 `>=0.10.2 <0.12.0`입니다. 0.11.1의 화면·사이드바 API를 우선 사용하며, 0.10.2 클라이언트에서는 기존 API를 사용합니다.
-0.11.1 SDK의 타입·자동 테스트와 실제 앱 화면의 검증 범위는 [검증 기록](docs/VALIDATION.md)에 구분합니다.
+지원 범위는 `>=0.10.2 <0.13.0`입니다. 0.11.1의 화면·사이드바 API를 우선 사용하며, 0.10.2 클라이언트에서는 기존 API를 사용합니다.
+SDK의 타입·자동 테스트와 실제 앱 화면의 검증 범위는 [검증 기록](docs/VALIDATION.md)에 구분합니다.
 
 ```sh
 paseo plugin install github:01-works/paseo-plugin:mac-monitor
