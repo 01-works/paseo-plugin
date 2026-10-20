@@ -35,6 +35,7 @@ export class Collector {
   private inspection?: (sample: Inspection | null, sampledAt: number, issue?: string) => void;
   private interestTimer?: ReturnType<typeof setTimeout>;
   private restartTimer?: ReturnType<typeof setTimeout>;
+  private recoveryTimer?: ReturnType<typeof setTimeout>;
   private watchdog?: ReturnType<typeof setInterval>;
   private nodeTimer?: ReturnType<typeof setTimeout>;
   private nodeNext = 0;
@@ -78,7 +79,24 @@ export class Collector {
     if (this.stopped) return;
     try {
       if (!this.options.command) {
-        this.root ??= this.options.root ?? await pluginRoot();
+        // 설치 중에는 설정 저장보다 플러그인 시작이 먼저일 수 있다.
+        // 재시작마다 경로를 읽고, 이전 설치에서 실패한 실행/빌드 상태를 버린다.
+        const root = this.options.root ?? await pluginRoot().catch(error => {
+          // 설정 교체 중 읽기 실패만으로 정상 경로를 버리지 않는다.
+          if (this.root) return this.root;
+          throw error;
+        });
+        if (this.stopped) return;
+        if (this.stage === 'node' && root === this.root) return;
+        if (root !== this.root) {
+          this.root = root; this.file = undefined; this.stage = 'prebuilt'; this.attempts = 0;
+          clearTimeout(this.nodeTimer);
+          await this.nodeInFlight;
+          if (this.stopped) return;
+          this.history.clear(); this.members = []; this.successfulAt = null;
+          this.streamInvalid = false; this.lastIssue = '';
+          this.value = emptySnapshot('native');
+        }
         if (this.stage === 'local' && !this.file) this.file = await buildLocal(this.root, this.abort.signal);
       }
       if (this.stopped) return;
@@ -92,9 +110,11 @@ export class Collector {
       this.log(`헬퍼 시작 (${this.stage}, pid ${source.child.pid ?? '실행 대기'})`);
     } catch (error) {
       if (this.stopped) return;
-      this.lastIssue = String(error); this.alive = false;
-      // 로컬 빌드/경로 탐색 실패. 추가 자식 없이 Node 모드로 진행한다.
-      this.enableNode();
+      // 복구 확인 실패 중에는 진행 중인 Node 수집을 중복 시작하지 않는다.
+      if (this.stage !== 'node') {
+        this.lastIssue = String(error); this.alive = false;
+        this.enableNode();
+      }
     }
   }
   private receive(line: string): void {
@@ -158,12 +178,26 @@ export class Collector {
     this.log(`Node 전용 모드로 폴백: ${this.lastIssue}; 앱 상위 목록 미지원`);
     this.received = false; this.nodeNext = this.mono(); this.sourceStarted = this.nodeNext;
     this.runNode();
+    this.scheduleRecovery();
+  }
+  private scheduleRecovery(): void {
+    clearTimeout(this.recoveryTimer);
+    if (this.stopped || this.options.root || this.options.command || this.stage !== 'node') return;
+    // 같은 경로의 실행 실패는 반복 빌드하지 않는다. 설정 변경만 저빈도로 확인한다.
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = undefined;
+      void this.launch().finally(() => this.scheduleRecovery());
+    }, 30_000);
   }
   private runNode(): void {
     if (this.stopped) return;
-    this.nodeInFlight = nodeSample(this.nodeSeq++, this.abort.signal).then(sample => { if (!this.stopped) this.accept(sample); }).catch(error => { this.lastIssue = String(error); }).finally(() => {
+    this.nodeInFlight = nodeSample(this.nodeSeq++, this.abort.signal).then(sample => {
+      if (!this.stopped && this.stage === 'node') this.accept(sample);
+    }).catch(error => {
+      if (!this.stopped && this.stage === 'node') this.lastIssue = String(error);
+    }).finally(() => {
       this.nodeInFlight = undefined;
-      if (this.stopped) return;
+      if (this.stopped || this.stage !== 'node') return;
       this.nodeNext += 2000; while (this.nodeNext <= this.mono()) this.nodeNext += 2000;
       this.nodeTimer = setTimeout(() => this.runNode(), Math.max(0, this.nodeNext - this.mono()));
     });
@@ -195,7 +229,7 @@ export class Collector {
   async stop(): Promise<void> {
     this.stopped = true; this.alive = false; this.abort.abort();
     this.history.clear();
-    clearTimeout(this.interestTimer); clearTimeout(this.restartTimer); clearTimeout(this.nodeTimer); clearInterval(this.watchdog);
+    clearTimeout(this.interestTimer); clearTimeout(this.restartTimer); clearTimeout(this.nodeTimer); clearTimeout(this.recoveryTimer); clearInterval(this.watchdog);
     await this.source?.close(); this.source = undefined;
     await Promise.all([this.starting, this.nodeInFlight]);
   }

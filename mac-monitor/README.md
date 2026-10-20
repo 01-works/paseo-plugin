@@ -3,7 +3,7 @@
 macOS 전용 Paseo 시스템 모니터 플러그인입니다. CPU·메모리·OS 메모리 압력·스왑과
 SSD 용량·앱 그룹별 CPU/메모리 상위 10개를 보여줍니다. 개별 프로세스와 앱 그룹의 수동 종료,
 요청할 때만 Luna가 검토하는 정리 검사를 제공합니다.
-[Paseo SDK 0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/public-docs/plugins/reference.md)을 사용하며 `paseo-top`과 독립적입니다. 현재 플러그인 버전은 0.6.3입니다.
+[Paseo SDK 0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/public-docs/plugins/reference.md)을 사용하며 `paseo-top`과 독립적입니다. 현재 플러그인 버전은 0.6.4입니다.
 
 ## 설치·업데이트·제거
 
@@ -247,4 +247,5 @@ npm run compare -- --samples=3   # CPU 샘플 3회 기록 후 종료
 - 커밋된 헬퍼는 arm64·Intel macOS 26 CI에서 실행·스키마 검증을 통과했습니다. Intel의 실제 Paseo 설치·화면은 미검증입니다.
 - 실제 Paseo의 두 에이전트 pill 동시 갱신과 다크 화면의 시스템 수치·상위 10개·개별 프로세스·뒤로 이동을 확인했습니다. 0.6.0 요청형 Luna 검사에서 최근 숫자 이력과 결과·스크롤을 확인했고 사용자 프로세스에 신호를 보내지 않았습니다. 현재 버전의 실제 라이트·compact 배치와 다른 Mac의 호스트 전환은 확인이 남아 있습니다.
 - 서버 설치 경로는 데몬의 설치 설정에서 읽습니다. 다른 ID로 설치하는 `--id` 별칭은 지원하지 않습니다.
+- 헬퍼 재시작 때 설치 경로를 다시 확인합니다. Node 폴백 중에는 30초마다 설정을 읽고, 업데이트로 경로가 바뀌면 새 헬퍼를 실행합니다. 같은 경로의 실패는 반복 빌드하지 않습니다.
 - ad-hoc 바이너리가 quarantine으로 차단되면 로컬 빌드/Node 폴백을 사용합니다.
