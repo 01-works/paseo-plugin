@@ -8,6 +8,11 @@ on:
   pull_request:
     paths: ['.github/workflows/paseo-next.yml']
   workflow_dispatch:
+    inputs:
+      force:
+        description: 고정 SDK와 같은 버전도 검사 (검사 경로 확인용)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +37,8 @@ jobs:
       - name: 검사할 SDK 버전 고르기
         id: plan
         shell: node {0}
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           const { execFileSync } = require("node:child_process");
           const { appendFileSync, readFileSync } = require("node:fs");
@@ -42,6 +49,7 @@ jobs:
           for (const tag of ["latest", "beta"]) {
             target[tag] = Object.fromEntries(packages.map((pkg) => [pkg, view(`${pkg}@${tag}`)]));
           }
+          const force = process.env.FORCE === "true";
           const include = [];
           for (const [plugin, runner] of Object.entries(plugins)) {
             const pinned = JSON.parse(readFileSync(`${plugin}/package.json`, "utf8")).devDependencies;
@@ -50,7 +58,7 @@ jobs:
             for (const tag of ["latest", "beta"]) {
               const specs = used.map((pkg) => `${pkg}@${target[tag][pkg]}`).join(" ");
               const changed = used.some((pkg) => target[tag][pkg] !== pinned[pkg]);
-              if (!changed || seen.has(specs)) {
+              if ((!changed && !force) || seen.has(specs)) {
                 console.log(`${plugin} ${tag}: ${specs} - 이미 검사함, 건너뜀`);
                 continue;
               }
@@ -90,6 +98,12 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm install --no-save --no-audit --no-fund $SPECS
+          for spec in $SPECS; do
+            pkg="${spec%@*}"
+            installed="$(node -p "require('./node_modules/$pkg/package.json').version")"
+            echo "$pkg: $installed"
+            [ "$pkg@$installed" = "$spec" ] || { echo "::error::$spec 대신 $installed 설치됨"; exit 1; }
+          done
       - name: 타입 검사
         run: npm run typecheck
       - name: 테스트

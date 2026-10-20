@@ -56,15 +56,22 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 ### Paseo 새 버전
 
 manifest의 `requirements.paseo`에는 최소 버전만 적습니다(`>=0.10.2`). Paseo는 설치뿐 아니라
-데몬 시작·reload 때도 이 범위를 검사하므로, 다음 마이너 버전을 미리 상한으로 막으면 Paseo가
-업데이트되는 순간 모든 기기에서 플러그인이 멈춥니다. 앱이 스스로 업데이트해서 시점을 정할 수도 없습니다.
+데몬 시작·reload 때도, 앱은 client 코드를 실행하기 전에 각자 이 범위를 검사합니다. 다음 마이너 버전을 미리
+상한으로 막으면 앱이 스스로 업데이트되는 대로(정식은 36시간에 걸쳐 단계 배포) 기기마다 플러그인이 멈춥니다.
 최소 버전은 새 API를 쓸 때 올리고, 상한은 실제로 호환되지 않는 릴리스가 확인됐을 때만 붙입니다
 ([공식 기준](https://paseo.sh/docs/plugins/reference#requirements)).
 
-대신 [Paseo 새 버전 검사](.github/workflows/paseo-next.yml)가 매일 `@getpaseo/plugin`·`@getpaseo/client`의
+[Paseo 새 버전 검사](.github/workflows/paseo-next.yml)가 매일 `@getpaseo/plugin`·`@getpaseo/client`의
 `latest`·`beta`로 각 플러그인의 타입 검사·테스트·audit을 돌립니다. 고정한 개발용 SDK와 같은 버전과 latest와 같은 beta는
-건너뛰므로, 새 버전이 없는 날에는 ubuntu에서 버전만 확인하고 끝납니다.
-실패하면 정식 배포 전에 수정하고, 고칠 수 없으면 그 버전 미만으로 상한을 붙여 배포합니다.
+건너뛰므로, 새 버전이 없는 날에는 ubuntu에서 버전만 확인하고 끝납니다. 수동 실행의 `force`는 같은 버전도 검사합니다.
+실패 알림은 GitHub 기본 규칙대로 workflow를 만들거나 cron을 마지막으로 바꾼 사람에게 갑니다.
+
+이 검사는 조기 경보입니다. beta는 정식보다 하루~며칠 먼저 나오지만 일정하지 않고, 테스트는 Paseo 모듈을 mock하므로
+실제 호스트 동작까지 보장하지 않습니다. 새 마이너가 나오면 그 버전 데몬에 설치해 `running`과 앱 화면을 확인합니다.
+
+- 정식 배포 전에 실패를 찾으면 수정본을 배포합니다. 고칠 수 없으면 그 버전 미만으로 상한을 붙여 배포합니다.
+- 이미 그 버전으로 올라간 기기에서는 상한을 붙인 revision의 업데이트가 거부되고 기존 설치본이 남습니다.
+  이때는 상한이 아니라 수정본을 배포하고, 그 전까지는 해당 기기에서 `paseo plugin disable <id>`로 끕니다.
 
 main에 merge해도 bootstrap 기기에는 바로 배포되지 않습니다. CI 통과를 확인한 뒤 bootstrap에서
 `node scripts/paseo-plugins.mjs --bump`로 버전을 올리고 push하면 자동 갱신으로 모든 기기에 적용됩니다

@@ -4,7 +4,7 @@
 
 ## 2026-10-20 · Paseo 상한 제거 (0.6.3)
 
-manifest를 `>=0.10.2`로 바꿔 상한을 두지 않는다. Paseo는 데몬 시작·reload 때도 범위를 검사하고 앱이 스스로 업데이트되어, 다음 마이너를 미리 막으면 업데이트 순간 모든 기기에서 플러그인이 멈춘다. [공식 기준](https://paseo.sh/docs/plugins/reference#requirements)도 상한은 실제 비호환 릴리스에만 붙이도록 한다. 깨지는 릴리스는 [Paseo 새 버전 검사](../../.github/workflows/paseo-next.yml)가 `latest`·`beta` SDK로 미리 찾는다. 코드 변경이 없어 버전은 유지한다.
+manifest를 `>=0.10.2`로 바꿔 상한을 두지 않는다. Paseo는 데몬 시작·reload 때, 앱은 client 실행 전에 범위를 검사하고 앱이 스스로 업데이트되어, 다음 마이너를 미리 막으면 업데이트되는 기기마다 플러그인이 멈춘다. [공식 기준](https://paseo.sh/docs/plugins/reference#requirements)도 상한은 실제 비호환 릴리스에만 붙이도록 한다. [Paseo 새 버전 검사](../../.github/workflows/paseo-next.yml)가 `latest`·`beta` SDK로 조기 경보를 낸다. 정식 전 발견이나 실제 호스트 동작을 보장하지 않아 새 마이너에서는 실제 설치를 확인한다([대응 절차](../../README.md#paseo-새-버전)). 코드 변경이 없어 버전은 유지한다.
 
 ## 2026-10-19 · Paseo 0.12 지원 범위 (0.6.3)
 
