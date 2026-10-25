@@ -10,8 +10,33 @@ ZeroSub는 여러 Claude·ChatGPT(Codex) 구독 계정을 Paseo에서 함께 사
 | 관리 ID | `zerosub` |
 | npm 패키지 | `@kapybara/zerosub` |
 | 제작자 저장소 | [kapybara-org/zerosub](https://github.com/kapybara-org/zerosub) |
-| 문서 확인 기준 | 2026-10-20, 공식 목록의 npm 배포 `1.3.0` |
+| 문서 확인 기준 | 2026-10-25, 공식 레지스트리·npm 최신 배포 `1.3.0` |
 | 최소 Paseo 버전 | `>=0.9.1` (해당 배포의 manifest) |
+| Paseo 0.13 호환성 | 설치 범위에는 포함되지만 Claude 자동 전환 등에 알려진 문제 있음. [확인 결과](#paseo-013-호환성-확인-2026-10-25) 참조 |
+
+### Paseo 0.13 호환성 확인 (2026-10-25)
+
+**1.3.0은 최신 배포지만 Paseo 0.13에서 Claude의 한도 도달·로그아웃 메시지를 놓쳐
+자동 계정 전환이 실행되지 않을 수 있습니다.** Paseo 0.13은 `agent.turn_ended.timeline`을
+항상 빈 배열로 보내고, ZeroSub 1.3.0은 이 필드에서 메시지를 찾습니다.
+실패한 턴의 `outcome.error.message`를 통한 탐지는 남아 있으므로 Codex 한도 탐지 전체가
+중단된다고 볼 수는 없습니다. 모든 계정이 소진돼 다른 제공자로 대화를 넘길 때
+빈 대화 기록을 전달하는 문제도 제작자의 수정 PR에 기록돼 있습니다.
+
+- 공식 레지스트리의 `paseo plugin update zerosub --check --json` 결과는 `current`,
+  목표 버전은 `1.3.0`입니다. npm `latest`도 `1.3.0`이며 배포 파일의 SHA-512가 일치합니다.
+  bootstrap의 고정값과 현재 설치본도 `1.3.0`이라 갱신할 배포 버전은 없습니다.
+- 배포 소스의 탐지 함수에 합성 Claude 메시지를 입력해, 기존 timeline에서는 한도·로그아웃을
+  찾고 0.13 형식의 빈 timeline에서는 둘 다 놓치는 것을 확인했습니다.
+  Codex의 failed outcome 메시지는 빈 timeline에서도 탐지했습니다. 실제 계정 전환 실험은 아닙니다.
+- 제작자 [이슈 #16](https://github.com/kapybara-org/zerosub/issues/16)과
+  [수정 PR #17](https://github.com/kapybara-org/zerosub/pull/17)이 있으며, 확인 시점에는 PR이
+  열려 있고 미병합·미배포 상태입니다. 공식 배포가 나온 뒤 버전과 동작을 다시 확인합니다.
+- 현재 Mac의 CLI·데몬은 `0.12.0`, ZeroSub는 `running`입니다.
+  0.13 실제 앱·데몬에서의 동작, 추가 로그인, 한도 도달 후 전환은 검증하지 않았습니다.
+
+Paseo의 변경 근거: [0.13.0 릴리스](https://github.com/getpaseo/paseo/releases/tag/v0.13.0),
+[현재 lifecycle 이벤트 계약](https://paseo.sh/docs/plugins/reference#events).
 
 ## 설치
 
