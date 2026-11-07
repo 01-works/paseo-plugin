@@ -5,6 +5,7 @@ import type { AgentDirectory } from './directory';
 import type { ListViews } from './view-state';
 import { AgentModal } from './modal';
 import { createAgentNavigation, type AgentNavigation } from './navigation';
+import { lineageRoots } from '../shared/lineage';
 type Listener = () => void;
 type Pill = { workspaceId: string; registration: PluginButtonRegistration; label: string };
 export function contributePills(client: PluginClientContext, directory: AgentDirectory, views: ListViews, agentNavigation: AgentNavigation = createAgentNavigation(client)) {
@@ -17,12 +18,9 @@ export function contributePills(client: PluginClientContext, directory: AgentDir
     if (snapshot.error && !snapshot.loaded) return '에이전트 · 확인 불가';
     if (!snapshot.loaded) return '에이전트 …';
     if (snapshot.stale) return snapshot.error ? '에이전트 · 확인 불가' : '에이전트 · 연결 끊김';
-    if (counted !== snapshot.agents) {
-      counted = snapshot.agents; counts.clear();
-      for (const agent of counted) if (agent.workspaceId && !agent.archived) {
-        counts.set(agent.workspaceId, (counts.get(agent.workspaceId) ?? 0) + 1);
-      }
-    }
+    if (counted !== snapshot.agents) { counted = snapshot.agents; counts.clear(); }
+    // 목록과 같이 이어진 대화는 한 작업으로 센다.
+    if (!counts.has(workspaceId)) counts.set(workspaceId, new Set(lineageRoots(counted, workspaceId).values()).size);
     const total = counts.get(workspaceId) ?? 0;
     if (snapshot.partial) return '에이전트 ' + total + ' · 일부';
     return '에이전트 ' + total;

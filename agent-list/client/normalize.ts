@@ -1,5 +1,6 @@
 import type { PaseoAgent } from './paseo-types';
 import { agentKey, type Agent, type AgentState } from '../shared/types';
+import { continuedFrom } from '../shared/lineage';
 
 export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
   const parentId = raw.labels?.['paseo.parent-agent-id']?.trim() || null;
@@ -20,7 +21,7 @@ export function normalizeAgent(raw: PaseoAgent, hostId: string): Agent {
     replyRevision: JSON.stringify([raw.status, raw.lastUserMessageAt ?? null, raw.activeTurn?.turnId ?? null]),
     working: raw.status === 'running' || raw.status === 'initializing' || Boolean(raw.activeTurn),
     state, archived: Boolean(raw.archivedAt),
-    parentId, cleanupSafe: (raw.status === 'idle' || raw.status === 'closed' || raw.status === 'error') &&
+    parentId, continuedFrom: continuedFrom(raw.id, raw.title ?? '', raw.labels), cleanupSafe: (raw.status === 'idle' || raw.status === 'closed' || raw.status === 'error') &&
       !raw.activeTurn && !raw.pendingPermissions?.length && attention !== 'permission',
   };
 }
@@ -28,4 +29,4 @@ export const sameAgent = (a: Agent | undefined, b: Agent) => a !== undefined &&
   a.key === b.key && a.workspaceId === b.workspaceId && a.title === b.title &&
   a.createdAt === b.createdAt && a.updatedAt === b.updatedAt &&
   a.replyRevision === b.replyRevision && a.working === b.working &&
-  a.state === b.state && a.archived === b.archived && a.parentId === b.parentId && a.cleanupSafe === b.cleanupSafe;
+  a.state === b.state && a.archived === b.archived && a.parentId === b.parentId && a.continuedFrom === b.continuedFrom && a.cleanupSafe === b.cleanupSafe;
