@@ -53,6 +53,28 @@ it('안전한 트리는 하위부터 처리하며 이미 보관된 자손·고�
   expect(ids(entries)).toEqual(['child', 'orphan', 'root']);
 });
 
+const recent = (id: string, patch: Partial<PaseoAgent> = {}) => old(id, { updatedAt: new Date(now - day).toISOString(), ...patch });
+const continued = (from: string) => ({ 'zerosub.continued-from': from });
+it('이어진 대화는 묶음 전체가 오래됐을 때만 함께 정리하고 하나라도 최근·작업 중·현재면 묶음을 남김', () => {
+  const entries = [old('a'), old('b', { labels: continued('a') }), old('c', { title: 'b 에이전트 이어서 진행' }), // 제목 속 ID는 UUID만 인정
+    old('r1'), recent('r2', { labels: { 'handoff.from': 'r1' } }),
+    old('x1'), old('x2', { status: 'running', labels: continued('x1') }),
+    old('p1'), old('current', { labels: continued('p1') }),
+    old('solo')];
+  expect(new Set(ids(entries))).toEqual(new Set(['a', 'b', 'c', 'solo']));
+});
+it('하위 대화 때문에 묶음 일부가 계획에서 빠지면 묶음 전체를 뺌', () => {
+  const entries = [old('a'), old('b', { labels: continued('a') }), recent('c', { labels: { 'paseo.parent-agent-id': 'b' } }), old('solo')];
+  expect(ids(entries)).toEqual(['solo']);
+});
+it('제목에 적힌 대화 ID와 도우미 묶음 라벨도 같은 작업으로 보고, 빈 라벨은 묶지 않음', () => {
+  const u1 = '11111111-1111-4111-8111-111111111111', u2 = '22222222-2222-4222-8222-222222222222';
+  const entries = [old(u1), recent(u2, { title: u1 + ' 에이전트 이어서 진행' }),
+    old('l1'), recent('l2', { labels: { 'agent-list.continued-from': 'l1' } }),
+    old('e1'), recent('e2', { labels: { 'agent-list.continued-from': ' ' } })];
+  expect(ids(entries)).toEqual(['e1']);
+});
+
 async function setup(entries = [old('current'), old('target')], first = page(entries)) {
   let observer!: SubscriptionObserver<PaseoAgentListResult & { subscriptionId: string }>;
   const lease = { subscriptionId: 's' as string | null,
@@ -114,6 +136,26 @@ it('확인 후 새 하위가 생긴 상위와 오래된 조회 응답 이후 실
   });
   expect((await live.directory.cleanup(plan(live.entries))).outcomes[0].status).toBe('skipped');
   expect(live.archive).not.toHaveBeenCalled();
+});
+it('확인 후 이어진 대화가 최근이 되면 묶음의 오래된 대화도 보관하지 않음', async () => {
+  const entries = [old('current'), old('src'), old('next', { labels: continued('src') })];
+  const h = await setup(entries), approved = plan(entries);
+  expect(new Set(approved.agents.map(agent => agent.id))).toEqual(new Set(['src', 'next']));
+  h.observer.update({ type: 'agent_update', payload: { kind: 'upsert',
+    agent: { ...entries[2], updatedAt: new Date(now).toISOString() }, project: {} } } as Parameters<typeof h.observer.update>[0]);
+  await vi.waitFor(() => expect(h.directory.getSnapshot().agents.find(agent => agent.id === 'next')?.updatedAt).toBe(new Date(now).toISOString()));
+  const result = await h.directory.cleanup(approved);
+  expect(result.outcomes.map(outcome => outcome.status)).toEqual(['skipped', 'skipped']);
+  expect(h.archive).not.toHaveBeenCalled();
+});
+it('실행 중 묶음의 한 대화를 보관하지 못하면 같은 묶음의 남은 대화도 보관하지 않음', async () => {
+  const entries = [old('current'), old('src', { updatedAt: new Date(now - 9 * day).toISOString() }), old('next', { labels: continued('src') })];
+  const h = await setup(entries), approved = plan(entries);
+  expect(approved.agents.map(agent => agent.id)).toEqual(['src', 'next']);
+  h.archive.mockImplementationOnce(async () => { throw new Error('보관 실패'); });
+  const result = await h.directory.cleanup(approved);
+  expect(result.outcomes.map(outcome => [outcome.id, outcome.status])).toEqual([['src', 'failed'], ['next', 'skipped']]);
+  expect(h.archive).toHaveBeenCalledOnce();
 });
 it('하위 보관이 실패한 상위는 건너뛰고 독립된 대상은 계속 처리', async () => {
   const entries = [old('current'), old('parent'), old('child', { labels: { 'paseo.parent-agent-id': 'parent' } }), old('other')];

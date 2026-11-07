@@ -57,7 +57,10 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const refetch = vi.fn(async (id: string) => timelinePage(replyTimes.get(id) ?? null));
   const ref = vi.fn((id: string) => ({ refresh: () => refresh(id), archive,
     timeline: { ...emptyTimeline(), refetch: () => refetch(id) } }));
-  const directory = createAgentDirectory({ agents: { list, ref } } as unknown as PaseoApi, 'h');
+  const createAgent = vi.fn(async () => ({ id: 'helper' }));
+  const providers = { listModels: vi.fn(async () => ({ models: [{ id: 'gpt-6.1-terra' }] })) };
+  const directory = createAgentDirectory({ agents: { list, ref }, providers,
+    workspaces: { ref: () => ({ agents: { create: createAgent } }) } } as unknown as PaseoApi, 'h');
   const views = createListViews();
   const buttons = new Map<string, { button: PluginButton; update: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }>();
   const openPanel = vi.fn(), openSurface = vi.fn();
@@ -68,7 +71,7 @@ async function setup(entries = [raw('a'), raw('b', { labels: { 'paseo.parent-age
   const agentNavigation = createAgentNavigation(client);
   cleanups.push(contributePills(client, directory, views, agentNavigation)); cleanups.push(() => directory.dispose()); cleanups.push(() => agentNavigation.dispose());
   await directory.start();
-  return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, refresh, refetch, replyTimes, archive };
+  return { directory, views, buttons, list, openPanel, openSurface, addComposerPill, agentNavigation, observer, ref, refresh, refetch, replyTimes, archive, createAgent };
 }
 it.each([false, true])('entry부터 대화 이동까지 구·신 화면 API로 실행하고 구독을 해제 (신 API: %s)', async modern => {
   const snapshot = page([raw('a'), raw('b')]), release = vi.fn(async () => {});
@@ -311,6 +314,20 @@ it('검색 제출은 결과가 하나일 때만 대화를 열고 복사·지우�
   await act(async () => button('검색 지우기').props.onPress());
   expect(input().props.value).toBe(''); expect(onNavigate).toHaveBeenCalledOnce(); expect(h.list).toHaveBeenCalledOnce();
 });
+it('이어진 대화는 최근 대화 한 줄과 이어짐 수로 접고, 이전 대화 제목으로 검색해도 그 줄로 연다', async () => {
+  const h = await setup([raw('cur'), raw('old', { title: '결제 진단', createdAt: '2026-01-01T00:00:00Z' }),
+    raw('new', { title: '재개 (continued)', createdAt: '2026-01-02T00:00:00Z', labels: { 'zerosub.continued-from': 'old' } })]);
+  const onNavigate = vi.fn();
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory} views={h.views}
+    workspaceId="w" agentId="cur" onNavigate={onNavigate} />); });
+  const list = () => renderer!.root.find(n => n.type === ('FlatList' as React.ElementType) && Array.isArray(n.props.data) && n.props.extraData?.linked);
+  await act(async () => h.views.forAgent('h', 'w', 'cur').set({ listSort: 'created' }));
+  expect(list().props.data.map((agent: { id: string }) => agent.id)).toEqual(['new', 'cur']);
+  expect(renderer!.root.findAllByType('Text' as React.ElementType).some(text => text.props.children === '이어짐 1')).toBe(true);
+  const input = renderer!.root.findByType('TextInput' as React.ElementType);
+  await act(async () => input.props.onChangeText('결제'));
+  await act(async () => input.props.onSubmitEditing()); expect(onNavigate).toHaveBeenCalledExactlyOnceWith('new');
+});
 it('호버와 포커스는 피드백만 표시하고 이동·복사·닫기·재조회를 실행하지 않음', async () => {
   const h = await setup(), onNavigate = vi.fn();
   const copies = vi.mocked(copyText).mock.calls.length;
@@ -522,7 +539,10 @@ it.each([{ compact: false, platform: 'web' }, { compact: true, platform: 'ios' }
   await act(async () => button('14일 정리 기준').props.onPress());
   expect(preview().props.data.map((agent: { id: string }) => agent.id)).toEqual(['c']);
   await act(async () => button('30일 정리 기준').props.onPress());
-  expect(preview().props.data).toEqual([]); expect(button('오래된 에이전트 보관 확인').props.disabled).toBe(true);
+  // 보관 대상이 없어도 이름 정리는 실행할 수 있고, 이름 정리를 끄면 확인할 일이 없다.
+  expect(preview().props.data).toEqual([]); expect(button('오래된 에이전트 보관 확인').props.disabled).toBe(false);
+  await act(async () => button('보관 뒤 이름도 정리').props.onPress());
+  expect(button('오래된 에이전트 보관 확인').props.disabled).toBe(true);
   const cancel = renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) &&
     node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '취소'));
   await act(async () => cancel.props.onPress());
@@ -560,4 +580,21 @@ it('정리 확인창의 목록을 고정하고 중복 실행·닫기를 막으�
     node.findAllByType('Text' as React.ElementType).some(text => text.props.children === '대상 다시 확인'));
   await act(async () => review.props.onPress());
   expect(preview.props.data.map((agent: { id: string }) => agent.id)).toEqual(['c', 'new']);
+  expect(h.createAgent).not.toHaveBeenCalled();
+});
+it('정리 확인 한 번으로 보관을 끝낸 뒤 이름 정리 대화를 만든다', async () => {
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+  const h = await setup([raw('a'), raw('b')]);
+  await act(async () => { renderer = create(<AgentContent {...props} directory={h.directory}
+    views={h.views} workspaceId="w" agentId="a" onNavigate={vi.fn()} />); });
+  const button = (label: string) => renderer!.root.find(node => node.type === ('Pressable' as React.ElementType) && node.props.accessibilityLabel === label);
+  await act(async () => button('오래된 에이전트 정리').props.onPress());
+  h.archive.mockImplementationOnce(async () => {
+    expect(h.createAgent).not.toHaveBeenCalled(); return { archivedAt: '2026-10-10T12:00:00Z' };
+  });
+  await act(async () => button('오래된 에이전트 보관 확인').props.onPress());
+  expect(h.archive).toHaveBeenCalledOnce(); expect(h.createAgent).toHaveBeenCalledOnce();
+  expect(h.createAgent).toHaveBeenCalledWith(expect.objectContaining({ config: { provider: 'codex/gpt-6.1-terra', modeId: 'auto-review', thinkingOptionId: 'low' } }));
+  expect(renderer!.root.findAllByType('Text' as React.ElementType).some(text =>
+    text.props.children === "이름 정리를 시작했습니다. 결과는 '에이전트 이름 정리' 대화에서 확인합니다.")).toBe(true);
 });

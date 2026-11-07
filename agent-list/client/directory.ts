@@ -2,7 +2,9 @@ import type { AgentSubscription, PaseoApi, PaseoAgent, PaseoAgentListResult } fr
 import { normalizeAgent, sameAgent } from './normalize';
 import { createReplyTimes } from './reply-times';
 import type { Agent, AgentKey } from '../shared/types';
-import { isCleanupCandidate, type CleanupPlan, type CleanupOutcome, type CleanupResult } from '../shared/cleanup';
+import { renameModels, renamePrompt, renameRole, renameRoleLabel } from '../shared/rename';
+import { lineageRoots } from '../shared/lineage';
+import { isCleanupCandidate, lineageReady, type CleanupPlan, type CleanupOutcome, type CleanupResult } from '../shared/cleanup';
 
 export type DirectorySnapshot = {
   agents: readonly Agent[]; loaded: boolean; loading: boolean; partial: boolean; stale: boolean; error: string | null;
@@ -235,9 +237,14 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     const targets = [...new Map(plan.agents.map(agent => [agent.id, agent])).values()];
     const available = () => cleanupAvailable() && !options.signal?.aborted;
     const hasLinkedChild = (id: string) => [...agents.values()].some(agent => !agent.archived && agent.parentId === id);
+    // 이어진 묶음은 실행 직전 목록으로 다시 판단한다. 묶음의 다른 대화가 최근이 되면 함께 남긴다.
+    const lineageBusy = (id: string) => !lineageReady([...agents.values()].filter(agent => !agent.archived), plan)(id);
+    // 묶음의 한 대화를 건너뛰거나 실패하면 같은 묶음의 남은 대화도 보관하지 않는다.
+    const planRoots = lineageRoots(targets, plan.workspaceId), heldRoots = new Set< string>();
     cleanupTask = (async () => {
       const outcomes: CleanupOutcome[] = [];
       const report = (target: Agent, status: CleanupOutcome['status'], message?: string) => {
+        if (status !== 'archived') heldRoots.add(planRoots.get(target.id) ?? target.id);
         outcomes.push({ id: target.id, title: target.title, status, ...(message ? { message } : {}) });
         options.onProgress?.([...outcomes]);
       };
@@ -249,6 +256,9 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
         }
         if (hasLinkedChild(target.id)) {
           report(target, 'skipped', '연결된 하위 대화가 남아 있어 제외했습니다'); continue;
+        }
+        if (heldRoots.has(planRoots.get(target.id) ?? target.id) || lineageBusy(target.id)) {
+          report(target, 'skipped', '이어진 대화를 함께 보관할 수 없어 제외했습니다'); continue;
         }
         let archiveRequested = false;
         try {
@@ -277,6 +287,9 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
           if (hasLinkedChild(target.id)) {
             report(target, 'skipped', '연결된 하위 대화가 남아 있어 제외했습니다'); continue;
           }
+          if (heldRoots.has(planRoots.get(target.id) ?? target.id) || lineageBusy(target.id)) {
+            report(target, 'skipped', '이어진 대화를 함께 보관할 수 없어 제외했습니다'); continue;
+          }
           archiveRequested = true;
           await handle.archive();
           if (!disposed) { remove(target.id); clearTimeout(batch); batch = undefined; emit(); }
@@ -295,6 +308,23 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     })().finally(() => { cleanupTask = undefined; });
     return cleanupTask;
   };
+  // 이름 정리 도우미: 이 기기에서 쓸 수 있는 저렴한 모델로 같은 workspace에 새 대화를 만든다.
+  let renaming: Promise< string> | undefined;
+  const startRename = (workspaceId: string): Promise< string> => renaming ??= (async () => {
+    if (disposed || !workspaceId.trim()) throw actionError('연결 상태를 확인한 뒤 다시 시도해 주세요');
+    let choice: (typeof renameModels)[number] | undefined;
+    for (const option of renameModels) {
+      const listed = await api.providers.listModels(option.provider).catch(() => null);
+      if (listed?.models?.some(entry => entry.id === option.model)) { choice = option; break; }
+    }
+    if (!choice) throw actionError('이름 정리에 쓸 모델(' + renameModels.map(option => option.model).join(', ') + ')을 찾지 못했습니다');
+    const handle = await api.workspaces.ref(workspaceId).agents.create({
+      config: { provider: choice.provider + '/' + choice.model, modeId: choice.modeId, thinkingOptionId: choice.thinkingOptionId },
+      title: '에이전트 이름 정리', prompt: renamePrompt(workspaceId),
+      labels: { [renameRoleLabel]: renameRole },
+    });
+    return handle.id;
+  })().finally(() => { renaming = undefined; });
   const dispose = async () => {
     if (disposed) return;
     disposed = true; generation++; lifetime.abort(); pageAbort?.abort();
@@ -307,6 +337,6 @@ export function createAgentDirectory(api: PaseoApi, hostId: string) {
     agents.clear();
   };
   return { hostId, getSnapshot, subscribe, watch, watchReplies: replies.watch, retryReplies: replies.retry,
-    start, retry, archive, cleanup, dispose };
+    start, retry, archive, cleanup, startRename, dispose };
 }
 export type AgentDirectory = ReturnType< typeof createAgentDirectory>;

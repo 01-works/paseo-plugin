@@ -9,6 +9,7 @@ import type { Agent } from '../shared/types';
 import { Button, ControlLayout, IconButton, RowButton, Status } from './controls';
 import { spacing } from './spacing';
 import { AgentCleanup } from './cleanup';
+import { collapseLineage, lineageRoots } from '../shared/lineage';
 export function AgentList(props: PluginHostProps & {
   directory: AgentDirectory; store: ListViewState; workspaceId: string; agentId: string;
   onNavigate?: (id: string) => void;
@@ -24,10 +25,15 @@ export function AgentList(props: PluginHostProps & {
   const closeBusy = useRef(false), mounted = useRef(true);
   const all = useMemo(() => workspaceAgents(snapshot.agents, workspaceId, state.listSort),
     [snapshot.agents, workspaceId, state.listSort]);
+  // 이어진 대화는 한 작업으로 접어 대표 한 줄만 보인다. 검색은 묶음의 모든 대화를 본다.
+  const groups = useMemo(() => collapseLineage(all, lineageRoots(snapshot.agents, workspaceId), agentId),
+    [all, snapshot.agents, workspaceId, agentId]);
+  const linked = useMemo(() => new Map(groups.map(group => [group.agent.id, group.members.length - 1])), [groups]);
   const rows = useMemo(() => {
     const term = state.listQuery.trim().toLocaleLowerCase();
-    return term ? all.filter(agent => agent.title.toLocaleLowerCase().includes(term) || agent.id.toLocaleLowerCase().includes(term)) : all;
-  }, [all, state.listQuery]);
+    const match = (agent: Agent) => agent.title.toLocaleLowerCase().includes(term) || agent.id.toLocaleLowerCase().includes(term);
+    return (term ? groups.filter(group => group.members.some(match)) : groups).map(group => group.agent);
+  }, [groups, state.listQuery]);
   useEffect(() => directory.watch(), [directory]);
   useEffect(() => state.listSort === 'updated' ? directory.watchReplies(workspaceId) : undefined,
     [directory, workspaceId, state.listSort]);
@@ -77,7 +83,7 @@ export function AgentList(props: PluginHostProps & {
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap, paddingHorizontal: spacing.inset }}>
         <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: c.foregroundMuted }}>{snapshot.loaded ?
-          (state.listQuery.trim() ? rows.length + ' / ' : '') + all.length + '개' + (snapshot.partial ? ' · 일부' : '') : snapshot.error ? '목록 확인 불가' : '불러오는 중'}</Text>
+          (state.listQuery.trim() ? rows.length + ' / ' : '') + groups.length + '개' + (snapshot.partial ? ' · 일부' : '') : snapshot.error ? '목록 확인 불가' : '불러오는 중'}</Text>
         <View style={{ flexDirection: 'row', gap: spacing.small }}>
           <Button theme={theme} label="마지막 답변 기준 활동순" active={state.listSort === 'updated'} onPress={() => store.set({ listSort: 'updated' })}>활동순</Button>
           <Button theme={theme} label="최신 생성순" active={state.listSort === 'created'} onPress={() => store.set({ listSort: 'created' })}>생성순</Button>
@@ -105,10 +111,10 @@ export function AgentList(props: PluginHostProps & {
       contentOffset={{ x: 0, y: store.listScroll.modal }}
       onScroll={event => { store.listScroll.modal = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={64}
       style={{ flex: layout.compact ? 1 : undefined, minHeight: 0,
-        height: !layout.compact ? Math.min(400, Math.max(160, all.length * 80)) : undefined,
+        height: !layout.compact ? Math.min(400, Math.max(160, groups.length * 80)) : undefined,
         borderTopWidth: 1, borderColor: c.border }}
       contentContainerStyle={{ flexGrow: rows.length ? undefined : 1 }}
-      extraData={{ agentId, stale: snapshot.stale, sort: state.listSort, onNavigate, closingId }}
+      extraData={{ agentId, stale: snapshot.stale, sort: state.listSort, onNavigate, closingId, linked }}
       getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
       ListEmptyComponent={<View style={{ flex: 1, minHeight: 88, alignItems: 'center', justifyContent: 'center', padding: spacing.inset }}>
         <Text style={{ color: c.foregroundMuted }}>{!snapshot.loaded ? snapshot.error ? '목록을 읽지 못했습니다' : '목록 불러오는 중' :
@@ -125,6 +131,7 @@ export function AgentList(props: PluginHostProps & {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.gap }}>
             <Status state={item.state} theme={theme} stale={snapshot.stale} />
             {item.id === agentId ? <Text style={{ color: c.accent }}>현재</Text> : null}
+            {linked.get(item.id) ? <Text style={{ color: c.foregroundMuted }}>{'이어짐 ' + linked.get(item.id)}</Text> : null}
             <Text numberOfLines={1} accessibilityLabel={listTime(agentTime(item, state.listSort))}
               style={{ flex: 1, minWidth: 0, textAlign: 'right', color: c.foregroundMuted }}>{listTime(agentTime(item, state.listSort), layout.compact)}</Text>
           </View>

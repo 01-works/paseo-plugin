@@ -6,7 +6,7 @@ export type Agent = {
   createdAt: string; updatedAt: string; state: AgentState; archived: boolean;
   replyRevision: string; working: boolean;
   lastReplyAt?: string | null; replyStatus?: 'pending' | 'ready' | 'error';
-  parentId: string | null; cleanupSafe: boolean;
+  parentId: string | null; continuedFrom: string | null; cleanupSafe: boolean;
 };
 export const agentKey = (hostId: string, agentId: string): AgentKey => JSON.stringify([hostId, agentId]);
 export const stateLabels: Record<AgentState, string> = {
