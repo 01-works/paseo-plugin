@@ -30,6 +30,12 @@ describe('devState', () => {
     expect(devState({ ...healthy, github: { ...healthy.github!, devSha: 'e'.repeat(40) } })).toBe('아직 검증 안 됨');
     expect(devState(remote)).toBeNull();
   });
+  it('lets the latest observation of the same SHA win over an older success', () => {
+    const sha = healthy.recent.at(-1)!.sha;
+    const rerunFailed = { ...healthy, github: { ...healthy.github!, devSha: sha }, recent: [...healthy.recent, { ...healthy.recent.at(-1)!, status: 'failure' as const, endedAt: new Date(NOW).toISOString() }] };
+    expect(devState(rerunFailed)).toBe('실패');
+    expect(devState({ ...rerunFailed, current: { ...running.current!, sha } })).toBe('검증 중');
+  });
 });
 
 describe('failureGroups', () => {
@@ -38,6 +44,10 @@ describe('failureGroups', () => {
       { signature: SIG_CI, lanes: ['console-ci'], classification: 'reproduced', reason: 'both-failed', streak: 2, firstSha: FIRST_RED_SHA, firstAt: '2026-11-15T20:00:00.000Z', firstPr: '7957', where: 'last', issue: 10196, issueKnown: true },
     ]);
     expect(failureGroups(healthy)).toEqual([]);
+    // 끝난 실행이 실패인데 실행 로그가 없어 lane을 모르면 실패 자체를 한 줄로 남긴다.
+    const unknown = { ...red, recent: [...red.recent.slice(0, -1), { ...red.recent.at(-1)!, failures: [], failedLanes: [] }] };
+    expect(failureGroups(unknown).map(group => [group.lanes, group.signature, group.where])).toEqual([[[], null, 'last']]);
+    expect(attentionItems(unknown, NOW).map(item => item.kind)).toEqual(['failure']);
   });
 
   it('merges the current run into one line per signature and keeps the longer streak', () => {
@@ -95,9 +105,9 @@ describe('attentionItems', () => {
 
 describe('footerLine', () => {
   it('shows LaunchAgent, interval, disk and time locally', () => {
-    expect(footerLine(healthy, NOW)).toBe(`LaunchAgent 대기 · 5분마다 확인 · 누적 751회 · 디스크 여유 40.0 GiB · ${formatClock(NOW, NOW)} 기준`);
+    expect(footerLine(healthy, NOW)).toBe(`LaunchAgent 대기 · 5분마다 확인 · 누적 751회 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB · ${formatClock(NOW, NOW)} 기준`);
   });
   it('shows the remote target and the preflight disk record remotely', () => {
-    expect(footerLine(remote, NOW)).toBe(`원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB (${formatClock('2026-11-16T06:00:00.000Z', NOW)} preflight) · ${formatClock(NOW, NOW)} 기준`);
+    expect(footerLine(remote, NOW)).toBe(`원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB (${formatClock('2026-11-16T06:00:00.000Z', NOW)} preflight) · ${formatClock(NOW, NOW)} 기준`);
   });
 });

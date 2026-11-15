@@ -5,7 +5,7 @@ import type { PluginTheme } from '@getpaseo/plugin';
 import type { VerifierStatus } from '../shared/contracts';
 
 const hooks = vi.hoisted(() => ({ open: vi.fn() }));
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView' }));
+vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', useWindowDimensions: () => ({ width: 375, height: 800 }) }));
 vi.mock('@getpaseo/plugin/client', () => ({ openExternalUrl: hooks.open }));
 vi.mock('@getpaseo/plugin/client/ui', () => ({ SidebarRow: 'SidebarRow' }));
 import { VerifierView } from '../client/screen';
@@ -127,7 +127,7 @@ describe('VerifierView', () => {
     await render(remote, { compact: true });
     const text = lines();
     expect(text.join('\n')).not.toContain('승격 후보');
-    expect(text.some(line => line.startsWith('원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB ('))).toBe(true);
+    expect(text.some(line => line.startsWith('원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB ('))).toBe(true);
     expect(text).toContain('확인 안 됨');
     await press(byRole('tab', '통계'));
     expect(lines()).toContain('원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.');

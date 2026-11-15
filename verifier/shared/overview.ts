@@ -48,9 +48,11 @@ export type DevState = '통과' | '검증 중' | '실패' | '아직 검증 안 �
 export function devState(status: VerifierStatus): DevState | null {
   const dev = status.github?.devSha;
   if (!dev) return null;
-  if (status.recent.some(run => run.sha === dev && run.status === 'success') || status.lastSuccess?.sha === dev) return '통과';
+  // 같은 SHA를 다시 돌릴 수 있으므로 가장 최근 관측이 이긴다: 지금 실행 > 최근 끝난 실행 > 마지막 통과.
   if (status.current?.sha === dev) return '검증 중';
-  if (status.recent.some(run => run.sha === dev)) return '실패';
+  const latest = status.recent.findLast(run => run.sha === dev);
+  if (latest) return latest.status === 'success' ? '통과' : '실패';
+  if (status.lastSuccess?.sha === dev) return '통과';
   return '아직 검증 안 됨';
 }
 
@@ -132,6 +134,10 @@ export function failureGroups(status: VerifierStatus): FailureGroup[] {
       if (source.failures.some(failure => failure.lane === lane)) continue;
       add(`l:${lane}`, source.where, { signature: null, lanes: [lane], classification: null, reason: null, streak: 1, firstSha: source.sha, firstAt: source.at });
     }
+    // 끝난 실행이 실패인데 실행 로그가 없어 어느 lane인지조차 모르면, 실패 자체를 한 줄로 남긴다.
+    if (source.where === 'last' && source.failures.length === 0 && source.failedLanes.length === 0) {
+      add(`r:${source.sha}`, source.where, { signature: null, lanes: [], classification: null, reason: null, streak: 1, firstSha: source.sha, firstAt: source.at });
+    }
   }
   return [...groups.values()];
 }
@@ -203,7 +209,7 @@ export function footerLine(status: VerifierStatus, now = Date.now()): string {
   } else {
     parts.push(`원격 ${status.source.target ?? ''}`.trim(), 'LaunchAgent 상태 알 수 없음');
   }
-  if (status.disk) parts.push(`디스크 여유 ${formatGiB(status.disk.availableKib)}${status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt, now)} preflight)` : ''}`);
+  if (status.disk) parts.push(`디스크 여유 ${formatGiB(status.disk.availableKib)} / 실행 최소 ${formatGiB(status.disk.minimumKib)}${status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt, now)} preflight)` : ''}`);
   parts.push(`${formatClock(status.collectedAt, now)} 기준`);
   return parts.join(' · ');
 }

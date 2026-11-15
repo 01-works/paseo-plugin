@@ -1,12 +1,13 @@
 import type { PluginTheme } from '@getpaseo/plugin';
 import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client';
-import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import type { Beat, Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
 import { hostIndicators } from '../shared/host';
 import { attentionItems, devState, footerLine, formatClock, overallLine, redIssueOf, type AttentionItem, type FailureGroup } from '../shared/overview';
 import { estimateRun, formatDuration, isSlow, prNumber, shortSha } from '../shared/summary';
 import { toneColor } from './sidebar';
+import { tipLeft, tipWidth } from './tip-layout';
 import { useStatus, type StatusStore, type StoreState } from './store';
 
 export { formatClock } from '../shared/overview';
@@ -56,23 +57,33 @@ function Card({ styles, title, trailing, children }: { styles: Styles; title: st
 export function InfoTip({ text, styles, theme }: { text: string; styles: Styles; theme: PluginTheme }) {
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [left, setLeft] = useState(-8);
+  const anchor = useRef<View>(null);
+  const viewport = useWindowDimensions();
+  const width = tipWidth(styles.tip.width, viewport.width);
   const open = hovered || pinned;
+  // 열 때 아이콘의 화면 위치를 재서, 말풍선이 화면 밖으로 나가지 않게 좌우를 맞춘다.
+  const place = () => anchor.current?.measureInWindow?.(x => setLeft(tipLeft(x, viewport.width, width)));
+  const show = (next: () => void) => {
+    place();
+    next();
+  };
   return (
-    <View style={{ position: 'relative', zIndex: open ? 10 : 0 }}>
+    <View ref={anchor} style={{ position: 'relative', zIndex: open ? 10 : 0 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="설명"
         accessibilityHint={text}
         accessibilityState={{ expanded: open }}
-        onHoverIn={() => setHovered(true)}
+        onHoverIn={() => show(() => setHovered(true))}
         onHoverOut={() => setHovered(false)}
-        onPress={() => setPinned(!pinned)}
+        onPress={() => (pinned ? setPinned(false) : show(() => setPinned(true)))}
         hitSlop={8}
       >
         <Text style={{ color: open ? theme.colors.accent : theme.colors.foregroundMuted }}>ⓘ</Text>
       </Pressable>
       {open ? (
-        <View style={styles.tip} pointerEvents="none">
+        <View style={[styles.tip, { left, width }]} pointerEvents="none">
           <Text style={styles.text}>{text}</Text>
         </View>
       ) : null}
@@ -304,7 +315,7 @@ function FailureItem({ group, status, styles, theme }: { group: FailureGroup; st
     <View style={{ gap: 2 }}>
       <View style={styles.row}>
         <Dot color={theme.colors.statusDanger} size={8} />
-        <Text style={styles.title}>{group.lanes.join(', ')}</Text>
+        <Text style={styles.title}>{group.lanes.length > 0 ? group.lanes.join(', ') : '실패 lane 모름 (실행 로그 없음)'}</Text>
         <Text style={styles.text}>{group.streak > 1 ? `${group.streak}회 연속` : '이번에 처음'}</Text>
         <Text style={styles.muted}>· {WHERE_LABEL[group.where]}</Text>
       </View>
