@@ -1,6 +1,6 @@
 import type { PluginTheme } from '@getpaseo/plugin';
 import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import type { Beat, Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
 import { hostIndicators } from '../shared/host';
@@ -62,12 +62,17 @@ export function InfoTip({ text, styles, theme }: { text: string; styles: Styles;
   const viewport = useWindowDimensions();
   const width = tipWidth(styles.tip.width, viewport.width);
   const open = hovered || pinned;
-  // 열 때 아이콘의 화면 위치를 재서, 말풍선이 화면 밖으로 나가지 않게 좌우를 맞춘다.
+  // 아이콘의 화면 위치를 재서, 말풍선이 화면 밖으로 나가지 않게 좌우를 맞춘다.
   const place = () => anchor.current?.measureInWindow?.(x => setLeft(tipLeft(x, viewport.width, width)));
   const show = (next: () => void) => {
     place();
     next();
   };
+  // 열려 있는 동안에는 다시 그릴 때마다(창 크기 변경, 폴링으로 위쪽 내용이 바뀌어 아이콘이 움직인 경우 포함) 다시 잰다.
+  // 같은 값이면 setLeft가 다시 그리지 않으므로 반복되지 않는다.
+  useEffect(() => {
+    if (open) place();
+  });
   return (
     <View ref={anchor} style={{ position: 'relative', zIndex: open ? 10 : 0 }}>
       <Pressable
