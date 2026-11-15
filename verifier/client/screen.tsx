@@ -90,7 +90,7 @@ function FailureLines({ failures, styles }: { failures: Failure[]; styles: Style
     <>
       {failures.map(failure => (
         <Text key={`${failure.lane}-${failure.signature}`} style={styles.muted} selectable>
-          {failure.lane}: {failure.classification} · {failure.reason} · {failure.signature.slice(0, 12)}
+          {failure.lane}: {failure.classification} · {failure.reason} · {failure.signature.slice(0, 12)} · {failure.streak > 1 ? `${failure.streak}회 연속 (처음 ${shortSha(failure.firstSha)}${failure.firstAt ? ` ${formatClock(failure.firstAt)}` : ''})` : '이번에 처음'}
         </Text>
       ))}
     </>
@@ -117,8 +117,9 @@ function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; sty
         const usual = median !== undefined ? `평소 ${formatDuration(median)}` : null;
         let detail: string | null = null;
         if (lane.state === 'running') detail = [estimate.runningLaneSeconds !== null ? `약 ${formatDuration(estimate.runningLaneSeconds)}째` : null, usual].filter(Boolean).join(' · ');
-        else if (lane.seconds !== null) detail = [formatDuration(lane.seconds), slow && usual ? usual : null].filter(Boolean).join(' · ');
         else if (lane.state === 'pending') detail = usual;
+        // 끝난 lane: 시간이 없어도 괄호 설명(시간 초과 등)은 보여 준다.
+        else detail = [lane.note === 'timed out' ? '시간 초과' : lane.note, lane.seconds !== null ? formatDuration(lane.seconds) : null, slow && usual ? usual : null].filter(Boolean).join(' · ') || null;
         return (
           <View key={lane.name} style={styles.row}>
             <Text style={{ color: laneColor(theme, lane.state) }}>{LANE_MARK[lane.state]}</Text>
@@ -266,7 +267,7 @@ function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; sty
           <View style={styles.row}>
             <Text style={styles.title}>{selected.lane}</Text>
             <Text style={{ color: selectedLane ? laneColor(theme, selectedLane.state) : theme.colors.foregroundMuted }}>
-              {selectedLane ? `${LANE_MARK[selectedLane.state]} ${selectedLane.seconds !== null ? formatDuration(selectedLane.seconds) : ''}` : '기록 없음'}
+              {selectedLane ? `${LANE_MARK[selectedLane.state]} ${selectedLane.seconds !== null ? formatDuration(selectedLane.seconds) : ''}${selectedLane.note === 'timed out' ? ' · 시간 초과' : selectedLane.note ? ` · ${selectedLane.note}` : ''}` : '기록 없음'}
             </Text>
             {status.laneMedians[selected.lane] !== undefined ? <Text style={styles.muted}>평소 {formatDuration(status.laneMedians[selected.lane])}</Text> : null}
           </View>

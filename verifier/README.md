@@ -1,6 +1,6 @@
 # verifier
 
-01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면, 그리고 에이전트 도구로 보여 주는 플러그인입니다. **Paseo SDK 0.15.4 · 플러그인 0.3.0** 기준이며, 지원 범위는 `>=0.15.0`입니다.
+01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면, 그리고 에이전트 도구로 보여 주는 플러그인입니다. **Paseo SDK 0.15.4 · 플러그인 0.3.1** 기준이며, 지원 범위는 `>=0.15.0`입니다.
 
 verifier 기기에서는 로그를 직접 읽고, 다른 기기(작업 기기)에서는 verifier 기기의 읽기 전용 SSH로 읽습니다. verifier를 보는 기기에만 의미가 있어서 [기본 설치 목록](../README.md#기본-설치-목록)에는 넣지 않습니다. 필요한 기기에만 따로 설치합니다.
 
@@ -39,7 +39,8 @@ verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstr
 - **최근 기록 막대:** 요약 로그의 최근 30개 기록을 얇은 막대로 보여 줍니다(Uptime Kuma 방식). 초록은 통과, 빨강은 실패, 회색은 연기, 마지막 파랑은 지금 실행입니다. 막대를 누르면 시각·SHA·시간이나 연기 사유가 나옵니다.
 - **지금 실행:** SHA와 커밋 제목, 시작 시각, 경과 시간, lane별 통과·실패·진행·대기와 걸린 시간입니다. 도는 lane은 추정 경과 시간을, 대기 lane은 평소 시간을 함께 보여 줍니다. 로그에 lane 시작 시각이 없어서 경과 시간은 heavy lock을 잡은 시각에서 끝난 lane 시간을 빼서 냅니다.
 - **예상 종료:** 남은 lane의 평소 시간(최근 20회 중 통과한 lane 시간의 중앙값)을 더해 냅니다. 기록이 없는 lane이 있으면 최근 10회 전체 실행 시간의 중앙값으로 내고 그렇게 표시합니다.
-- **실패 분류:** 실패한 lane의 verifier 분류(`classification`, `reason`, `signature` 앞 12자)를 보여 줍니다.
+- **실패 분류:** 실패한 lane의 verifier 분류(`classification`, `reason`, `signature` 앞 12자)와 반복 여부를 보여 줍니다. 같은 lane이 같은 signature로 연달아 실패했으면 `N회 연속 (처음 <SHA> <시각>)`, 아니면 `이번에 처음`입니다. 그 lane이 통과했거나 다른 signature로 실패한 실행에서 연속이 끊기고, 최근 20회 안에서만 셉니다. 처음 나온 SHA가 원인이 들어온 범위의 끝입니다.
+- **시간 초과:** `failed (timed out) in Ns`로 끝난 lane은 `시간 초과`로 표시하고 그 시간도 경과·예상 종료 계산에 넣습니다.
 - **실행 연기:** 마지막 실제 실행 뒤 preflight가 실행을 미룬 횟수와 사유입니다. 예: `disk low-space 9.7GiB`.
 - **디스크:** verifier preflight와 같은 `df -Pk <verifier checkout>` 여유 공간과 실행 최소 기준입니다. 기준은 최근 preflight 기록에서 읽고, 없으면 10 GiB를 씁니다. 기준의 1.5배 아래면 노란색, 기준 아래면 빨간색입니다.
 - **승격:** main·dev 끝, dev가 main보다 앞선 커밋 수, dev 끝의 검증 상태, main에 아직 없는 마지막 verifier 통과 SHA(후보)입니다. 마이그레이션 여부와 승격 절차는 판단하지 않습니다.
@@ -53,7 +54,7 @@ verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstr
 
 설정이 켜져 있으면 01-software 저장소(clone·worktree의 GitHub origin이 같은 저장소)에서 여는 에이전트 세션에 `verifier_status` 도구를 붙입니다. 다른 저장소의 에이전트에는 붙이지 않습니다.
 
-- 지금 실행과 lane, 예상 종료, 연기 사유, 마지막 결과와 실패 분류, red 지속 시간, 24시간·7일 요약, 디스크를 짧은 텍스트로 돌려줍니다. `includeGithub: true`면 승격 후보도 함께 읽습니다.
+- 지금 실행과 lane, 예상 종료, 연기 사유, 마지막 결과와 실패 분류·반복 여부, red 지속 시간, 24시간·7일 요약, 디스크를 짧은 텍스트로만 돌려줍니다. `includeGithub: true`면 승격 후보도 함께 읽습니다. 구조화된 결과(structuredContent)는 보내지 않습니다. 보내면 Claude가 텍스트 대신 큰 JSON을 보여 줍니다.
 - 무거운 로컬 작업이나 push 전에 verifier가 heavy lock을 잡고 있는지, dev가 red인지 확인하는 용도입니다. 로그를 직접 읽는 셸 명령을 대신합니다.
 - 플러그인을 설치·다시 불러오거나 이 설정을 바꾸면, 열린 에이전트 세션은 실행 중인 턴을 끊지 않고 다음 입력 전에 다시 열립니다(Paseo 동작).
 

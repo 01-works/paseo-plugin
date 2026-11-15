@@ -1,7 +1,7 @@
 {
   "name": "paseo-verifier",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "이 기기에서 도는 01-software verifier의 현황을 보여 주는 Paseo 플러그인",
   "files": [
     "paseo-plugin.json",

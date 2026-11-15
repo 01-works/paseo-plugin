@@ -28,7 +28,7 @@ describe('headline', () => {
   it('orders off > running > deferred > last result', () => {
     expect(headline({ ...base, agent: { loaded: false, running: false, runs: null, intervalSeconds: null } })).toEqual({ tone: 'danger', label: 'LaunchAgent 꺼짐' });
     const current = { sha: 'c'.repeat(40), subject: null, startedAt: null, lanesStartedAt: null, failures: [], phase: 'lanes' as const, lanes: [
-      { name: 'a', state: 'passed' as const, seconds: 1 }, { name: 'b', state: 'failed' as const, seconds: 1 }, { name: 'c', state: 'running' as const, seconds: null },
+      { name: 'a', state: 'passed' as const, seconds: 1, note: null }, { name: 'b', state: 'failed' as const, seconds: 1, note: null }, { name: 'c', state: 'running' as const, seconds: null, note: null },
     ] };
     expect(headline({ ...base, current, deferral: { since: '', count: 1, reason: 'x' } })).toEqual({ tone: 'warning', label: '실행 중 2/3 · 실패 1 · ccccccc' });
     expect(headline({ ...base, current: { ...current, phase: 'waiting-lock', lanes: [] } }).label).toBe('lock 대기 · ccccccc');
@@ -51,9 +51,9 @@ describe('formatting', () => {
     const current = {
       sha: 'c', subject: null, startedAt: '2026-11-15T07:00:00.000Z', lanesStartedAt: '2026-11-15T07:01:00.000Z', failures: [], phase: 'lanes' as const,
       lanes: [
-        { name: 'a', state: 'passed' as const, seconds: 600 },
-        { name: 'b', state: 'running' as const, seconds: null },
-        { name: 'c', state: 'pending' as const, seconds: null },
+        { name: 'a', state: 'passed' as const, seconds: 600, note: null },
+        { name: 'b', state: 'running' as const, seconds: null, note: null },
+        { name: 'c', state: 'pending' as const, seconds: null, note: null },
       ],
     };
     // b는 07:11에 시작해 19분째. 평소 30분이면 11분, c 평소 10분 → 21분 뒤
@@ -61,6 +61,19 @@ describe('formatting', () => {
     // c의 기록이 없으면 전체 중앙값(6000초)으로 돌아간다.
     expect(estimateRun({ ...base, current, laneMedians: { b: 1800 } }, now)).toEqual({ runningLaneSeconds: 1140, endAt: Date.parse('2026-11-15T08:40:00.000Z'), perLane: false });
     expect(estimateRun(base, now)).toEqual({ runningLaneSeconds: null, endAt: null, perLane: false });
+  });
+
+  it('counts a timed-out lane in the elapsed time and the estimate', () => {
+    const now = Date.parse('2026-11-15T08:00:00.000Z');
+    const current = {
+      sha: 'c', subject: null, startedAt: '2026-11-15T07:00:00.000Z', lanesStartedAt: '2026-11-15T07:00:00.000Z', failures: [], phase: 'lanes' as const,
+      lanes: [
+        { name: 'ecommerce-db', state: 'failed' as const, seconds: 1800, note: 'timed out' },
+        { name: 'migration-exec', state: 'running' as const, seconds: null, note: null },
+      ],
+    };
+    // 1시간 중 30분은 시간 초과 lane이 썼으므로 지금 lane은 30분째, 평소 40분이면 10분 남음
+    expect(estimateRun({ ...base, current, laneMedians: { 'ecommerce-db': 1100, 'migration-exec': 2400 } }, now)).toEqual({ runningLaneSeconds: 1800, endAt: now + 600_000, perLane: true });
   });
 
   it('flags slow lanes and reads PR numbers', () => {

@@ -13,9 +13,11 @@ import {
   parseRunLog,
   parseSummary,
   redPeriodsFrom,
+  type RawFailure,
   type RunLog,
   type SummaryEntry,
   windowStatsFrom,
+  withRecurrence,
 } from './parse';
 import { run, type Exec } from './exec';
 import { LocalSource, SshSource, type Source } from './source';
@@ -113,7 +115,7 @@ export class Collector {
     // 요약에 아직 없는 가장 최근 실행 로그가 지금 도는 실행이다.
     const summarized = new Set(entries.map(entry => entry.log));
     const latestLog = runLogNames.at(-1);
-    let current: VerifierStatus['current'] = null;
+    let current: ReturnType<typeof currentRunFrom> | null = null;
     // 원격에서는 LaunchAgent를 볼 수 없어 요약에 없는 최근 로그만으로 판단한다(12시간 넘으면 버림).
     if ((agent?.running ?? source.kind === 'ssh') && latestLog && !summarized.has(latestLog)) {
       try {
@@ -135,9 +137,10 @@ export class Collector {
     const lastSuccessEntry = realEntries.findLast(entry => entry.status === 'success');
     const wanted = lastSuccessEntry && !history.includes(lastSuccessEntry) ? [...history, lastSuccessEntry] : history;
     const subjects = await this.subjectsOf(wanted.map(entry => entry.sha));
-    const toRun = async (entry: SummaryEntry & { status: 'success' | 'failure' }): Promise<Run> => {
+    const toRun = async (entry: SummaryEntry & { status: 'success' | 'failure' }): Promise<Omit<Run, 'failures'> & { failures: RawFailure[] }> => {
       const log = await this.runLogOf(entry.log);
       return {
+        // 반복 정보는 아래 withRecurrence가 채운다.
         endedAt: entry.at,
         sha: entry.sha,
         subject: subjects.get(entry.sha) ?? null,
@@ -148,7 +151,12 @@ export class Collector {
         failures: log?.failures ?? [],
       };
     };
-    const recent = await Promise.all(history.map(toRun));
+    const rawRecent = await Promise.all(history.map(toRun));
+    // 캐시된 로그 객체는 고치지 않고, 반복 정보를 붙인 새 객체를 만든다. 지금 실행은 가장 최근 다음 실행으로 본다.
+    const chain = [...rawRecent.map(run => ({ sha: run.sha, at: run.endedAt, failures: run.failures })), ...(current ? [{ sha: current.sha, at: current.startedAt, failures: current.failures }] : [])];
+    const annotated = withRecurrence(chain);
+    const recent: Run[] = rawRecent.map((run, index) => ({ ...run, failures: annotated[index] }));
+    const currentRun: VerifierStatus['current'] = current ? { ...current, failures: annotated[rawRecent.length] } : null;
     const now = Date.now();
     const red = redPeriodsFrom(realEntries.map(entry => ({ endedAt: entry.at, status: entry.status })));
     const openRed = red.at(-1)?.end === null ? red.at(-1) : undefined;
@@ -156,7 +164,7 @@ export class Collector {
     return {
       collectedAt: new Date(now).toISOString(),
       agent,
-      current,
+      current: currentRun,
       recent,
       laneMedians: laneMediansFrom(recent),
       beats: entries.slice(-BEATS).map(entry => ({
@@ -169,9 +177,9 @@ export class Collector {
       redSince: openRed ? new Date(openRed.start).toISOString() : null,
       stats: STATS_WINDOWS_HOURS.map(hours => windowStatsFrom(entries, hours, now)),
       repoUrl: await this.repoSlug().then(slug => `https://github.com/${slug}`, () => null),
-      lastSuccess: lastSuccessEntry ? await toRun(lastSuccessEntry) : null,
+      lastSuccess: lastSuccessEntry ? { ...(await toRun(lastSuccessEntry)), failures: [] } : null,
       failureStreak: failureStreakFrom(recent),
-      deferral: current ? null : deferralFrom(entries),
+      deferral: currentRun ? null : deferralFrom(entries),
       typicalRunSeconds: median(recent.slice(-10).map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
       disk,
       source: { kind: source.kind, target: source.target },
