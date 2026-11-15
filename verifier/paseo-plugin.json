@@ -1,0 +1,5 @@
+{
+  "id": "verifier",
+  "description": "이 기기에서 도는 01-software verifier 현황",
+  "requirements": { "paseo": ">=0.13.0" }
+}
