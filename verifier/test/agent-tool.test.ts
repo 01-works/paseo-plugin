@@ -87,3 +87,17 @@ describe('repo matcher', () => {
     expect(exec).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('verifier_status red issues', () => {
+  const github = { fetchedAt: status.collectedAt, devSha: 'b'.repeat(40), mainSha: 'd'.repeat(40), devAheadOfMain: 1, candidate: null, redIssuesError: null };
+  it('appends the linked open red issue to failure lines', () => {
+    const text = describeStatus({ ...status, githubError: null, github: { ...github, redIssues: { e9180834cb4f70717e51: 10196 } } });
+    expect(text).toContain('failure app-packages: unknown/failure-unidentified signature=e9180834cb4f, 3 runs in a row since aaaaaaaaaaaa (2026-11-15 01:00Z), red issue #10196');
+  });
+  it('says when no open issue matches, and stays silent when issues were not read', () => {
+    expect(describeStatus({ ...status, githubError: null, github: { ...github, redIssues: {} } })).toContain(', no open red issue');
+    const unread = describeStatus({ ...status, githubError: null, github: { ...github, redIssues: null, redIssuesError: 'HTTP 401' } });
+    expect(unread).not.toContain('red issue #');
+    expect(unread).toContain('red issues: unavailable (HTTP 401)');
+  });
+});

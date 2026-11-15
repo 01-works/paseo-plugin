@@ -307,3 +307,22 @@ export function withRecurrence(runs: { sha: string; at: string | null; failures:
     }),
   );
 }
+
+const RED_SIGNATURE_MARKER = /<!-- nightly-red-signature:([a-f0-9]{64}) -->/g;
+
+/**
+ * `gh issue list --json number,title,body` 결과에서 signature → 이슈 번호 맵을 만든다.
+ * 01-software의 record-nightly-red.mjs가 본문에 넣는 marker만 믿는다. 같은 signature가 둘이면 최근(큰 번호) 이슈를 쓴다.
+ */
+export function redIssuesFrom(json: string): Record<string, number> {
+  const parsed: unknown = JSON.parse(json);
+  if (!Array.isArray(parsed)) throw new Error('gh issue list 결과가 목록이 아닙니다');
+  const map: Record<string, number> = {};
+  for (const issue of parsed) {
+    const number = (issue as { number?: unknown }).number;
+    const body = (issue as { body?: unknown }).body;
+    if (typeof number !== 'number' || !Number.isSafeInteger(number) || typeof body !== 'string') continue;
+    for (const [, signature] of body.matchAll(RED_SIGNATURE_MARKER)) map[signature] = Math.max(map[signature] ?? 0, number);
+  }
+  return map;
+}

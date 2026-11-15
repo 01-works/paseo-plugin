@@ -12,6 +12,7 @@ import {
   minimumKibFrom,
   parseRunLog,
   parseSummary,
+  redIssuesFrom,
   redPeriodsFrom,
   type RawFailure,
   type RunLog,
@@ -54,6 +55,9 @@ const BEATS = 30;
 const LOCAL_CACHE_MS = 5_000;
 const GITHUB_CACHE_MS = 10 * 60_000;
 const GITHUB_MIN_REFRESH_MS = 30_000;
+// 01-software scripts/release/record-nightly-red.mjs의 RED_LABEL
+const RED_ISSUE_LABEL = 'nightly-local-red';
+const RED_ISSUE_LIMIT = 200;
 const STALE_RUN_MS = 12 * 60 * 60_000;
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -268,10 +272,16 @@ export class Collector {
       if (result.code !== 0) throw new Error(`gh api ${endpoint}: ${(result.stderr || result.stdout).trim().split('\n')[0] || `exit ${result.code}`}`);
       return result.stdout.trim();
     };
+    // red 이슈 조회는 실패해도 승격 정보를 막지 않는다.
+    const redIssues = this.readRedIssues(slug).then(
+      map => ({ map, error: null }),
+      error => ({ map: null, error: message(error) }),
+    );
     const [devSha, mainSha] = await Promise.all([gh('branches/dev', '.commit.sha'), gh('branches/main', '.commit.sha')]);
-    const [ahead, candidate] = await Promise.all([
+    const [ahead, candidate, red] = await Promise.all([
       gh(`compare/${mainSha}...${devSha}`, '.ahead_by'),
       candidateSha ? gh(`compare/${mainSha}...${candidateSha}`, '"\\(.status) \\(.ahead_by)"') : Promise.resolve(''),
+      redIssues,
     ]);
     const [candidateState, candidateAhead] = candidate.split(' ');
     return {
@@ -280,7 +290,17 @@ export class Collector {
       mainSha,
       devAheadOfMain: Number(ahead) || 0,
       candidate: candidateSha && candidateState === 'ahead' ? { sha: candidateSha, aheadOfMain: Number(candidateAhead) || 0 } : null,
+      redIssues: red.map,
+      redIssuesError: red.error,
     };
+  }
+
+  /** 열린 자동 red 이슈의 signature marker를 읽는다. 화면이 열려 있을 때만 GitHub 조회와 함께 10분 캐시된다. */
+  private async readRedIssues(slug: string): Promise<Record<string, number>> {
+    const args = ['issue', 'list', '-R', slug, '--label', RED_ISSUE_LABEL, '--state', 'open', '--json', 'number,title,body', '--limit', String(RED_ISSUE_LIMIT)];
+    const result = await this.exec('gh', args, 15_000);
+    if (result.code !== 0) throw new Error(`gh issue list: ${(result.stderr || result.stdout).trim().split('\n')[0] || `exit ${result.code}`}`);
+    return redIssuesFrom(result.stdout);
   }
 }
 

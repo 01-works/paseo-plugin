@@ -9,7 +9,7 @@ let root: string;
 let logs: string;
 const calls: string[] = [];
 
-function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFails?: boolean; subjects?: Record<string, string> }): Exec {
+function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFails?: boolean; issues?: string | null; subjects?: Record<string, string> }): Exec {
   return async (command, args) => {
     calls.push([command, ...args].join(' '));
     if (command === 'launchctl') return { code: 0, stdout: options.running ? launchctlRunning : launchctlRunning.replace('state = running', 'state = not running'), stderr: '' };
@@ -25,6 +25,9 @@ function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFa
     }
     if (command === 'gh') {
       if (options.ghFails) return { code: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' };
+      if (args[0] === 'issue') {
+        return options.issues == null ? { code: 1, stdout: '', stderr: 'HTTP 403: rate limited' } : { code: 0, stdout: options.issues, stderr: '' };
+      }
       const endpoint = args[1].replace('repos/acme/repo/', '');
       const value = options.gh?.[endpoint];
       return value === undefined ? { code: 1, stdout: '', stderr: `unexpected ${endpoint}` } : { code: 0, stdout: `${value}\n`, stderr: '' };
@@ -222,6 +225,25 @@ describe('Collector', () => {
     const ghCalls = calls.filter(call => call.startsWith('gh')).length;
     await instance.status({ includeGithub: true });
     expect(calls.filter(call => call.startsWith('gh')).length).toBe(ghCalls);
+  });
+
+  it('links open red issues by signature in the same cached GitHub read, and survives their failure', async () => {
+    const main = 'd'.repeat(40);
+    const signature = 'e'.repeat(64);
+    const gh = { 'branches/dev': SHA_B, 'branches/main': main, [`compare/${main}...${SHA_B}`]: '7', [`compare/${main}...${SHA_A}`]: 'ahead 5' };
+    const issues = JSON.stringify([{ number: 10196, title: '[nightly-local red] app-packages', body: `<!-- nightly-red-signature:${signature} -->` }]);
+    const instance = collector(fakeExec({ running: false, gh, issues }));
+    const status = await instance.status({ includeGithub: true });
+    expect(status.github).toMatchObject({ devSha: SHA_B, redIssues: { [signature]: 10196 }, redIssuesError: null });
+    const issueCalls = calls.filter(call => call.startsWith('gh issue list'));
+    expect(issueCalls).toEqual(['gh issue list -R acme/repo --label nightly-local-red --state open --json number,title,body --limit 200']);
+    await instance.status({ includeGithub: true });
+    expect(calls.filter(call => call.startsWith('gh issue list'))).toHaveLength(1);
+
+    const failed = await collector(fakeExec({ running: false, gh, issues: null })).status({ includeGithub: true });
+    expect(failed.github).toMatchObject({ devSha: SHA_B, devAheadOfMain: 7, redIssues: null });
+    expect(failed.github?.redIssuesError).toContain('rate limited');
+    expect(failed.githubError).toBeNull();
   });
 
   it('drops the candidate once it is in main', async () => {
