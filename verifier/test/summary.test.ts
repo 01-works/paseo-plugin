@@ -5,6 +5,7 @@ import { estimateRun, formatDuration, headline, isSlow, prNumber } from '../shar
 const base: VerifierStatus = {
   collectedAt: '2026-11-15T07:00:00.000Z',
   agent: { loaded: true, running: false, runs: 1, intervalSeconds: 300 },
+  source: { kind: 'local', target: null },
   current: null,
   recent: [],
   laneMedians: {},
@@ -25,7 +26,7 @@ const run = (status: 'success' | 'failure', sha: string) => ({ endedAt: '2026-11
 
 describe('headline', () => {
   it('orders off > running > deferred > last result', () => {
-    expect(headline({ ...base, agent: { ...base.agent, loaded: false } })).toEqual({ tone: 'danger', label: 'LaunchAgent 꺼짐' });
+    expect(headline({ ...base, agent: { loaded: false, running: false, runs: null, intervalSeconds: null } })).toEqual({ tone: 'danger', label: 'LaunchAgent 꺼짐' });
     const current = { sha: 'c'.repeat(40), subject: null, startedAt: null, lanesStartedAt: null, failures: [], phase: 'lanes' as const, lanes: [
       { name: 'a', state: 'passed' as const, seconds: 1 }, { name: 'b', state: 'failed' as const, seconds: 1 }, { name: 'c', state: 'running' as const, seconds: null },
     ] };

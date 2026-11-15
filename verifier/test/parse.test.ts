@@ -147,3 +147,11 @@ describe('history', () => {
     expect(windowStatsFrom(entries, 24 * 7, now)).toMatchObject({ runs: 3, failures: 2, longestRedSeconds: 44 * 3600 });
   });
 });
+
+describe('remote listing', async () => {
+  const { parseRemoteListing } = await import('../server/source');
+  it('keeps only top-level files of ls -lAR', () => {
+    const listing = 'total 16\n-rw-------  1 yw  staff  10 Nov 15 16:01 p-summary.log\ndrwx------  3 yw  staff  96 Nov 15 16:01 sub\n-rw-------  1 yw  staff  10 Nov 15 16:01 p-run-a.log\n\n./sub:\ntotal 0\n-rw-------  1 yw  staff  1 Nov 1 00:00 nested.log\n';
+    expect(parseRemoteListing(listing)).toEqual(['p-summary.log', 'p-run-a.log']);
+  });
+});

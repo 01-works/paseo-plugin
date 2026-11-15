@@ -361,9 +361,10 @@ export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { s
       {status ? (
         <>
           <Text style={styles.muted}>
-            LaunchAgent {status.agent.loaded ? (status.agent.running ? '실행 중' : '대기') : '꺼짐'}
-            {status.agent.intervalSeconds ? ` · ${Math.round(status.agent.intervalSeconds / 60)}분마다 확인` : ''}
-            {status.agent.runs !== null ? ` · 누적 ${status.agent.runs}회` : ''} · {formatClock(status.collectedAt)} 기준
+            {status.agent
+              ? `LaunchAgent ${status.agent.loaded ? (status.agent.running ? '실행 중' : '대기') : '꺼짐'}${status.agent.intervalSeconds ? ` · ${Math.round(status.agent.intervalSeconds / 60)}분마다 확인` : ''}${status.agent.runs !== null ? ` · 누적 ${status.agent.runs}회` : ''}`
+              : `원격 ${status.source.target ?? ''}에서 읽음 · LaunchAgent 상태는 알 수 없음`}
+            {` · ${formatClock(status.collectedAt)} 기준`}
           </Text>
 
           <BeatStrip status={status} styles={styles} theme={theme} />
@@ -381,6 +382,7 @@ export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { s
             <Card styles={styles} title="디스크">
               <Text style={{ color: status.disk.availableKib < status.disk.minimumKib ? theme.colors.statusDanger : status.disk.availableKib < status.disk.minimumKib * 1.5 ? theme.colors.statusWarning : theme.colors.foreground }}>
                 여유 {formatGiB(status.disk.availableKib)} · 실행 최소 {formatGiB(status.disk.minimumKib)}
+                {status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt)} preflight 기록)` : ''}
               </Text>
             </Card>
           ) : null}

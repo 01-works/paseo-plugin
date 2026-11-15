@@ -1,8 +1,8 @@
 # verifier
 
-이 Mac에서 도는 01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면으로 보여 주는 플러그인입니다. **Paseo SDK 0.13.0 · 플러그인 0.2.0** 기준이며, 지원 범위는 `>=0.13.0`입니다.
+01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면, 그리고 에이전트 도구로 보여 주는 플러그인입니다. **Paseo SDK 0.15.4 · 플러그인 0.3.0** 기준이며, 지원 범위는 `>=0.15.0`입니다.
 
-verifier가 설치된 기기에서만 의미가 있어서 [기본 설치 목록](../README.md#기본-설치-목록)에는 넣지 않습니다. 필요한 기기에만 따로 설치합니다.
+verifier 기기에서는 로그를 직접 읽고, 다른 기기(작업 기기)에서는 verifier 기기의 읽기 전용 SSH로 읽습니다. verifier를 보는 기기에만 의미가 있어서 [기본 설치 목록](../README.md#기본-설치-목록)에는 넣지 않습니다. 필요한 기기에만 따로 설치합니다.
 
 ## 설치·업데이트
 
@@ -12,6 +12,26 @@ paseo plugin update verifier
 ```
 
 설치하면 사이드바 아래쪽에 **Verifier** 행이 생깁니다. 행을 누르면 상세 화면이 열립니다.
+
+## 설정
+
+**Settings → Verifier**(host별)에서 정합니다. verifier가 그 기기에서 돈다면 모두 비워 둡니다.
+
+| 항목 | 내용 |
+|---|---|
+| 원격 verifier SSH 대상 | 다른 기기의 verifier를 읽을 때 쓰는 SSH 대상입니다. ssh config의 `Host` 이름을 권장합니다. 비우면 이 기기를 읽습니다 |
+| 01-software clone 경로 | 커밋 제목과 GitHub 저장소를 읽을 clone입니다. 비우면 verifier checkout 기본 위치(`~/.local/share/01-software-verifier`)입니다. 작업 기기에서는 그 기기의 clone 경로를 넣습니다 |
+| 에이전트에게 verifier_status 도구 제공 | 기본 켬. 아래 [에이전트 도구](#에이전트-도구) 참고 |
+
+### 작업 기기에서 원격으로 보기
+
+verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstrap#verifier)이 만든 읽기 전용 SSH(`verifier-logs`)를 씁니다. 그 키로 접속하면 어떤 명령을 보내도 로그 폴더의 `ls`·`tail`·`cat`만 실행됩니다.
+
+1. verifier 기기에서 작업 기기의 공개키를 등록합니다: `./bootstrap.sh role add verifier --ssh-key <공개키 파일>`
+2. 작업 기기의 `~/.ssh/config`에 그 키를 쓰는 `Host`를 둡니다. 플러그인은 `ssh -o BatchMode=yes`로 접속하므로 비밀번호·확인 질문 없이 접속돼야 합니다.
+3. 작업 기기에 이 플러그인을 설치하고, 설정에 그 `Host` 이름과 작업 기기의 01-software clone 경로를 넣습니다.
+
+원격에서는 LaunchAgent 상태와 지금 디스크 여유를 읽을 수 없습니다. 지금 실행 여부는 요약에 아직 없는 최근 실행 로그(12시간 이내)로 판단하고, 디스크는 마지막 preflight 기록 값을 그 시각과 함께 보여 줍니다.
 
 ## 사용
 
@@ -29,6 +49,14 @@ paseo plugin update verifier
 - **링크:** SHA는 GitHub 커밋, 커밋 제목 끝의 `#번호`는 PR을 엽니다.
 - **새로고침:** 로컬 상태를 바로 다시 읽고, GitHub 정보는 30초 넘게 지났으면 다시 읽습니다.
 
+## 에이전트 도구
+
+설정이 켜져 있으면 01-software 저장소(clone·worktree의 GitHub origin이 같은 저장소)에서 여는 에이전트 세션에 `verifier_status` 도구를 붙입니다. 다른 저장소의 에이전트에는 붙이지 않습니다.
+
+- 지금 실행과 lane, 예상 종료, 연기 사유, 마지막 결과와 실패 분류, red 지속 시간, 24시간·7일 요약, 디스크를 짧은 텍스트로 돌려줍니다. `includeGithub: true`면 승격 후보도 함께 읽습니다.
+- 무거운 로컬 작업이나 push 전에 verifier가 heavy lock을 잡고 있는지, dev가 red인지 확인하는 용도입니다. 로그를 직접 읽는 셸 명령을 대신합니다.
+- 플러그인을 설치·다시 불러오거나 이 설정을 바꾸면, 열린 에이전트 세션은 실행 중인 턴을 끊지 않고 다음 입력 전에 다시 열립니다(Paseo 동작).
+
 ## 읽는 것과 부하
 
 읽기 전용입니다. verifier를 실행·중단하거나 lock·로그·Docker를 건드리지 않습니다.
@@ -40,11 +68,13 @@ paseo plugin update verifier
 | 같은 폴더의 `01-software-run-*.log` | 지금 실행의 lane 진행, 최근 20회의 lane 시간과 실패 분류 |
 | `git show -s` (verifier checkout) | 커밋 제목 |
 | `df -Pk ~/.local/share/01-software-verifier` | 디스크 여유 |
+| `ssh -o BatchMode=yes <대상> ls·tail·cat` (원격 모드) | 위 로그 파일들. LaunchAgent·`df`는 읽지 않습니다 |
+| `git -C <에이전트 작업 디렉터리> remote get-url origin` | 에이전트 도구를 붙일지 판단. 디렉터리별로 한 번 |
 | `gh api` (화면이 열려 있을 때만) | dev·main 끝과 비교 결과. 저장소는 verifier checkout의 origin에서 읽습니다 |
 
 사이드바 행이나 화면이 보일 때만 30초마다 읽습니다. 서버는 로컬 결과를 5초, GitHub 결과를 10분 캐시합니다. 끝난 실행의 로그와 커밋 제목은 바뀌지 않으므로 플러그인 프로세스가 살아 있는 동안 한 번만 읽습니다(실측: 첫 수집 약 100ms, 이후 수 ms). GitHub 조회는 한 번에 `gh api` 4회이고, 실패하면 마지막 값과 오류를 함께 보여 줍니다. 상세 lane 출력(`*-lanes.log`)은 읽지 않습니다.
 
-경로는 환경 변수 `VERIFIER_STATE_DIR`, `VERIFIER_CHECKOUT`, `VERIFIER_LAUNCH_LABEL`, `VERIFIER_PROJECT`로 바꿀 수 있습니다. Paseo 데몬 프로세스의 환경에서 읽습니다.
+설정을 비워 두면 환경 변수 `VERIFIER_SSH_TARGET`, `VERIFIER_CHECKOUT`과 `VERIFIER_STATE_DIR`, `VERIFIER_LAUNCH_LABEL`, `VERIFIER_PROJECT`를 씁니다. Paseo 데몬 프로세스의 환경에서 읽습니다.
 
 첫 응답과 읽기 문제의 변화는 `paseo plugin logs verifier`에 남습니다.
 

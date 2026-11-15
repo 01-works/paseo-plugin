@@ -26,7 +26,7 @@ export function formatGiB(kib: number): string {
 
 /** 사이드바 한 줄과 화면 머리글에 쓰는 요약. 우선순위: 꺼짐 > 실행 중 > 연기 > 마지막 결과. */
 export function headline(status: VerifierStatus): Headline {
-  if (!status.agent.loaded) return { tone: 'danger', label: 'LaunchAgent 꺼짐' };
+  if (status.agent && !status.agent.loaded) return { tone: 'danger', label: 'LaunchAgent 꺼짐' };
   const { current } = status;
   if (current) {
     if (current.phase === 'waiting-lock') return { tone: 'accent', label: `lock 대기 · ${shortSha(current.sha)}` };
