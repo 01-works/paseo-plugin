@@ -9,12 +9,17 @@ let root: string;
 let logs: string;
 const calls: string[] = [];
 
-function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFails?: boolean }): Exec {
+function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFails?: boolean; subjects?: Record<string, string> }): Exec {
   return async (command, args) => {
     calls.push([command, ...args].join(' '));
     if (command === 'launchctl') return { code: 0, stdout: options.running ? launchctlRunning : launchctlRunning.replace('state = running', 'state = not running'), stderr: '' };
     if (command === 'df') return { code: 0, stdout: dfOutput, stderr: '' };
-    if (command === 'git') return { code: 0, stdout: 'https://github.com/acme/repo.git\n', stderr: '' };
+    if (command === 'git' && args.includes('remote')) return { code: 0, stdout: 'https://github.com/acme/repo.git\n', stderr: '' };
+    if (command === 'git' && args.includes('show')) {
+      const shas = args.slice(args.indexOf('--format=%H%x1f%s') + 1);
+      if (shas.some(sha => !options.subjects?.[sha])) return { code: 128, stdout: '', stderr: 'bad object' };
+      return { code: 0, stdout: shas.map(sha => `${sha}\x1f${options.subjects?.[sha]}`).join('\n') + '\n', stderr: '' };
+    }
     if (command === 'gh') {
       if (options.ghFails) return { code: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' };
       const endpoint = args[1].replace('repos/acme/repo/', '');
@@ -53,6 +58,12 @@ describe('Collector', () => {
     expect(status.agent).toEqual({ loaded: true, running: false, runs: 751, intervalSeconds: 300 });
     expect(status.current).toBeNull();
     expect(status.recent.map(run => [run.sha, run.status, run.failedLanes])).toEqual([[SHA_A, 'success', []], [SHA_B, 'failure', ['app-packages']]]);
+    expect(status.recent[1].lanes.map(lane => [lane.name, lane.state, lane.seconds])).toEqual([['install', 'passed', 13], ['app-packages', 'failed', 118], ['release-prepare-dry-run', 'passed', 229]]);
+    expect(status.recent[1].failures[0]).toMatchObject({ lane: 'app-packages', reason: 'failure-unidentified' });
+    expect(status.laneMedians).toEqual({ install: 13, 'release-prepare-dry-run': 229 });
+    expect(status.redSince).toBe('2026-11-15T06:56:28.669Z');
+    expect(status.repoUrl).toBe('https://github.com/acme/repo');
+    expect(status.stats.map(stats => stats.hours)).toEqual([24, 168]);
     expect(status.lastSuccess?.sha).toBe(SHA_A);
     expect(status.failureStreak).toBe(1);
     expect(status.typicalRunSeconds).toBe(6138);
@@ -76,10 +87,20 @@ describe('Collector', () => {
     expect((await collector(fakeExec({ running: true })).status({ includeGithub: false })).current).toBeNull();
   });
 
+  it('reads commit subjects once and tolerates missing commits', async () => {
+    const instance = collector(fakeExec({ running: false, subjects: { [SHA_A]: 'feat: a (#1)' } }));
+    const status = await instance.status({ includeGithub: false });
+    expect(status.recent.map(run => run.subject)).toEqual(['feat: a (#1)', null]);
+    const shows = calls.filter(call => call.includes(' show ')).length;
+    await instance.status({ includeGithub: false, refresh: true });
+    expect(calls.filter(call => call.includes(' show ')).length).toBe(shows);
+  });
+
   it('reports deferrals after the last real run', async () => {
     await writeFile(path.join(logs, 'p-summary.log'), summaryLine('2026-11-15T07:00:00.000Z', 'p-run-n.log', SHA_C, 'none', 1, LOW_DISK) + '\n', { flag: 'a' });
     const status = await collector(fakeExec({ running: false })).status({ includeGithub: false });
     expect(status.deferral).toMatchObject({ count: 1, reason: 'disk low-space 9.7GiB' });
+    expect(status.beats.map(beat => [beat.status, beat.reason])).toEqual([['success', null], ['failure', null], ['none', 'disk low-space 9.7GiB']]);
   });
 
   it('reads promotion state from GitHub only when asked and caches it', async () => {

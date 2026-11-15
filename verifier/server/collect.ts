@@ -6,14 +6,20 @@ import { DISK_MINIMUM_KIB, type GithubStatus, type Run, type VerifierStatus } fr
 import {
   currentRunFrom,
   deferralFrom,
+  deferralReason,
   failureStreakFrom,
+  laneMediansFrom,
+  lanesFrom,
   median,
   minimumKibFrom,
   parseDfAvailableKib,
   parseLaunchctl,
   parseRunLog,
   parseSummary,
+  redPeriodsFrom,
+  type RunLog,
   type SummaryEntry,
+  windowStatsFrom,
 } from './parse';
 
 export interface Config {
@@ -34,8 +40,12 @@ export function defaultConfig(env = process.env): Config {
   };
 }
 
-const RECENT_RUNS = 10;
-const SUMMARY_TAIL_BYTES = 512 * 1024;
+// lane 표에 쓰는 실행 수. 7일 통계는 요약 로그에서 따로 센다.
+const HISTORY_RUNS = 20;
+const SUMMARY_TAIL_BYTES = 1024 * 1024;
+const RUN_LOG_TAIL_BYTES = 512 * 1024;
+const STATS_WINDOWS_HOURS = [24, 24 * 7];
+const BEATS = 30;
 const LOCAL_CACHE_MS = 5_000;
 const GITHUB_CACHE_MS = 10 * 60_000;
 const GITHUB_MIN_REFRESH_MS = 30_000;
@@ -85,8 +95,10 @@ export class Collector {
   private localFlight?: Promise<Omit<VerifierStatus, 'github' | 'githubError'>>;
   private github?: { at: number; value: GithubStatus | null; error: string | null; key: string };
   private githubFlight?: Promise<void>;
-  // 요약에 기록된 실행 로그는 더 바뀌지 않으므로 실패 lane을 한 번만 읽는다.
-  private failedLanes = new Map<string, string[]>();
+  // 요약에 기록된 실행 로그와 커밋 제목은 더 바뀌지 않으므로 한 번만 읽는다.
+  private runLogs = new Map<string, RunLog>();
+  private subjects = new Map<string, string | null>();
+  private slug?: Promise<string>;
 
   constructor(
     private readonly config: Config = defaultConfig(),
@@ -144,9 +156,11 @@ export class Collector {
     let current: VerifierStatus['current'] = null;
     if (agent.running && latestLog && !summarized.has(latestLog)) {
       try {
-        const text = await readTail(path.join(this.logsDir, latestLog), SUMMARY_TAIL_BYTES);
+        const text = await readTail(path.join(this.logsDir, latestLog), RUN_LOG_TAIL_BYTES);
         const fallbackSha = /-([0-9a-f]{12})\.log$/.exec(latestLog)?.[1] ?? '';
-        const candidate = currentRunFrom(parseRunLog(text), fallbackSha);
+        const log = parseRunLog(text);
+        const subject = log.sha ? (await this.subjectsOf([log.sha])).get(log.sha) ?? null : null;
+        const candidate = currentRunFrom(log, fallbackSha, subject);
         // 요약 없이 끊긴 옛 실행 로그를 지금 실행으로 착각하지 않는다(verifier 실행 제한 12시간).
         const started = candidate.startedAt ? Date.parse(candidate.startedAt) : NaN;
         current = Number.isFinite(started) && Date.now() - started > STALE_RUN_MS ? null : candidate;
@@ -156,40 +170,82 @@ export class Collector {
     }
 
     const realEntries = entries.filter((entry): entry is SummaryEntry & { status: 'success' | 'failure' } => entry.status !== 'none');
-    const toRun = async (entry: SummaryEntry & { status: 'success' | 'failure' }): Promise<Run> => ({
-      endedAt: entry.at,
-      sha: entry.sha,
-      status: entry.status,
-      runSeconds: entry.runSeconds,
-      failedLanes: entry.status === 'failure' ? await this.failedLanesOf(entry.log) : [],
-    });
-    const recent = await Promise.all(realEntries.slice(-RECENT_RUNS).map(toRun));
+    const history = realEntries.slice(-HISTORY_RUNS);
     const lastSuccessEntry = realEntries.findLast(entry => entry.status === 'success');
+    const wanted = lastSuccessEntry && !history.includes(lastSuccessEntry) ? [...history, lastSuccessEntry] : history;
+    const subjects = await this.subjectsOf(wanted.map(entry => entry.sha));
+    const toRun = async (entry: SummaryEntry & { status: 'success' | 'failure' }): Promise<Run> => {
+      const log = await this.runLogOf(entry.log);
+      return {
+        endedAt: entry.at,
+        sha: entry.sha,
+        subject: subjects.get(entry.sha) ?? null,
+        status: entry.status,
+        runSeconds: entry.runSeconds,
+        failedLanes: entry.status === 'failure' ? log?.failedLanes ?? [] : [],
+        lanes: log ? lanesFrom(log) : [],
+        failures: log?.failures ?? [],
+      };
+    };
+    const recent = await Promise.all(history.map(toRun));
+    const now = Date.now();
+    const red = redPeriodsFrom(realEntries.map(entry => ({ endedAt: entry.at, status: entry.status })));
+    const openRed = red.at(-1)?.end === null ? red.at(-1) : undefined;
 
     return {
-      collectedAt: new Date().toISOString(),
+      collectedAt: new Date(now).toISOString(),
       agent,
       current,
       recent,
+      laneMedians: laneMediansFrom(recent),
+      beats: entries.slice(-BEATS).map(entry => ({
+        at: entry.at,
+        sha: entry.sha,
+        status: entry.status,
+        runSeconds: entry.runSeconds,
+        reason: entry.status === 'none' ? deferralReason(entry) : null,
+      })),
+      redSince: openRed ? new Date(openRed.start).toISOString() : null,
+      stats: STATS_WINDOWS_HOURS.map(hours => windowStatsFrom(entries, hours, now)),
+      repoUrl: await this.repoSlug().then(slug => `https://github.com/${slug}`, () => null),
       lastSuccess: lastSuccessEntry ? await toRun(lastSuccessEntry) : null,
       failureStreak: failureStreakFrom(recent),
       deferral: current ? null : deferralFrom(entries),
-      typicalRunSeconds: median(recent.map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
+      typicalRunSeconds: median(recent.slice(-10).map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
       disk: availableKib === null ? null : { availableKib, minimumKib: minimumKibFrom(entries) ?? DISK_MINIMUM_KIB },
       errors,
     };
   }
 
-  private async failedLanesOf(logName: string): Promise<string[]> {
-    const cached = this.failedLanes.get(logName);
+  private async runLogOf(logName: string): Promise<RunLog | null> {
+    const cached = this.runLogs.get(logName);
     if (cached) return cached;
     try {
-      const lanes = parseRunLog(await readTail(path.join(this.logsDir, logName), SUMMARY_TAIL_BYTES)).failedLanes ?? [];
-      this.failedLanes.set(logName, lanes);
-      return lanes;
+      const log = parseRunLog(await readTail(path.join(this.logsDir, logName), RUN_LOG_TAIL_BYTES));
+      this.runLogs.set(logName, log);
+      return log;
     } catch {
-      return [];
+      return null;
     }
+  }
+
+  /** verifier checkout에서 커밋 제목을 읽는다. 없는 커밋은 null로 기억한다. */
+  private async subjectsOf(shas: string[]): Promise<Map<string, string | null>> {
+    const missing = [...new Set(shas)].filter(sha => /^[0-9a-f]{40}$/.test(sha) && !this.subjects.has(sha));
+    const read = async (batch: string[]) => {
+      const result = await this.exec('git', ['-C', this.config.checkout, 'show', '-s', '--format=%H%x1f%s', ...batch], 10_000);
+      if (result.code !== 0) return false;
+      for (const line of result.stdout.split('\n')) {
+        const [sha, subject] = line.split('\x1f');
+        if (sha && subject !== undefined) this.subjects.set(sha, subject);
+      }
+      return true;
+    };
+    if (missing.length > 0 && !(await read(missing))) {
+      // 하나라도 없으면 git이 통째로 실패하므로 하나씩 다시 읽는다.
+      for (const sha of missing) if (!(await read([sha]))) this.subjects.set(sha, null);
+    }
+    return this.subjects;
   }
 
   private async refreshGithub(candidateSha: string | null, force: boolean) {
@@ -211,7 +267,15 @@ export class Collector {
     await this.githubFlight;
   }
 
-  private async repoSlug(): Promise<string> {
+  private repoSlug(): Promise<string> {
+    this.slug ??= this.readRepoSlug();
+    this.slug.catch(() => {
+      this.slug = undefined;
+    });
+    return this.slug;
+  }
+
+  private async readRepoSlug(): Promise<string> {
     const remote = await this.exec('git', ['-C', this.config.checkout, 'remote', 'get-url', 'origin'], 5_000);
     const slug = /github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?\s*$/.exec(remote.stdout)?.[1];
     if (!slug) throw new Error('verifier checkout의 GitHub origin을 읽지 못했습니다');
