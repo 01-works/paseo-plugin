@@ -12,6 +12,8 @@ const { InfoTip } = await import('../client/screen');
 const theme = { colors: { surface0: '#000', surface1: '#111', surface2: '#222', border: '#333', foreground: '#fff', foregroundMuted: '#aaa', accent: '#0af', accentForeground: '#000', statusSuccess: '#0f0', statusWarning: '#fa0', statusDanger: '#f00' } };
 const styles = { text: { color: '#fff' }, tip: { position: 'absolute' as const, top: 22, left: -8, width: 240 } } as never;
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 let renderer: ReactTestRenderer | undefined;
 afterEach(() => renderer?.unmount());
 
