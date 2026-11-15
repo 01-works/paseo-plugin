@@ -1,4 +1,4 @@
-import type { CurrentRun, Deferral, Lane, Run } from '../shared/contracts';
+import type { CurrentRun, Deferral, Failure, Lane, Run, WindowStats } from '../shared/contracts';
 
 // verifier가 남기는 텍스트 형식을 읽는 순수 함수들. 형식 근거는 01-software의
 // scripts/release/verifier-loop.mjs(summary)와 nightly-local-check.mjs(lane 표시)다.
@@ -73,13 +73,15 @@ export interface RunLog {
   startedAt: string | null;
   sha: string | null;
   waitingLock: boolean;
+  lanesStartedAt: string | null;
   order: string[] | null;
+  failures: Failure[];
   lanes: Map<string, { state: Lane['state']; seconds: number | null }>;
   failedLanes: string[] | null;
 }
 
 export function parseRunLog(text: string): RunLog {
-  const result: RunLog = { startedAt: null, sha: null, waitingLock: false, order: null, lanes: new Map(), failedLanes: null };
+  const result: RunLog = { startedAt: null, sha: null, waitingLock: false, lanesStartedAt: null, order: null, failures: [], lanes: new Map(), failedLanes: null };
   for (const raw of text.split('\n')) {
     const line = raw.trimEnd();
     const stamped = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) (.*)$/.exec(line);
@@ -89,7 +91,10 @@ export function parseRunLog(text: string): RunLog {
       const target = /^Target \w+ ([0-9a-f]{40})/.exec(body);
       if (target) result.sha = target[1];
       if (/^Waiting for /.test(body)) result.waitingLock = true;
-      if (/^Heavy authority acquired/.test(body)) result.waitingLock = false;
+      if (/^Heavy authority acquired/.test(body)) {
+        result.waitingLock = false;
+        result.lanesStartedAt = stamped[1];
+      }
       continue;
     }
     const order = /^Lane order summary: (\{.*\})$/.exec(line);
@@ -100,6 +105,12 @@ export function parseRunLog(text: string): RunLog {
       } catch {
         // 깨진 줄은 건너뛴다.
       }
+      continue;
+    }
+    const classified = /^\[([a-z0-9-]+)\] classification=(\S+) reason=(\S+) signature=(\S+)/.exec(line);
+    if (classified) {
+      const [, lane, classification, reason, signature] = classified;
+      result.failures.push({ lane, classification, reason, signature });
       continue;
     }
     const lane = /^\[([a-z0-9-]+)\] (start|passed|failed)(?: in (\d+)s)?/.exec(line);
@@ -120,7 +131,7 @@ export function parseRunLog(text: string): RunLog {
   return result;
 }
 
-export function currentRunFrom(log: RunLog, fallbackSha: string): CurrentRun {
+export function lanesFrom(log: RunLog): Lane[] {
   const names = log.order ?? [...log.lanes.keys()];
   const lanes: Lane[] = names.map(name => {
     const seen = log.lanes.get(name);
@@ -128,11 +139,18 @@ export function currentRunFrom(log: RunLog, fallbackSha: string): CurrentRun {
   });
   // 순서 요약에 없던 lane도 버리지 않는다.
   for (const [name, seen] of log.lanes) if (!names.includes(name)) lanes.push({ name, ...seen });
+  return lanes;
+}
+
+export function currentRunFrom(log: RunLog, fallbackSha: string, subject: string | null = null): CurrentRun {
   return {
     sha: log.sha ?? fallbackSha,
+    subject,
     startedAt: log.startedAt,
+    lanesStartedAt: log.lanesStartedAt,
     phase: log.waitingLock && log.lanes.size === 0 ? 'waiting-lock' : 'lanes',
-    lanes,
+    lanes: lanesFrom(log),
+    failures: log.failures,
   };
 }
 
@@ -208,4 +226,59 @@ export function median(values: number[]): number | null {
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+/** 통과한 lane만으로 lane별 시간 중앙값을 낸다. 실패 lane은 중간에 끝날 수 있어 뺀다. */
+export function laneMediansFrom(runs: Run[]): Record<string, number> {
+  const samples = new Map<string, number[]>();
+  for (const run of runs) {
+    for (const lane of run.lanes) {
+      if (lane.state !== 'passed' || lane.seconds === null) continue;
+      samples.set(lane.name, [...(samples.get(lane.name) ?? []), lane.seconds]);
+    }
+  }
+  const result: Record<string, number> = {};
+  for (const [name, values] of samples) result[name] = median(values) as number;
+  return result;
+}
+
+interface RedPeriod {
+  start: number;
+  end: number | null;
+}
+
+/** 통과 뒤 첫 실패부터 다음 통과까지를 red 구간으로 본다(verifier 관측 시각 기준). */
+export function redPeriodsFrom(runs: Pick<Run, 'endedAt' | 'status'>[]): RedPeriod[] {
+  const periods: RedPeriod[] = [];
+  let open: RedPeriod | null = null;
+  for (const run of runs) {
+    const at = Date.parse(run.endedAt);
+    if (run.status === 'failure' && !open) {
+      open = { start: at, end: null };
+      periods.push(open);
+    } else if (run.status === 'success' && open) {
+      open.end = at;
+      open = null;
+    }
+  }
+  return periods;
+}
+
+export function windowStatsFrom(entries: SummaryEntry[], hours: number, now: number): WindowStats {
+  const since = now - hours * 3600_000;
+  const inWindow = entries.filter(entry => Date.parse(entry.at) >= since);
+  const real = inWindow.filter(entry => entry.status !== 'none');
+  const red = redPeriodsFrom(entries.filter(entry => entry.status !== 'none').map(entry => ({ endedAt: entry.at, status: entry.status as Run['status'] })));
+  const overlaps = red
+    .map(period => Math.min(period.end ?? now, now) - Math.max(period.start, since))
+    .filter(duration => duration > 0);
+  return {
+    hours,
+    runs: real.length,
+    successes: real.filter(entry => entry.status === 'success').length,
+    failures: real.filter(entry => entry.status === 'failure').length,
+    deferrals: inWindow.length - real.length,
+    medianRunSeconds: median(real.map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
+    longestRedSeconds: overlaps.length ? Math.round(Math.max(...overlaps) / 1000) : null,
+  };
 }

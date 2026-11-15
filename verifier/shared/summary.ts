@@ -44,9 +44,42 @@ export function headline(status: VerifierStatus): Headline {
   return { tone: 'success', label: `대기 · 통과 ${shortSha(last.sha)}` };
 }
 
-/** 지금 실행의 예상 종료 시각(ms). 시작 시각이나 최근 실행 시간이 없으면 null. */
-export function estimatedEnd(status: VerifierStatus): number | null {
-  const started = status.current?.startedAt ? Date.parse(status.current.startedAt) : NaN;
-  if (!Number.isFinite(started) || status.typicalRunSeconds === null) return null;
-  return started + status.typicalRunSeconds * 1000;
+export interface RunEstimate {
+  /** 지금 도는 lane의 추정 경과 초. lane 시작 시각이 로그에 없어서 끝난 lane 시간을 빼서 낸다. */
+  runningLaneSeconds: number | null;
+  /** 예상 종료 시각(ms) */
+  endAt: number | null;
+  /** lane별 중앙값으로 냈으면 true, 전체 실행 시간 중앙값으로 냈으면 false */
+  perLane: boolean;
+}
+
+export function estimateRun(status: VerifierStatus, now = Date.now()): RunEstimate {
+  const current = status.current;
+  if (!current) return { runningLaneSeconds: null, endAt: null, perLane: false };
+  const base = Date.parse(current.lanesStartedAt ?? current.startedAt ?? '');
+  const finished = current.lanes.reduce((sum, lane) => sum + (lane.state === 'passed' || lane.state === 'failed' ? lane.seconds ?? 0 : 0), 0);
+  const running = current.lanes.find(lane => lane.state === 'running');
+  const runningLaneSeconds = Number.isFinite(base) && running ? Math.max(0, Math.round((now - base) / 1000 - finished)) : null;
+
+  const left = current.lanes.filter(lane => lane.state === 'running' || lane.state === 'pending');
+  const medians = left.map(lane => status.laneMedians[lane.name]);
+  if (left.length > 0 && medians.every(value => value !== undefined)) {
+    const remaining = left.reduce((sum, lane, index) => {
+      const median = medians[index] as number;
+      return sum + (lane.state === 'running' ? Math.max(0, median - (runningLaneSeconds ?? 0)) : median);
+    }, 0);
+    return { runningLaneSeconds, endAt: now + remaining * 1000, perLane: true };
+  }
+  const started = Date.parse(current.startedAt ?? '');
+  const endAt = Number.isFinite(started) && status.typicalRunSeconds !== null ? started + status.typicalRunSeconds * 1000 : null;
+  return { runningLaneSeconds, endAt, perLane: false };
+}
+
+/** 평소(통과 중앙값)보다 1.5배 넘게, 그리고 1분 넘게 오래 걸렸으면 true */
+export function isSlow(seconds: number | null, median: number | undefined): boolean {
+  return seconds !== null && median !== undefined && seconds > median * 1.5 && seconds - median > 60;
+}
+
+export function prNumber(subject: string | null): string | null {
+  return subject ? /\(#(\d+)\)\s*$/.exec(subject)?.[1] ?? null : null;
 }

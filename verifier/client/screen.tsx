@@ -1,11 +1,13 @@
 import type { PluginTheme } from '@getpaseo/plugin';
-import type { PluginScreenProps } from '@getpaseo/plugin/client';
+import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import type { Lane, Run, VerifierStatus } from '../shared/contracts';
-import { estimatedEnd, formatDuration, formatGiB, headline, shortSha } from '../shared/summary';
+import type { Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
+import { estimateRun, formatDuration, formatGiB, headline, isSlow, prNumber, shortSha } from '../shared/summary';
 import { toneColor } from './sidebar';
 import { useStatus, type StatusStore } from './store';
+
+const RECENT_LIST = 10;
 
 function pad(value: number) {
   return String(value).padStart(2, '0');
@@ -27,8 +29,11 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     text: { color: theme.colors.foreground },
     muted: { color: theme.colors.foregroundMuted },
     mono: { color: theme.colors.foreground, fontFamily: 'Menlo' },
+    link: { color: theme.colors.accent, fontFamily: 'Menlo' },
     button: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.colors.surface2 },
     buttonText: { color: theme.colors.foreground },
+    cell: { width: 44, height: 26, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 4, backgroundColor: theme.colors.surface2 },
+    laneName: { color: theme.colors.foreground, width: compact ? 150 : 210 },
   };
 }
 
@@ -43,6 +48,32 @@ function Card({ styles, title, children }: { styles: Styles; title: string; chil
   );
 }
 
+function Sha({ sha, repoUrl, styles }: { sha: string; repoUrl: string | null; styles: Styles }) {
+  if (!repoUrl) return <Text style={styles.mono}>{shortSha(sha)}</Text>;
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`커밋 ${shortSha(sha)}를 GitHub에서 열기`} onPress={() => void openExternalUrl(`${repoUrl}/commit/${sha}`)}>
+      <Text style={styles.link}>{shortSha(sha)}</Text>
+    </Pressable>
+  );
+}
+
+/** 커밋 제목. 끝의 `(#123)`은 PR 링크로 따로 보여 준다. */
+function Subject({ subject, repoUrl, styles }: { subject: string | null; repoUrl: string | null; styles: Styles }) {
+  if (!subject) return null;
+  const pr = prNumber(subject);
+  const title = pr ? subject.replace(/\s*\(#\d+\)\s*$/, '') : subject;
+  return (
+    <View style={styles.row}>
+      <Text style={[styles.text, { flexShrink: 1 }]} numberOfLines={1}>{title}</Text>
+      {pr && repoUrl ? (
+        <Pressable accessibilityRole="link" accessibilityLabel={`PR ${pr}를 GitHub에서 열기`} onPress={() => void openExternalUrl(`${repoUrl}/pull/${pr}`)}>
+          <Text style={styles.link}>#{pr}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const LANE_MARK: Record<Lane['state'], string> = { passed: '✓', failed: '✗', running: '●', pending: '○' };
 
 function laneColor(theme: PluginTheme, state: Lane['state']) {
@@ -52,39 +83,139 @@ function laneColor(theme: PluginTheme, state: Lane['state']) {
   return theme.colors.foregroundMuted;
 }
 
+function FailureLines({ failures, styles }: { failures: Failure[]; styles: Styles }) {
+  if (failures.length === 0) return null;
+  return (
+    <>
+      {failures.map(failure => (
+        <Text key={`${failure.lane}-${failure.signature}`} style={styles.muted} selectable>
+          {failure.lane}: {failure.classification} · {failure.reason} · {failure.signature.slice(0, 12)}
+        </Text>
+      ))}
+    </>
+  );
+}
+
 function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
   const current = status.current;
   if (!current) return null;
   const started = current.startedAt ? Date.parse(current.startedAt) : NaN;
-  const end = estimatedEnd(status);
+  const estimate = estimateRun(status);
   return (
     <Card styles={styles} title="지금 실행">
       <View style={styles.row}>
-        <Text style={styles.mono}>{shortSha(current.sha)}</Text>
+        <Sha sha={current.sha} repoUrl={status.repoUrl} styles={styles} />
         {Number.isFinite(started) ? <Text style={styles.muted}>{formatClock(started)} 시작 · {formatDuration((Date.now() - started) / 1000)}째</Text> : null}
-        {end ? <Text style={styles.muted}>· 예상 종료 {formatClock(end)}</Text> : null}
+        {estimate.endAt ? <Text style={styles.muted}>· 예상 종료 {formatClock(estimate.endAt)}{estimate.perLane ? '' : ' (전체 중앙값 기준)'}</Text> : null}
       </View>
+      <Subject subject={current.subject} repoUrl={status.repoUrl} styles={styles} />
       {current.phase === 'waiting-lock' ? <Text style={styles.muted}>heavy lock을 기다리는 중입니다.</Text> : null}
-      {current.lanes.map(lane => (
-        <View key={lane.name} style={styles.row}>
-          <Text style={{ color: laneColor(theme, lane.state) }}>{LANE_MARK[lane.state]}</Text>
-          <Text style={lane.state === 'pending' ? styles.muted : styles.text}>{lane.name}</Text>
-          {lane.seconds !== null ? <Text style={styles.muted}>{formatDuration(lane.seconds)}</Text> : null}
-        </View>
-      ))}
+      {current.lanes.map(lane => {
+        const median = status.laneMedians[lane.name];
+        const slow = isSlow(lane.state === 'running' ? estimate.runningLaneSeconds : lane.seconds, median);
+        const usual = median !== undefined ? `평소 ${formatDuration(median)}` : null;
+        let detail: string | null = null;
+        if (lane.state === 'running') detail = [estimate.runningLaneSeconds !== null ? `약 ${formatDuration(estimate.runningLaneSeconds)}째` : null, usual].filter(Boolean).join(' · ');
+        else if (lane.seconds !== null) detail = [formatDuration(lane.seconds), slow && usual ? usual : null].filter(Boolean).join(' · ');
+        else if (lane.state === 'pending') detail = usual;
+        return (
+          <View key={lane.name} style={styles.row}>
+            <Text style={{ color: laneColor(theme, lane.state) }}>{LANE_MARK[lane.state]}</Text>
+            <Text style={lane.state === 'pending' ? styles.muted : styles.text}>{lane.name}</Text>
+            {detail ? <Text style={{ color: slow ? theme.colors.statusWarning : theme.colors.foregroundMuted }}>{detail}</Text> : null}
+          </View>
+        );
+      })}
+      <FailureLines failures={current.failures} styles={styles} />
     </Card>
   );
 }
 
-function RunRow({ run, styles, theme }: { run: Run; styles: Styles; theme: PluginTheme }) {
+function StatsCard({ status, styles }: { status: VerifierStatus; styles: Styles }) {
+  if (status.stats.length === 0) return null;
+  const label = (stats: WindowStats) => (stats.hours % 24 === 0 && stats.hours > 24 ? `${stats.hours / 24}일` : `${stats.hours}시간`);
+  return (
+    <Card styles={styles} title="기간 요약">
+      {status.redSince ? <Text style={styles.text}>지금 red: {formatClock(status.redSince)}부터 {formatDuration((Date.now() - Date.parse(status.redSince)) / 1000)}째 (verifier 관측 기준)</Text> : null}
+      {status.stats.map(stats => {
+        const rate = stats.runs > 0 ? `${Math.round((stats.successes / stats.runs) * 100)}%` : '-';
+        return (
+          <View key={stats.hours} style={styles.row}>
+            <Text style={[styles.title, { width: 48 }]}>{label(stats)}</Text>
+            <Text style={styles.text}>실행 {stats.runs} (통과 {stats.successes} · 실패 {stats.failures}) · 성공률 {rate}</Text>
+            <Text style={styles.muted}>
+              {stats.medianRunSeconds !== null ? `중앙 ${formatDuration(stats.medianRunSeconds)}` : ''}
+              {stats.deferrals > 0 ? ` · 연기 ${stats.deferrals}` : ''}
+              {stats.longestRedSeconds !== null ? ` · 가장 긴 red ${formatDuration(stats.longestRedSeconds)}` : ''}
+            </Text>
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
+
+/** lane을 행, 실행을 열(최근이 왼쪽)로 둔 표. 칸은 걸린 분이고, 평소보다 오래 걸린 통과는 경고색이다. */
+function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  const runs = [...status.recent].reverse();
+  if (runs.length === 0) return null;
+  // 실패 lane이 다음 실행에서 앞으로 옮겨지므로 순서가 아니라 이름으로 맞춘다.
+  const names: string[] = [];
+  for (const run of [...runs].reverse()) for (const lane of run.lanes) if (!names.includes(lane.name)) names.push(lane.name);
+  const laneOf = (run: Run, name: string) => run.lanes.find(lane => lane.name === name);
+  return (
+    <Card styles={styles} title={`lane 이력 (최근 ${runs.length}회)`}>
+      <Text style={styles.muted}>칸은 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다.</Text>
+      <View style={{ flexDirection: 'row' }}>
+        <View style={{ gap: 4 }}>
+          <Text style={[styles.muted, { height: 34 }]}> </Text>
+          {names.map(name => (
+            <Text key={name} style={[styles.laneName, { height: 26, lineHeight: 26 }]} numberOfLines={1}>{name}</Text>
+          ))}
+        </View>
+        <ScrollView horizontal contentContainerStyle={{ gap: 4 }}>
+          {runs.map(run => (
+            <View key={`${run.endedAt}-${run.sha}`} style={{ gap: 4, alignItems: 'center' }}>
+              <View style={{ height: 34, alignItems: 'center' }}>
+                <Text style={{ color: run.status === 'success' ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{run.status === 'success' ? '✓' : '✗'}</Text>
+                <Text style={styles.muted}>{formatClock(run.endedAt).slice(-5)}</Text>
+              </View>
+              {names.map(name => {
+                const lane = laneOf(run, name);
+                const slow = lane?.state === 'passed' && isSlow(lane.seconds, status.laneMedians[name]);
+                const color = !lane || lane.seconds === null ? theme.colors.foregroundMuted : lane.state === 'failed' ? theme.colors.statusDanger : slow ? theme.colors.statusWarning : theme.colors.foreground;
+                const minutes = lane?.seconds != null ? String(Math.max(1, Math.round(lane.seconds / 60))) : '–';
+                return (
+                  <View
+                    key={name}
+                    style={[styles.cell, lane?.state === 'failed' ? { borderWidth: 1, borderColor: theme.colors.statusDanger } : null]}
+                    accessibilityLabel={`${formatClock(run.endedAt)} ${name} ${lane ? `${lane.state} ${minutes}분` : '기록 없음'}`}
+                  >
+                    <Text style={{ color }}>{minutes}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </Card>
+  );
+}
+
+function RunRow({ run, repoUrl, styles, theme }: { run: Run; repoUrl: string | null; styles: Styles; theme: PluginTheme }) {
   const ok = run.status === 'success';
   return (
-    <View style={styles.row}>
-      <Text style={{ color: ok ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{ok ? '✓' : '✗'}</Text>
-      <Text style={styles.muted}>{formatClock(run.endedAt)}</Text>
-      <Text style={styles.mono}>{shortSha(run.sha)}</Text>
-      {run.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(run.runSeconds)}</Text> : null}
-      {run.failedLanes.length > 0 ? <Text style={{ color: theme.colors.statusDanger }}>{run.failedLanes.join(', ')}</Text> : null}
+    <View style={{ gap: 2 }}>
+      <View style={styles.row}>
+        <Text style={{ color: ok ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{ok ? '✓' : '✗'}</Text>
+        <Text style={styles.muted}>{formatClock(run.endedAt)}</Text>
+        <Sha sha={run.sha} repoUrl={repoUrl} styles={styles} />
+        {run.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(run.runSeconds)}</Text> : null}
+        {run.failedLanes.length > 0 ? <Text style={{ color: theme.colors.statusDanger }}>{run.failedLanes.join(', ')}</Text> : null}
+      </View>
+      <Subject subject={run.subject} repoUrl={repoUrl} styles={styles} />
+      {!ok ? <FailureLines failures={run.failures} styles={styles} /> : null}
     </View>
   );
 }
@@ -106,15 +237,15 @@ function PromotionCard({ status, styles }: { status: VerifierStatus; styles: Sty
     <Card styles={styles} title="승격">
       <View style={styles.row}>
         <Text style={styles.muted}>main</Text>
-        <Text style={styles.mono}>{shortSha(github.mainSha)}</Text>
+        <Sha sha={github.mainSha} repoUrl={status.repoUrl} styles={styles} />
         <Text style={styles.muted}>· dev</Text>
-        <Text style={styles.mono}>{shortSha(github.devSha)}</Text>
+        <Sha sha={github.devSha} repoUrl={status.repoUrl} styles={styles} />
         <Text style={styles.muted}>({devState}) · dev가 {github.devAheadOfMain}커밋 앞섬</Text>
       </View>
       {github.candidate ? (
         <View style={styles.row}>
           <Text style={styles.text}>후보</Text>
-          <Text style={styles.mono}>{shortSha(github.candidate.sha)}</Text>
+          <Sha sha={github.candidate.sha} repoUrl={status.repoUrl} styles={styles} />
           <Text style={styles.muted}>verifier 통과 · main보다 {github.candidate.aheadOfMain}커밋 앞섬</Text>
         </View>
       ) : (
@@ -174,13 +305,21 @@ export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { s
 
           <PromotionCard status={status} styles={styles} />
 
+          <StatsCard status={status} styles={styles} />
+
+          <LaneMatrixCard status={status} styles={styles} theme={theme} />
+
           <Card styles={styles} title="최근 실행">
             {status.lastSuccess ? (
-              <Text style={styles.muted}>마지막 통과 {shortSha(status.lastSuccess.sha)} · {formatClock(status.lastSuccess.endedAt)}{status.failureStreak > 0 ? ` · 그 뒤 ${status.failureStreak}회 연속 실패` : ''}</Text>
+              <View style={styles.row}>
+                <Text style={styles.muted}>마지막 통과</Text>
+                <Sha sha={status.lastSuccess.sha} repoUrl={status.repoUrl} styles={styles} />
+                <Text style={styles.muted}>{formatClock(status.lastSuccess.endedAt)}{status.failureStreak > 0 ? ` · 그 뒤 ${status.failureStreak}회 연속 실패` : ''}</Text>
+              </View>
             ) : null}
             {status.recent.length === 0 ? <Text style={styles.muted}>기록이 없습니다.</Text> : null}
-            {[...status.recent].reverse().map(run => (
-              <RunRow key={`${run.endedAt}-${run.sha}`} run={run} styles={styles} theme={theme} />
+            {[...status.recent].reverse().slice(0, RECENT_LIST).map(run => (
+              <RunRow key={`${run.endedAt}-${run.sha}`} run={run} repoUrl={status.repoUrl} styles={styles} theme={theme} />
             ))}
           </Card>
 
