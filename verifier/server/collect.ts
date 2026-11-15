@@ -1,6 +1,4 @@
-import { execFile } from 'node:child_process';
-import { open, readdir } from 'node:fs/promises';
-import { homedir, userInfo } from 'node:os';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { DISK_MINIMUM_KIB, type GithubStatus, type Run, type VerifierStatus } from '../shared/contracts';
 import {
@@ -12,8 +10,6 @@ import {
   lanesFrom,
   median,
   minimumKibFrom,
-  parseDfAvailableKib,
-  parseLaunchctl,
   parseRunLog,
   parseSummary,
   redPeriodsFrom,
@@ -21,12 +17,19 @@ import {
   type SummaryEntry,
   windowStatsFrom,
 } from './parse';
+import { run, type Exec } from './exec';
+import { LocalSource, SshSource, type Source } from './source';
+
+export type { Exec, ExecResult } from './exec';
+export { run } from './exec';
 
 export interface Config {
   project: string;
   stateDir: string;
   checkout: string;
   launchLabel: string;
+  /** 비어 있지 않으면 이 SSH 대상(verifier-logs)으로 원격 verifier를 읽는다. */
+  sshTarget?: string | null;
 }
 
 // 01-software verifier 설치(scripts/release/verifier-loop.mjs)의 기본 위치
@@ -37,55 +40,18 @@ export function defaultConfig(env = process.env): Config {
     stateDir: env.VERIFIER_STATE_DIR ?? path.join(home, '.local/state/verifier'),
     checkout: env.VERIFIER_CHECKOUT ?? path.join(home, '.local/share/01-software-verifier'),
     launchLabel: env.VERIFIER_LAUNCH_LABEL ?? 'local.01-software.verifier-loop',
+    sshTarget: env.VERIFIER_SSH_TARGET || null,
   };
 }
 
 // lane 표에 쓰는 실행 수. 7일 통계는 요약 로그에서 따로 센다.
 const HISTORY_RUNS = 20;
-const SUMMARY_TAIL_BYTES = 1024 * 1024;
-const RUN_LOG_TAIL_BYTES = 512 * 1024;
 const STATS_WINDOWS_HOURS = [24, 24 * 7];
 const BEATS = 30;
 const LOCAL_CACHE_MS = 5_000;
 const GITHUB_CACHE_MS = 10 * 60_000;
 const GITHUB_MIN_REFRESH_MS = 30_000;
 const STALE_RUN_MS = 12 * 60 * 60_000;
-// launchd·Paseo 데몬의 PATH에는 Homebrew가 없을 수 있다.
-const EXTRA_PATH = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
-
-export interface ExecResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-export type Exec = (command: string, args: string[], timeoutMs?: number) => Promise<ExecResult>;
-
-export function run(command: string, args: string[], timeoutMs = 10_000): Promise<ExecResult> {
-  const env = { ...process.env, PATH: [process.env.PATH, ...EXTRA_PATH].filter(Boolean).join(':'), GH_PROMPT_DISABLED: '1', NO_COLOR: '1' };
-  return new Promise(resolve => {
-    execFile(command, args, { timeout: timeoutMs, env, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      const code = error ? (typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : 1) : 0;
-      resolve({ code, stdout: String(stdout), stderr: String(stderr) || (error && code === 1 ? error.message : '') });
-    });
-  });
-}
-
-async function readTail(file: string, bytes: number): Promise<string> {
-  const handle = await open(file, 'r');
-  try {
-    const { size } = await handle.stat();
-    const start = Math.max(0, size - bytes);
-    const buffer = Buffer.alloc(size - start);
-    await handle.read(buffer, 0, buffer.length, start);
-    const text = buffer.toString('utf8');
-    // 잘린 첫 줄은 버린다.
-    return start > 0 ? text.slice(text.indexOf('\n') + 1) : text;
-  } finally {
-    await handle.close();
-  }
-}
-
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -99,14 +65,13 @@ export class Collector {
   private runLogs = new Map<string, RunLog>();
   private subjects = new Map<string, string | null>();
   private slug?: Promise<string>;
+  private readonly source: Source;
 
   constructor(
     private readonly config: Config = defaultConfig(),
     private readonly exec: Exec = run,
-  ) {}
-
-  private get logsDir() {
-    return path.join(this.config.stateDir, 'logs');
+  ) {
+    this.source = config.sshTarget ? new SshSource(config.sshTarget, config.project, exec) : new LocalSource(config, exec);
   }
 
   async status(input: { includeGithub: boolean; refresh?: boolean }): Promise<VerifierStatus> {
@@ -128,35 +93,31 @@ export class Collector {
 
   private async collectLocal(): Promise<Omit<VerifierStatus, 'github' | 'githubError'>> {
     const errors: string[] = [];
-    const prefix = `${this.config.project}-`;
+    const source = this.source;
+    const warn = <T,>(label: string, fallback: T) => (error: unknown) => {
+      errors.push(`${label}: ${message(error)}`);
+      return fallback;
+    };
 
-    const [launch, df, summaryText, runLogNames] = await Promise.all([
-      this.exec('launchctl', ['print', `gui/${userInfo().uid}/${this.config.launchLabel}`], 5_000),
-      this.exec('df', ['-Pk', this.config.checkout], 5_000),
-      readTail(path.join(this.logsDir, `${prefix}summary.log`), SUMMARY_TAIL_BYTES).catch(error => {
-        errors.push(`summary log: ${message(error)}`);
-        return '';
-      }),
-      readdir(this.logsDir)
-        .then(names => names.filter(name => name.startsWith(`${prefix}run-`) && name.endsWith('.log') && !name.endsWith('-lanes.log')).sort())
-        .catch(error => {
-          errors.push(`logs dir: ${message(error)}`);
-          return [] as string[];
-        }),
+    const [agent, liveKib, summaryText, runLogNames] = await Promise.all([
+      source.launchAgent().catch(warn('launchctl', null)),
+      source.diskKib().catch(warn('disk', null)),
+      source.summary().catch(warn('summary log', '')),
+      source.runLogNames().catch(warn('logs dir', [] as string[])),
     ]);
 
-    const agent = parseLaunchctl(launch.stdout, launch.code);
     const entries = parseSummary(summaryText);
-    const availableKib = parseDfAvailableKib(df.stdout);
-    if (availableKib === null) errors.push('disk: df output unreadable');
+    if (source.kind === 'local' && liveKib === null) errors.push('disk: df output unreadable');
+    const disk = diskFrom(liveKib, entries);
 
     // 요약에 아직 없는 가장 최근 실행 로그가 지금 도는 실행이다.
     const summarized = new Set(entries.map(entry => entry.log));
     const latestLog = runLogNames.at(-1);
     let current: VerifierStatus['current'] = null;
-    if (agent.running && latestLog && !summarized.has(latestLog)) {
+    // 원격에서는 LaunchAgent를 볼 수 없어 요약에 없는 최근 로그만으로 판단한다(12시간 넘으면 버림).
+    if ((agent?.running ?? source.kind === 'ssh') && latestLog && !summarized.has(latestLog)) {
       try {
-        const text = await readTail(path.join(this.logsDir, latestLog), RUN_LOG_TAIL_BYTES);
+        const text = await source.runLog(latestLog);
         const fallbackSha = /-([0-9a-f]{12})\.log$/.exec(latestLog)?.[1] ?? '';
         const log = parseRunLog(text);
         const subject = log.sha ? (await this.subjectsOf([log.sha])).get(log.sha) ?? null : null;
@@ -212,7 +173,8 @@ export class Collector {
       failureStreak: failureStreakFrom(recent),
       deferral: current ? null : deferralFrom(entries),
       typicalRunSeconds: median(recent.slice(-10).map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
-      disk: availableKib === null ? null : { availableKib, minimumKib: minimumKibFrom(entries) ?? DISK_MINIMUM_KIB },
+      disk,
+      source: { kind: source.kind, target: source.target },
       errors,
     };
   }
@@ -221,7 +183,7 @@ export class Collector {
     const cached = this.runLogs.get(logName);
     if (cached) return cached;
     try {
-      const log = parseRunLog(await readTail(path.join(this.logsDir, logName), RUN_LOG_TAIL_BYTES));
+      const log = parseRunLog(await this.source.runLog(logName));
       this.runLogs.set(logName, log);
       return log;
     } catch {
@@ -267,7 +229,7 @@ export class Collector {
     await this.githubFlight;
   }
 
-  private repoSlug(): Promise<string> {
+  repoSlug(): Promise<string> {
     this.slug ??= this.readRepoSlug();
     this.slug.catch(() => {
       this.slug = undefined;
@@ -303,4 +265,16 @@ export class Collector {
       candidate: candidateSha && candidateState === 'ahead' ? { sha: candidateSha, aheadOfMain: Number(candidateAhead) || 0 } : null,
     };
   }
+}
+
+/** 지금 잰 값이 없으면(원격) 마지막 preflight 기록의 값을 쓰고 그 시각을 남긴다. */
+export function diskFrom(liveKib: number | null, entries: SummaryEntry[]): VerifierStatus['disk'] {
+  const minimumKib = minimumKibFrom(entries) ?? DISK_MINIMUM_KIB;
+  if (liveKib !== null) return { availableKib: liveKib, minimumKib, measuredAt: null };
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const measurement = entries[index].preflight.find(item => item.item === 'disk')?.measurement;
+    const kib = measurement ? /available_kib=(\d+)/.exec(measurement)?.[1] : undefined;
+    if (kib) return { availableKib: Number(kib), minimumKib, measuredAt: entries[index].at };
+  }
+  return null;
 }

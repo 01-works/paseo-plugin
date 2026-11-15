@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -27,6 +27,24 @@ function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFa
       return value === undefined ? { code: 1, stdout: '', stderr: `unexpected ${endpoint}` } : { code: 0, stdout: `${value}\n`, stderr: '' };
     }
     return { code: 127, stdout: '', stderr: 'unknown' };
+  };
+}
+
+// bootstrap verifier role의 verifier-logs(ls -lAR·tail -n N·cat)를 흉내 낸다.
+function fakeVerifierLogs(base: Exec): Exec {
+  return async (command, args, timeout) => {
+    if (command !== 'ssh') return base(command, args, timeout);
+    calls.push(['ssh', ...args].join(' '));
+    const remote = args.slice(args.indexOf('verifier-box') + 1);
+    if (remote[0] === 'ls') {
+      const names = await readdir(logs);
+      return { code: 0, stdout: `total 8\n${names.map(name => `-rw-------  1 yw  staff  10 Nov 15 16:01 ${name}`).join('\n')}\n\n./sub:\n-rw------- 1 yw staff 1 Nov 1 00:00 p-run-hidden.log\n`, stderr: '' };
+    }
+    const file = path.join(logs, remote.at(-1) ?? '');
+    const text = await readFile(file, 'utf8').catch(() => null);
+    if (text === null) return { code: 2, stdout: '', stderr: 'verifier-logs: 거부: 없는 경로' };
+    if (remote[0] === 'tail') return { code: 0, stdout: text.split('\n').slice(-Number(remote[2]) - 1).join('\n'), stderr: '' };
+    return { code: 0, stdout: text, stderr: '' };
   };
 }
 
@@ -67,7 +85,8 @@ describe('Collector', () => {
     expect(status.lastSuccess?.sha).toBe(SHA_A);
     expect(status.failureStreak).toBe(1);
     expect(status.typicalRunSeconds).toBe(6138);
-    expect(status.disk).toEqual({ availableKib: 38545204, minimumKib: 10485760 });
+    expect(status.disk).toEqual({ availableKib: 38545204, minimumKib: 10485760, measuredAt: null });
+    expect(status.source).toEqual({ kind: 'local', target: null });
     expect(status.github).toBeNull();
     expect(status.errors).toEqual([]);
     expect(calls.some(call => call.startsWith('gh'))).toBe(false);
@@ -94,6 +113,31 @@ describe('Collector', () => {
     const shows = calls.filter(call => call.includes(' show ')).length;
     await instance.status({ includeGithub: false, refresh: true });
     expect(calls.filter(call => call.includes(' show ')).length).toBe(shows);
+  });
+
+  it('reads a remote verifier through the read-only SSH channel', async () => {
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
+    await writeFile(path.join(logs, 'p-run-20261115-160131-tip-full-cccccccccccc.log'), runningLog.replace(/2026-11-15T07:01:31\.\d+Z/g, startedAt));
+    const exec = fakeVerifierLogs(fakeExec({ running: false }));
+    const remote = new Collector({ project: 'p', stateDir: '/nonexistent', checkout: root, launchLabel: 'unused', sshTarget: 'verifier-box' }, exec);
+    const status = await remote.status({ includeGithub: false });
+    expect(status.source).toEqual({ kind: 'ssh', target: 'verifier-box' });
+    expect(status.agent).toBeNull();
+    expect(status.current).toMatchObject({ sha: SHA_C, phase: 'lanes' });
+    expect(status.recent.map(run => run.status)).toEqual(['success', 'failure']);
+    expect(status.recent[1].failedLanes).toEqual(['app-packages']);
+    // 원격에서는 df를 못 하므로 마지막 preflight 기록을 쓴다.
+    expect(status.disk).toEqual({ availableKib: 41735836, minimumKib: 10485760, measuredAt: '2026-11-15T06:56:28.669Z' });
+    expect(status.errors).toEqual([]);
+    expect(calls.some(call => call.startsWith('launchctl') || call.startsWith('df'))).toBe(false);
+    expect(calls.filter(call => call.startsWith('ssh')).every(call => call.includes('BatchMode=yes'))).toBe(true);
+  });
+
+  it('reports an unreachable remote as a warning', async () => {
+    const exec: Exec = async (command, args) => (command === 'ssh' ? { code: 255, stdout: '', stderr: 'ssh: connect to host verifier-box: Connection refused' } : fakeExec({ running: false })(command, args));
+    const status = await new Collector({ project: 'p', stateDir: '/x', checkout: root, launchLabel: 'x', sshTarget: 'verifier-box' }, exec).status({ includeGithub: false });
+    expect(status.recent).toEqual([]);
+    expect(status.errors.join(' ')).toContain('Connection refused');
   });
 
   it('reports deferrals after the last real run', async () => {

@@ -73,12 +73,16 @@ export const githubSchema = z.object({
 
 export const statusSchema = z.object({
   collectedAt: z.string(),
-  agent: z.object({
-    loaded: z.boolean(),
-    running: z.boolean(),
-    runs: z.number().nullable(),
-    intervalSeconds: z.number().nullable(),
-  }),
+  // 원격(SSH)에서 읽으면 LaunchAgent를 볼 수 없어 null이다.
+  agent: z
+    .object({
+      loaded: z.boolean(),
+      running: z.boolean(),
+      runs: z.number().nullable(),
+      intervalSeconds: z.number().nullable(),
+    })
+    .nullable(),
+  source: z.object({ kind: z.enum(['local', 'ssh']), target: z.string().nullable() }),
   current: currentRunSchema.nullable(),
   // 오래된 것부터 최근 순서. 화면의 lane 표와 최근 목록이 함께 쓴다.
   recent: z.array(runSchema),
@@ -94,7 +98,8 @@ export const statusSchema = z.object({
   failureStreak: z.number(),
   deferral: deferralSchema.nullable(),
   typicalRunSeconds: z.number().nullable(),
-  disk: z.object({ availableKib: z.number(), minimumKib: z.number() }).nullable(),
+  // measuredAt이 있으면 지금 잰 값이 아니라 그 시각 preflight 기록이다(원격).
+  disk: z.object({ availableKib: z.number(), minimumKib: z.number(), measuredAt: z.string().nullable() }).nullable(),
   github: githubSchema.nullable(),
   githubError: z.string().nullable(),
   errors: z.array(z.string()),
