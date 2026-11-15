@@ -6,6 +6,7 @@ import { DISK_MINIMUM_KIB, type GithubStatus, type Run, type VerifierStatus } fr
 import {
   currentRunFrom,
   deferralFrom,
+  deferralReason,
   failureStreakFrom,
   laneMediansFrom,
   lanesFrom,
@@ -44,6 +45,7 @@ const HISTORY_RUNS = 20;
 const SUMMARY_TAIL_BYTES = 1024 * 1024;
 const RUN_LOG_TAIL_BYTES = 512 * 1024;
 const STATS_WINDOWS_HOURS = [24, 24 * 7];
+const BEATS = 30;
 const LOCAL_CACHE_MS = 5_000;
 const GITHUB_CACHE_MS = 10 * 60_000;
 const GITHUB_MIN_REFRESH_MS = 30_000;
@@ -196,6 +198,13 @@ export class Collector {
       current,
       recent,
       laneMedians: laneMediansFrom(recent),
+      beats: entries.slice(-BEATS).map(entry => ({
+        at: entry.at,
+        sha: entry.sha,
+        status: entry.status,
+        runSeconds: entry.runSeconds,
+        reason: entry.status === 'none' ? deferralReason(entry) : null,
+      })),
       redSince: openRed ? new Date(openRed.start).toISOString() : null,
       stats: STATS_WINDOWS_HOURS.map(hours => windowStatsFrom(entries, hours, now)),
       repoUrl: await this.repoSlug().then(slug => `https://github.com/${slug}`, () => null),

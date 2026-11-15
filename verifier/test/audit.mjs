@@ -1,8 +1,8 @@
 // client 코드는 React Native 기본 요소만 쓰고 기본 글자 크기를 따른다.
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-// 소문자 태그는 HTML 요소다. `<typeof x>`·`<void>` 같은 타입 인자는 제외한다.
-const forbidden = /document\.|window\.|localStorage|navigator\.|<(?!typeof\b|void\b)[a-z]+[ >/]|className=|onClick=|fontSize/;
+// 소문자 태그는 HTML 요소다. `<typeof x>`·`<number | null>` 같은 타입 인자는 제외한다.
+const forbidden = /document\.|window\.|localStorage|navigator\.|<(?!(?:typeof|void|number|string|boolean|null|undefined|unknown)\b)[a-z]+[ >/]|className=|onClick=|fontSize/;
 const failures = [];
 async function inspect(target) {
   const stat = await readdir(target, { withFileTypes: true }).catch(() => null);

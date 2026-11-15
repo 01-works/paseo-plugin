@@ -47,6 +47,15 @@ export const windowStatsSchema = z.object({
   longestRedSeconds: z.number().nullable(),
 });
 
+// 요약 로그 한 줄. 연기된 확인(none)도 포함한다.
+export const beatSchema = z.object({
+  at: z.string(),
+  sha: z.string(),
+  status: z.enum(['success', 'failure', 'none']),
+  runSeconds: z.number().nullable(),
+  reason: z.string().nullable(),
+});
+
 export const deferralSchema = z.object({
   since: z.string(),
   count: z.number(),
@@ -75,6 +84,8 @@ export const statusSchema = z.object({
   recent: z.array(runSchema),
   // 최근 통과 lane 시간의 중앙값(초)
   laneMedians: z.record(z.string(), z.number()),
+  // 최근 요약 기록(오래된 것부터). 연기를 포함한 막대 줄에 쓴다.
+  beats: z.array(beatSchema),
   // 마지막 통과 뒤 처음 실패가 관측된 시각. 지금 red가 아니면 null.
   redSince: z.string().nullable(),
   stats: z.array(windowStatsSchema),
@@ -91,6 +102,7 @@ export const statusSchema = z.object({
 
 export type Lane = z.infer<typeof laneSchema>;
 export type Failure = z.infer<typeof failureSchema>;
+export type Beat = z.infer<typeof beatSchema>;
 export type WindowStats = z.infer<typeof windowStatsSchema>;
 export type CurrentRun = z.infer<typeof currentRunSchema>;
 export type Run = z.infer<typeof runSchema>;

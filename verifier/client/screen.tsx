@@ -1,13 +1,14 @@
 import type { PluginTheme } from '@getpaseo/plugin';
 import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import type { Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
+import type { Beat, Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
 import { estimateRun, formatDuration, formatGiB, headline, isSlow, prNumber, shortSha } from '../shared/summary';
 import { toneColor } from './sidebar';
 import { useStatus, type StatusStore } from './store';
 
 const RECENT_LIST = 10;
+const BAR_MAX_HEIGHT = 28;
 
 function pad(value: number) {
   return String(value).padStart(2, '0');
@@ -131,6 +132,52 @@ function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; sty
   );
 }
 
+function beatColor(theme: PluginTheme, status: Beat['status'] | 'running') {
+  if (status === 'success') return theme.colors.statusSuccess;
+  if (status === 'failure') return theme.colors.statusDanger;
+  if (status === 'running') return theme.colors.accent;
+  return theme.colors.foregroundMuted;
+}
+
+const BEAT_LABEL: Record<Beat['status'], string> = { success: '통과', failure: '실패', none: '연기' };
+
+/** 최근 요약 기록을 얇은 막대 줄로 보여 준다(Uptime Kuma 방식). 회색은 연기, 마지막 파랑은 지금 실행이다. */
+function BeatStrip({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  // 새 기록이 들어와도 고른 막대가 바뀌지 않게 시각으로 기억한다.
+  const [selected, setSelected] = useState<string | null>(null);
+  if (status.beats.length === 0 && !status.current) return null;
+  const beat = selected !== null ? status.beats.find(item => item.at === selected) : undefined;
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+        {status.beats.map((item, index) => (
+          <Pressable
+            key={`${item.at}-${index}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${formatClock(item.at)} ${BEAT_LABEL[item.status]} ${shortSha(item.sha)}`}
+            onPress={() => setSelected(selected === item.at ? null : item.at)}
+            hitSlop={4}
+          >
+            <View style={{ width: 8, height: 22, borderRadius: 2, backgroundColor: beatColor(theme, item.status), opacity: !beat || beat.at === item.at ? 1 : 0.45 }} />
+          </Pressable>
+        ))}
+        {status.current ? <View accessibilityLabel="지금 실행" style={{ width: 8, height: 22, borderRadius: 2, backgroundColor: beatColor(theme, 'running') }} /> : null}
+        <Text style={styles.muted}> 최근 {status.beats.length}회</Text>
+      </View>
+      {beat ? (
+        <View style={styles.row}>
+          <Text style={{ color: beatColor(theme, beat.status) }}>{BEAT_LABEL[beat.status]}</Text>
+          <Text style={styles.muted}>{formatClock(beat.at)}</Text>
+          <Sha sha={beat.sha} repoUrl={status.repoUrl} styles={styles} />
+          {beat.status === 'none' ? <Text style={styles.muted}>{beat.reason}</Text> : beat.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(beat.runSeconds)}</Text> : null}
+        </View>
+      ) : (
+        <Text style={styles.muted}>막대를 누르면 그 기록을 보여 줍니다.</Text>
+      )}
+    </View>
+  );
+}
+
 function StatsCard({ status, styles }: { status: VerifierStatus; styles: Styles }) {
   if (status.stats.length === 0) return null;
   const label = (stats: WindowStats) => (stats.hours % 24 === 0 && stats.hours > 24 ? `${stats.hours / 24}일` : `${stats.hours}시간`);
@@ -157,18 +204,22 @@ function StatsCard({ status, styles }: { status: VerifierStatus; styles: Styles 
 
 /** lane을 행, 실행을 열(최근이 왼쪽)로 둔 표. 칸은 걸린 분이고, 평소보다 오래 걸린 통과는 경고색이다. */
 function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  const [selected, setSelected] = useState<{ key: string; lane: string } | null>(null);
   const runs = [...status.recent].reverse();
   if (runs.length === 0) return null;
   // 실패 lane이 다음 실행에서 앞으로 옮겨지므로 순서가 아니라 이름으로 맞춘다.
   const names: string[] = [];
   for (const run of [...runs].reverse()) for (const lane of run.lanes) if (!names.includes(lane.name)) names.push(lane.name);
   const laneOf = (run: Run, name: string) => run.lanes.find(lane => lane.name === name);
+  const longest = Math.max(1, ...runs.map(run => run.runSeconds ?? 0));
+  const selectedRun = selected ? runs.find(run => `${run.endedAt}-${run.sha}` === selected.key) : undefined;
+  const selectedLane = selectedRun && selected ? laneOf(selectedRun, selected.lane) : undefined;
   return (
     <Card styles={styles} title={`lane 이력 (최근 ${runs.length}회)`}>
-      <Text style={styles.muted}>칸은 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다.</Text>
+      <Text style={styles.muted}>위 막대는 실행 전체 시간, 칸은 lane이 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다. 칸을 누르면 자세히 보여 줍니다.</Text>
       <View style={{ flexDirection: 'row' }}>
         <View style={{ gap: 4 }}>
-          <Text style={[styles.muted, { height: 34 }]}> </Text>
+          <Text style={[styles.muted, { height: BAR_MAX_HEIGHT + 4 + 34 }]}> </Text>
           {names.map(name => (
             <Text key={name} style={[styles.laneName, { height: 26, lineHeight: 26 }]} numberOfLines={1}>{name}</Text>
           ))}
@@ -176,6 +227,9 @@ function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; sty
         <ScrollView horizontal contentContainerStyle={{ gap: 4 }}>
           {runs.map(run => (
             <View key={`${run.endedAt}-${run.sha}`} style={{ gap: 4, alignItems: 'center' }}>
+              <View style={{ height: BAR_MAX_HEIGHT, justifyContent: 'flex-end' }} accessibilityLabel={run.runSeconds !== null ? `실행 시간 ${formatDuration(run.runSeconds)}` : '실행 시간 없음'}>
+                <View style={{ width: 20, height: Math.max(2, Math.round(((run.runSeconds ?? 0) / longest) * BAR_MAX_HEIGHT)), borderRadius: 2, backgroundColor: run.status === 'success' ? theme.colors.statusSuccess : theme.colors.statusDanger, opacity: 0.7 }} />
+              </View>
               <View style={{ height: 34, alignItems: 'center' }}>
                 <Text style={{ color: run.status === 'success' ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{run.status === 'success' ? '✓' : '✗'}</Text>
                 <Text style={styles.muted}>{formatClock(run.endedAt).slice(-5)}</Text>
@@ -185,20 +239,46 @@ function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; sty
                 const slow = lane?.state === 'passed' && isSlow(lane.seconds, status.laneMedians[name]);
                 const color = !lane || lane.seconds === null ? theme.colors.foregroundMuted : lane.state === 'failed' ? theme.colors.statusDanger : slow ? theme.colors.statusWarning : theme.colors.foreground;
                 const minutes = lane?.seconds != null ? String(Math.max(1, Math.round(lane.seconds / 60))) : '–';
+                const key = `${run.endedAt}-${run.sha}`;
+                const isSelected = selected?.key === key && selected.lane === name;
                 return (
-                  <View
+                  <Pressable
                     key={name}
-                    style={[styles.cell, lane?.state === 'failed' ? { borderWidth: 1, borderColor: theme.colors.statusDanger } : null]}
+                    accessibilityRole="button"
                     accessibilityLabel={`${formatClock(run.endedAt)} ${name} ${lane ? `${lane.state} ${minutes}분` : '기록 없음'}`}
+                    onPress={() => setSelected(isSelected ? null : { key, lane: name })}
+                    style={[
+                      styles.cell,
+                      lane?.state === 'failed' ? { borderWidth: 1, borderColor: theme.colors.statusDanger } : null,
+                      isSelected ? { borderWidth: 2, borderColor: theme.colors.accent } : null,
+                    ]}
                   >
                     <Text style={{ color }}>{minutes}</Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
           ))}
         </ScrollView>
       </View>
+      {selectedRun && selected ? (
+        <View style={{ gap: 4, paddingTop: 4 }}>
+          <View style={styles.row}>
+            <Text style={styles.title}>{selected.lane}</Text>
+            <Text style={{ color: selectedLane ? laneColor(theme, selectedLane.state) : theme.colors.foregroundMuted }}>
+              {selectedLane ? `${LANE_MARK[selectedLane.state]} ${selectedLane.seconds !== null ? formatDuration(selectedLane.seconds) : ''}` : '기록 없음'}
+            </Text>
+            {status.laneMedians[selected.lane] !== undefined ? <Text style={styles.muted}>평소 {formatDuration(status.laneMedians[selected.lane])}</Text> : null}
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.muted}>{formatClock(selectedRun.endedAt)} 종료</Text>
+            <Sha sha={selectedRun.sha} repoUrl={status.repoUrl} styles={styles} />
+            {selectedRun.runSeconds !== null ? <Text style={styles.muted}>전체 {formatDuration(selectedRun.runSeconds)}</Text> : null}
+          </View>
+          <Subject subject={selectedRun.subject} repoUrl={status.repoUrl} styles={styles} />
+          <FailureLines failures={selectedRun.failures.filter(failure => failure.lane === selected.lane)} styles={styles} />
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -285,6 +365,8 @@ export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { s
             {status.agent.intervalSeconds ? ` · ${Math.round(status.agent.intervalSeconds / 60)}분마다 확인` : ''}
             {status.agent.runs !== null ? ` · 누적 ${status.agent.runs}회` : ''} · {formatClock(status.collectedAt)} 기준
           </Text>
+
+          <BeatStrip status={status} styles={styles} theme={theme} />
 
           <CurrentRunCard status={status} styles={styles} theme={theme} />
 

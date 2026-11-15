@@ -100,6 +100,7 @@ describe('Collector', () => {
     await writeFile(path.join(logs, 'p-summary.log'), summaryLine('2026-11-15T07:00:00.000Z', 'p-run-n.log', SHA_C, 'none', 1, LOW_DISK) + '\n', { flag: 'a' });
     const status = await collector(fakeExec({ running: false })).status({ includeGithub: false });
     expect(status.deferral).toMatchObject({ count: 1, reason: 'disk low-space 9.7GiB' });
+    expect(status.beats.map(beat => [beat.status, beat.reason])).toEqual([['success', null], ['failure', null], ['none', 'disk low-space 9.7GiB']]);
   });
 
   it('reads promotion state from GitHub only when asked and caches it', async () => {

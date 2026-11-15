@@ -8,6 +8,7 @@ const base: VerifierStatus = {
   current: null,
   recent: [],
   laneMedians: {},
+  beats: [],
   redSince: null,
   stats: [],
   repoUrl: null,
