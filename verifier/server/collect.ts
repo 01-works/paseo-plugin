@@ -21,6 +21,7 @@ import {
 } from './parse';
 import { run, type Exec } from './exec';
 import { LocalSource, SshSource, type Source } from './source';
+import { HostCollector } from './host';
 
 export type { Exec, ExecResult } from './exec';
 export { run } from './exec';
@@ -68,12 +69,14 @@ export class Collector {
   private subjects = new Map<string, string | null>();
   private slug?: Promise<string>;
   private readonly source: Source;
+  private readonly hostCollector: HostCollector;
 
   constructor(
     private readonly config: Config = defaultConfig(),
     private readonly exec: Exec = run,
   ) {
     this.source = config.sshTarget ? new SshSource(config.sshTarget, config.project, exec) : new LocalSource(config, exec);
+    this.hostCollector = new HostCollector(exec);
   }
 
   async status(input: { includeGithub: boolean; refresh?: boolean }): Promise<VerifierStatus> {
@@ -160,6 +163,11 @@ export class Collector {
     const now = Date.now();
     const red = redPeriodsFrom(realEntries.map(entry => ({ endedAt: entry.at, status: entry.status })));
     const openRed = red.at(-1)?.end === null ? red.at(-1) : undefined;
+    // verifier가 확실히 쉬고 있을 때만 남은 컨테이너를 본다. LaunchAgent가 running이면 아직 로그가 없거나
+    // 요약 직후라도 lane 컨테이너가 쓰이는 중일 수 있다. 실행 로그·LaunchAgent를 못 읽었을 때도 단정하지 않는다.
+    const verifierIdle = currentRun === null && agent !== null && !agent.running && errors.length === 0;
+    const hostResult = source.kind === 'local' ? await this.hostCollector.read(verifierIdle) : null;
+    if (hostResult) errors.push(...hostResult.errors);
 
     return {
       collectedAt: new Date(now).toISOString(),
@@ -182,6 +190,7 @@ export class Collector {
       deferral: currentRun ? null : deferralFrom(entries),
       typicalRunSeconds: median(recent.slice(-10).map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
       disk,
+      host: hostResult?.host ?? null,
       source: { kind: source.kind, target: source.target },
       errors,
     };

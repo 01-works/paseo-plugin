@@ -2,6 +2,7 @@ import { defineAgentTool } from '@getpaseo/plugin/server';
 import { z } from 'zod';
 import type { Failure, Lane, VerifierStatus } from '../shared/contracts';
 import { estimateRun, formatDuration, formatGiB, headline, shortSha } from '../shared/summary';
+import { HOST_REMEDIATION, hostIndicators } from '../shared/host';
 
 function clock(iso: string | number) {
   return new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + 'Z';
@@ -23,6 +24,10 @@ export function recurrenceText(failure: Failure) {
 export function describeStatus(status: VerifierStatus, now = Date.now()): string {
   const lines = [`verifier: ${headline(status).label}`];
   if (status.source.kind === 'ssh') lines.push(`source: remote ${status.source.target} (LaunchAgent state unknown)`);
+  const indicators = status.host ? hostIndicators(status.host) : [];
+  lines.push(status.host
+    ? `host: ${indicators.map(item => `${item.warning ? 'WARNING ' : ''}${item.label}`).join('; ')}; as of ${clock(status.host.measuredAt)}${status.host.leftoverContainers ? `; containers as of ${clock(status.host.leftoverContainers.measuredAt)} names=${status.host.leftoverContainers.names.join(',') || 'none'}` : ''}${indicators.some(item => item.warning) ? `; 조치: ${HOST_REMEDIATION}` : ''}`
+    : 'host: unavailable (remote SSH mode)');
   const current = status.current;
   if (current) {
     const estimate = estimateRun(status, now);
@@ -57,7 +62,7 @@ export function createVerifierTool(read: (includeGithub: boolean) => Promise<Ver
     name: 'verifier_status',
     title: 'Verifier 현황',
     description:
-      'Read-only status of the 01-software verifier (nightly-local): whether it is running and which lane, estimated end, deferral reason, last results and failed lanes with classification, how long dev has been red, disk headroom, and optionally the promotion candidate from GitHub. Use it before heavy local work or pushes, or to answer verifier/promotion questions, instead of reading verifier logs by hand.',
+      'Read-only status of the 01-software verifier (nightly-local): whether it is running and which lane, estimated end, deferral reason, last results and failed lanes with classification, how long dev has been red, disk headroom, local host health (swap, fseventsd RSS, leftover lane containers), and optionally the promotion candidate from GitHub. Use it before heavy local work or pushes, or to answer verifier/promotion questions, instead of reading verifier logs by hand.',
     input: z.object({
       includeGithub: z.boolean().optional().describe('Also read main/dev tips and the promotion candidate from GitHub (slower).'),
     }),
