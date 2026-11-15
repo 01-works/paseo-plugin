@@ -33,7 +33,8 @@ describe('verifier_status tool', () => {
     const text = describeStatus(status, Date.parse('2026-11-15T07:30:00.000Z'));
     expect(text).toContain('verifier: 실행 중 1/2 · ccccccc');
     expect(text).toContain('source: remote verifier-box');
-    expect(text).toContain('lanes: 1/2 done; install=passed, packages=running');
+    expect(text).toContain('started: 2026-11-15 07:00Z (30분 ago)');
+    expect(text).toContain('lanes: 1/2 done; install=passed(10s), packages=running(~1780s)');
     expect(text).toContain('heavy lock');
     expect(text).toContain('failed=app-packages');
     expect(text).toContain('failure app-packages: unknown/failure-unidentified signature=e9180834cb4f');

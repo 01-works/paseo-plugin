@@ -117,8 +117,9 @@ function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; sty
         const usual = median !== undefined ? `평소 ${formatDuration(median)}` : null;
         let detail: string | null = null;
         if (lane.state === 'running') detail = [estimate.runningLaneSeconds !== null ? `약 ${formatDuration(estimate.runningLaneSeconds)}째` : null, usual].filter(Boolean).join(' · ');
-        else if (lane.seconds !== null) detail = [lane.note === 'timed out' ? '시간 초과' : lane.note, formatDuration(lane.seconds), slow && usual ? usual : null].filter(Boolean).join(' · ');
         else if (lane.state === 'pending') detail = usual;
+        // 끝난 lane: 시간이 없어도 괄호 설명(시간 초과 등)은 보여 준다.
+        else detail = [lane.note === 'timed out' ? '시간 초과' : lane.note, lane.seconds !== null ? formatDuration(lane.seconds) : null, slow && usual ? usual : null].filter(Boolean).join(' · ') || null;
         return (
           <View key={lane.name} style={styles.row}>
             <Text style={{ color: laneColor(theme, lane.state) }}>{LANE_MARK[lane.state]}</Text>

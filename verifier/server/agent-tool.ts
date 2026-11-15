@@ -7,8 +7,11 @@ function clock(iso: string | number) {
   return new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + 'Z';
 }
 
-function laneText(lane: Lane) {
-  return `${lane.name}=${lane.state}${lane.note ? `(${lane.note})` : ''}`;
+// 예: packages=failed(1572s), ecommerce-db=failed(timed out, 1803s), migration-exec=running(~840s)
+function laneText(lane: Lane, runningSeconds: number | null) {
+  const seconds = lane.state === 'running' ? (runningSeconds !== null ? `~${runningSeconds}s` : null) : lane.seconds !== null ? `${lane.seconds}s` : null;
+  const detail = [lane.note, seconds].filter(Boolean).join(', ');
+  return `${lane.name}=${lane.state}${detail ? `(${detail})` : ''}`;
 }
 
 /** 같은 실패가 반복되는지: 새 실패인지, 몇 번째인지, 처음 나온 SHA */
@@ -25,7 +28,8 @@ export function describeStatus(status: VerifierStatus, now = Date.now()): string
     const estimate = estimateRun(status, now);
     const done = current.lanes.filter(lane => lane.state === 'passed' || lane.state === 'failed').length;
     lines.push(`running: ${current.sha} ${current.subject ?? ''}`.trim());
-    lines.push(`lanes: ${done}/${current.lanes.length} done; ${current.lanes.map(laneText).join(', ')}`);
+    if (current.startedAt) lines.push(`started: ${clock(current.startedAt)} (${formatDuration((now - Date.parse(current.startedAt)) / 1000)} ago)`);
+    lines.push(`lanes: ${done}/${current.lanes.length} done; ${current.lanes.map(lane => laneText(lane, estimate.runningLaneSeconds)).join(', ')}`);
     if (estimate.endAt) lines.push(`estimated end: ${clock(estimate.endAt)}`);
     lines.push('note: a running verifier holds the machine heavy lock until it ends.');
     for (const failure of current.failures) lines.push(`current failure ${failure.lane}: ${failure.classification}/${failure.reason} signature=${failure.signature.slice(0, 12)}, ${recurrenceText(failure)}`);
