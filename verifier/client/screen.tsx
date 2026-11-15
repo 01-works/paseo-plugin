@@ -3,6 +3,7 @@ import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import type { Beat, Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
+import { HOST_REMEDIATION, hostIndicators } from '../shared/host';
 import { estimateRun, formatDuration, formatGiB, headline, isSlow, prNumber, shortSha } from '../shared/summary';
 import { toneColor } from './sidebar';
 import { useStatus, type StatusStore } from './store';
@@ -301,6 +302,30 @@ function RunRow({ run, repoUrl, styles, theme }: { run: Run; repoUrl: string | n
   );
 }
 
+function HostCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  const host = status.host;
+  const indicators = host ? hostIndicators(host) : [];
+  return (
+    <Card styles={styles} title="기기 상태">
+      {host ? (
+        <>
+          <Text style={styles.muted}>{formatClock(host.measuredAt)} 기준 · 60초 캐시</Text>
+          {indicators.map(item => (
+            <Text key={item.key} style={{ color: item.warning ? theme.colors.statusWarning : theme.colors.foreground }}>{item.label}</Text>
+          ))}
+          {host.leftoverContainers ? (
+            <>
+              <Text style={styles.muted}>컨테이너 {formatClock(host.leftoverContainers.measuredAt)} 기준 · verifier 실행 없음 · 가동 2시간 초과</Text>
+              {host.leftoverContainers.names.map(name => <Text key={name} selectable style={{ color: theme.colors.statusWarning }}>{name}</Text>)}
+            </>
+          ) : <Text style={styles.muted}>{status.current ? 'verifier 실행 중에는 잔여 컨테이너를 확인하지 않습니다.' : '확인 실패 사유는 읽기 경고에서 확인하세요. 실행 여부를 알 수 없어도 컨테이너 확인을 건너뜁니다.'}</Text>}
+          {indicators.some(item => item.warning) ? <Text style={{ color: theme.colors.statusWarning }}>조치: {HOST_REMEDIATION}</Text> : null}
+        </>
+      ) : <Text style={styles.muted}>원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.</Text>}
+    </Card>
+  );
+}
+
 function PromotionCard({ status, styles }: { status: VerifierStatus; styles: Styles }) {
   const { github, githubError } = status;
   if (!github) {
@@ -371,6 +396,8 @@ export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { s
           <BeatStrip status={status} styles={styles} theme={theme} />
 
           <CurrentRunCard status={status} styles={styles} theme={theme} />
+
+          <HostCard status={status} styles={styles} theme={theme} />
 
           {status.deferral ? (
             <Card styles={styles} title="실행 연기">

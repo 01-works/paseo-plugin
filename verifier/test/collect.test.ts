@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Collector, type Exec } from '../server/collect';
 import { dfOutput, finishedFailureLog, launchctlRunning, LOW_DISK, runningLog, SHA_A, SHA_B, SHA_C, summaryLine } from './fixtures';
 
@@ -13,6 +13,9 @@ function fakeExec(options: { running: boolean; gh?: Record<string, string>; ghFa
   return async (command, args) => {
     calls.push([command, ...args].join(' '));
     if (command === 'launchctl') return { code: 0, stdout: options.running ? launchctlRunning : launchctlRunning.replace('state = running', 'state = not running'), stderr: '' };
+    if (command === 'sysctl') return { code: 0, stdout: 'total = 1024.00M used = 256.00M free = 768.00M', stderr: '' };
+    if (command === 'ps') return { code: 0, stdout: ' 1024 /System/Library/CoreServices/fseventsd\n 512 /sbin/launchd\n', stderr: '' };
+    if (command === 'docker') return { code: 0, stdout: '', stderr: '' };
     if (command === 'df') return { code: 0, stdout: dfOutput, stderr: '' };
     if (command === 'git' && args.includes('remote')) return { code: 0, stdout: 'https://github.com/acme/repo.git\n', stderr: '' };
     if (command === 'git' && args.includes('show')) {
@@ -67,6 +70,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -86,6 +90,7 @@ describe('Collector', () => {
     expect(status.failureStreak).toBe(1);
     expect(status.typicalRunSeconds).toBe(6138);
     expect(status.disk).toEqual({ availableKib: 38545204, minimumKib: 10485760, measuredAt: null });
+    expect(status.host).toMatchObject({ swapUsedPercent: 25, fseventsdRssKib: 1024, leftoverContainers: { count: 0, names: [] } });
     expect(status.source).toEqual({ kind: 'local', target: null });
     expect(status.github).toBeNull();
     expect(status.errors).toEqual([]);
@@ -97,8 +102,41 @@ describe('Collector', () => {
     await writeFile(path.join(logs, 'p-run-20261115-160131-tip-full-cccccccccccc.log'), runningLog.replace(/2026-11-15T07:01:31\.\d+Z/g, startedAt));
     const status = await collector(fakeExec({ running: true })).status({ includeGithub: false });
     expect(status.current).toMatchObject({ sha: SHA_C, phase: 'lanes', startedAt });
+    expect(status.host?.leftoverContainers).toBeNull();
+    expect(calls.some(call => call.startsWith('docker'))).toBe(false);
     expect(status.current?.lanes.map(lane => lane.state)).toEqual(['passed', 'running', 'pending']);
     expect(status.deferral).toBeNull();
+  });
+
+  it('keeps the host cache independent of the five-second result cache and manual refresh', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    const instance = collector(fakeExec({ running: false }));
+    await instance.status({ includeGithub: false });
+    const count = (prefix: string) => calls.filter(call => call.startsWith(prefix)).length;
+    expect(count('sysctl ')).toBe(1);
+    expect(count('launchctl ')).toBe(1);
+    vi.setSystemTime(now + 5_001);
+    await instance.status({ includeGithub: false });
+    await instance.status({ includeGithub: false, refresh: true });
+    expect(count('launchctl ')).toBe(3);
+    expect(count('sysctl ')).toBe(1);
+    expect(count('docker ')).toBe(1);
+    vi.setSystemTime(now + 60_001);
+    await instance.status({ includeGithub: false, refresh: true });
+    expect(count('sysctl ')).toBe(2);
+    expect(count('docker ')).toBe(2);
+  });
+
+  it('keeps Docker failures in the status warning list without losing local results', async () => {
+    const base = fakeExec({ running: false });
+    const exec: Exec = async (command, args, timeout) => command === 'docker'
+      ? { code: 127, stdout: '', stderr: 'docker: command not found' }
+      : base(command, args, timeout);
+    const status = await collector(exec).status({ includeGithub: false });
+    expect(status.host?.leftoverContainers).toBeNull();
+    expect(status.errors).toContain('host docker: docker: command not found');
+    expect(status.recent).toHaveLength(2);
   });
 
   it('ignores an unsummarized run log older than the run limit', async () => {
@@ -137,6 +175,8 @@ describe('Collector', () => {
     const status = await remote.status({ includeGithub: false });
     expect(status.source).toEqual({ kind: 'ssh', target: 'verifier-box' });
     expect(status.agent).toBeNull();
+    expect(status.host).toBeNull();
+    expect(calls.some(call => /^(sysctl|ps|docker) /.test(call))).toBe(false);
     expect(status.current).toMatchObject({ sha: SHA_C, phase: 'lanes' });
     expect(status.recent.map(run => run.status)).toEqual(['success', 'failure']);
     expect(status.recent[1].failedLanes).toEqual(['app-packages']);
@@ -193,5 +233,7 @@ describe('Collector', () => {
     const status = await collector(fakeExec({ running: false })).status({ includeGithub: false });
     expect(status.recent).toEqual([]);
     expect(status.errors.length).toBeGreaterThan(0);
+    expect(status.host?.leftoverContainers).toBeNull();
+    expect(calls.some(call => call.startsWith('docker '))).toBe(false);
   });
 });

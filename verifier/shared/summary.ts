@@ -1,4 +1,5 @@
 import type { VerifierStatus } from './contracts';
+import { hostIndicators } from './host';
 
 export type Tone = 'success' | 'warning' | 'danger' | 'accent' | 'muted';
 
@@ -24,7 +25,7 @@ export function formatGiB(kib: number): string {
   return `${(kib / 1024 / 1024).toFixed(1)} GiB`;
 }
 
-/** 사이드바 한 줄과 화면 머리글에 쓰는 요약. 우선순위: 꺼짐 > 실행 중 > 연기 > 마지막 결과. */
+/** 사이드바 한 줄과 화면 머리글. 꺼짐 > 실행 중 > 기기 경고 > 연기 > 마지막 결과. */
 export function headline(status: VerifierStatus): Headline {
   if (status.agent && !status.agent.loaded) return { tone: 'danger', label: 'LaunchAgent 꺼짐' };
   const { current } = status;
@@ -37,6 +38,8 @@ export function headline(status: VerifierStatus): Headline {
       ? { tone: 'warning', label: `실행 중 ${progress} · 실패 ${failed} · ${shortSha(current.sha)}` }
       : { tone: 'accent', label: `실행 중 ${progress} · ${shortSha(current.sha)}` };
   }
+  const warnings = status.host ? hostIndicators(status.host).filter(item => item.warning) : [];
+  if (warnings.length > 0) return { tone: 'warning', label: `기기 점검 필요 · ${warnings.map(item => item.label).join(' · ')}` };
   if (status.deferral) return { tone: 'warning', label: `연기 · ${status.deferral.reason}` };
   const last = status.recent.at(-1);
   if (!last) return { tone: 'muted', label: '실행 기록 없음' };

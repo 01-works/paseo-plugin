@@ -23,6 +23,7 @@ const status: VerifierStatus = {
   deferral: null,
   typicalRunSeconds: 5000,
   disk: { availableKib: 41735836, minimumKib: 10485760, measuredAt: '2026-11-15T06:00:00.000Z' },
+  host: null,
   github: null,
   githubError: 'HTTP 401',
   errors: [],
@@ -33,6 +34,7 @@ describe('verifier_status tool', () => {
     const text = describeStatus(status, Date.parse('2026-11-15T07:30:00.000Z'));
     expect(text).toContain('verifier: 실행 중 1/2 · ccccccc');
     expect(text).toContain('source: remote verifier-box');
+    expect(text).toContain('host: unavailable (remote SSH mode)');
     expect(text).toContain('started: 2026-11-15 07:00Z (30분 ago)');
     expect(text).toContain('lanes: 1/2 done; install=passed(10s), packages=running(~1780s)');
     expect(text).toContain('heavy lock');
@@ -41,6 +43,24 @@ describe('verifier_status tool', () => {
     expect(text).toContain('red since 2026-11-15 06:00Z (1시간 30분)');
     expect(text).toContain('github: unavailable (HTTP 401)');
     expect(text).toMatch(/disk free 39\.8 GiB .* as of /);
+  });
+
+  it('includes one host line with readings, warning, container names and manual guidance', () => {
+    const local = { ...status, source: { kind: 'local' as const, target: null }, host: {
+      measuredAt: status.collectedAt, swapUsedPercent: 95, fseventsdRssKib: 5.3 * 1024 * 1024,
+      leftoverContainers: { measuredAt: status.collectedAt, count: 1, names: ['console-12345678-1234-4234-8234-123456789abc-ecommerce-test'] },
+    } };
+    const lines = describeStatus(local).split('\n').filter(line => line.startsWith('host:'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('WARNING swap 95.0%');
+    expect(lines[0]).toContain('WARNING fseventsd RSS 5.3 GiB');
+    expect(lines[0]).toContain('남은 lane 컨테이너 1개');
+    expect(lines[0]).toContain('names=console-');
+    expect(lines[0]).toContain('sudo killall fseventsd');
+    const healthy = describeStatus({ ...local, host: { ...local.host, swapUsedPercent: 20, fseventsdRssKib: 1024, leftoverContainers: null } });
+    expect(healthy).toContain('host: swap 20.0%');
+    expect(healthy).not.toContain('WARNING');
+    expect(healthy).not.toContain('조치:');
   });
 
   it('returns text only and reports read failures as tool errors', async () => {

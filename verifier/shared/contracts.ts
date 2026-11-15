@@ -77,6 +77,14 @@ export const githubSchema = z.object({
   candidate: z.object({ sha: z.string(), aheadOfMain: z.number() }).nullable(),
 });
 
+export const hostSchema = z.object({
+  measuredAt: z.string(),
+  swapUsedPercent: z.number().nullable(),
+  fseventsdRssKib: z.number().nullable(),
+  // 실행 중이거나 실행 여부/수집 결과를 알 수 없으면 null. 빈 목록은 확인된 0개다.
+  leftoverContainers: z.object({ measuredAt: z.string(), count: z.number(), names: z.array(z.string()) }).nullable(),
+});
+
 export const statusSchema = z.object({
   collectedAt: z.string(),
   // 원격(SSH)에서 읽으면 LaunchAgent를 볼 수 없어 null이다.
@@ -106,6 +114,8 @@ export const statusSchema = z.object({
   typicalRunSeconds: z.number().nullable(),
   // measuredAt이 있으면 지금 잰 값이 아니라 그 시각 preflight 기록이다(원격).
   disk: z.object({ availableKib: z.number(), minimumKib: z.number(), measuredAt: z.string().nullable() }).nullable(),
+  // 로컬 기기에서만 읽는다. SSH 로그 통로에서는 null이다.
+  host: hostSchema.nullable(),
   github: githubSchema.nullable(),
   githubError: z.string().nullable(),
   errors: z.array(z.string()),
@@ -119,6 +129,7 @@ export type CurrentRun = z.infer<typeof currentRunSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type Deferral = z.infer<typeof deferralSchema>;
 export type GithubStatus = z.infer<typeof githubSchema>;
+export type HostStatus = z.infer<typeof hostSchema>;
 export type VerifierStatus = z.infer<typeof statusSchema>;
 
 export const statusRpc = defineRpc({
