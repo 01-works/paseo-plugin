@@ -163,8 +163,10 @@ export class Collector {
     const now = Date.now();
     const red = redPeriodsFrom(realEntries.map(entry => ({ endedAt: entry.at, status: entry.status })));
     const openRed = red.at(-1)?.end === null ? red.at(-1) : undefined;
-    // 실행 로그/LaunchAgent를 못 읽으면 잔여 컨테이너로 단정하지 않는다.
-    const hostResult = source.kind === 'local' ? await this.hostCollector.read(currentRun === null && agent !== null && errors.length === 0) : null;
+    // verifier가 확실히 쉬고 있을 때만 남은 컨테이너를 본다. LaunchAgent가 running이면 아직 로그가 없거나
+    // 요약 직후라도 lane 컨테이너가 쓰이는 중일 수 있다. 실행 로그·LaunchAgent를 못 읽었을 때도 단정하지 않는다.
+    const verifierIdle = currentRun === null && agent !== null && !agent.running && errors.length === 0;
+    const hostResult = source.kind === 'local' ? await this.hostCollector.read(verifierIdle) : null;
     if (hostResult) errors.push(...hostResult.errors);
 
     return {

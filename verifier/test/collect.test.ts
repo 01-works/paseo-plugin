@@ -108,6 +108,15 @@ describe('Collector', () => {
     expect(status.deferral).toBeNull();
   });
 
+  it('does not look for leftover containers while the LaunchAgent is running without a current run log', async () => {
+    // 실행 신호는 있지만 새 로그가 아직 없거나 최신 로그가 이미 요약된 경우
+    const status = await collector(fakeExec({ running: true })).status({ includeGithub: false });
+    expect(status.agent?.running).toBe(true);
+    expect(status.current).toBeNull();
+    expect(status.host?.leftoverContainers).toBeNull();
+    expect(calls.some(call => call.startsWith('docker'))).toBe(false);
+  });
+
   it('keeps the host cache independent of the five-second result cache and manual refresh', async () => {
     vi.useFakeTimers();
     const now = Date.now();
