@@ -9,10 +9,10 @@ const status: VerifierStatus = {
   source: { kind: 'ssh', target: 'verifier-box' },
   current: {
     sha: 'c'.repeat(40), subject: 'feat: x (#1)', startedAt: '2026-11-15T07:00:00.000Z', lanesStartedAt: '2026-11-15T07:00:10.000Z', phase: 'lanes', failures: [],
-    lanes: [{ name: 'install', state: 'passed', seconds: 10 }, { name: 'packages', state: 'running', seconds: null }],
+    lanes: [{ name: 'install', state: 'passed', seconds: 10, note: null }, { name: 'packages', state: 'running', seconds: null, note: null }],
   },
-  recent: [{ endedAt: '2026-11-15T06:00:00.000Z', sha: 'b'.repeat(40), subject: null, status: 'failure', runSeconds: 6000, failedLanes: ['app-packages'], lanes: [{ name: 'install', state: 'passed', seconds: 10 }],
-    failures: [{ lane: 'app-packages', classification: 'unknown', reason: 'failure-unidentified', signature: 'e9180834cb4f70717e51' }] }],
+  recent: [{ endedAt: '2026-11-15T06:00:00.000Z', sha: 'b'.repeat(40), subject: null, status: 'failure', runSeconds: 6000, failedLanes: ['app-packages'], lanes: [{ name: 'install', state: 'passed', seconds: 10, note: null }],
+    failures: [{ lane: 'app-packages', classification: 'unknown', reason: 'failure-unidentified', signature: 'e9180834cb4f70717e51', streak: 3, firstSha: 'a'.repeat(40), firstAt: '2026-11-15T01:00:00.000Z' }] }],
   laneMedians: { packages: 1000 },
   beats: [],
   redSince: '2026-11-15T06:00:00.000Z',
@@ -42,12 +42,13 @@ describe('verifier_status tool', () => {
     expect(text).toMatch(/disk free 39\.8 GiB .* as of /);
   });
 
-  it('returns trimmed structured content and reports read failures as tool errors', async () => {
+  it('returns text only and reports read failures as tool errors', async () => {
     const tool = createVerifierTool(async () => status);
     const result = await tool.execute({}, {} as never);
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).not.toHaveProperty('beats');
-    expect((result.structuredContent as { recent: object[] }).recent[0]).not.toHaveProperty('lanes');
+    // structuredContent가 있으면 Claude는 텍스트 대신 JSON을 보여 준다.
+    expect(result).not.toHaveProperty('structuredContent');
+    expect(result.text).toContain('3 runs in a row since aaaaaaaaaaaa');
     const failing = createVerifierTool(async () => { throw new Error('ssh down'); });
     expect(await failing.execute({ includeGithub: true }, {} as never)).toMatchObject({ isError: true, text: expect.stringContaining('ssh down') });
   });

@@ -1,5 +1,8 @@
 import type { CurrentRun, Deferral, Failure, Lane, Run, WindowStats } from '../shared/contracts';
 
+/** 실행 로그의 분류 줄 그대로. 반복 정보는 collector가 붙인다. */
+export type RawFailure = Pick<Failure, 'lane' | 'classification' | 'reason' | 'signature'>;
+
 // verifier가 남기는 텍스트 형식을 읽는 순수 함수들. 형식 근거는 01-software의
 // scripts/release/verifier-loop.mjs(summary)와 nightly-local-check.mjs(lane 표시)다.
 
@@ -75,8 +78,8 @@ export interface RunLog {
   waitingLock: boolean;
   lanesStartedAt: string | null;
   order: string[] | null;
-  failures: Failure[];
-  lanes: Map<string, { state: Lane['state']; seconds: number | null }>;
+  failures: RawFailure[];
+  lanes: Map<string, { state: Lane['state']; seconds: number | null; note: string | null }>;
   failedLanes: string[] | null;
 }
 
@@ -113,13 +116,15 @@ export function parseRunLog(text: string): RunLog {
       result.failures.push({ lane, classification, reason, signature });
       continue;
     }
-    const lane = /^\[([a-z0-9-]+)\] (start|passed|failed)(?: in (\d+)s)?/.exec(line);
+    // 예: `[ecommerce-db] failed (timed out) in 1803s (exit 1)`
+    const lane = /^\[([a-z0-9-]+)\] (start|passed|failed)(?: \(([^)]*)\))?(?: in (\d+)s)?/.exec(line);
     if (lane) {
-      const [, name, event, seconds] = lane;
+      const [, name, event, note, seconds] = lane;
       result.lanes.set(name, {
-        state: event === 'start' ? 'running' : event,
+        state: event === 'start' ? 'running' : (event as Lane['state']),
         seconds: seconds === undefined ? null : Number(seconds),
-      } as { state: Lane['state']; seconds: number | null });
+        note: note ?? null,
+      });
       continue;
     }
     const total = /^Total \d+s; (success|failure)(?:: (.*))?$/.exec(line);
@@ -135,14 +140,14 @@ export function lanesFrom(log: RunLog): Lane[] {
   const names = log.order ?? [...log.lanes.keys()];
   const lanes: Lane[] = names.map(name => {
     const seen = log.lanes.get(name);
-    return { name, state: seen?.state ?? 'pending', seconds: seen?.seconds ?? null };
+    return { name, state: seen?.state ?? 'pending', seconds: seen?.seconds ?? null, note: seen?.note ?? null };
   });
   // 순서 요약에 없던 lane도 버리지 않는다.
   for (const [name, seen] of log.lanes) if (!names.includes(name)) lanes.push({ name, ...seen });
   return lanes;
 }
 
-export function currentRunFrom(log: RunLog, fallbackSha: string, subject: string | null = null): CurrentRun {
+export function currentRunFrom(log: RunLog, fallbackSha: string, subject: string | null = null): Omit<CurrentRun, 'failures'> & { failures: RawFailure[] } {
   return {
     sha: log.sha ?? fallbackSha,
     subject,
@@ -281,4 +286,24 @@ export function windowStatsFrom(entries: SummaryEntry[], hours: number, now: num
     medianRunSeconds: median(real.map(entry => entry.runSeconds).filter((value): value is number => value !== null)),
     longestRedSeconds: overlaps.length ? Math.round(Math.max(...overlaps) / 1000) : null,
   };
+}
+
+/**
+ * 실행(오래된 것부터)마다 실패에 반복 정보를 붙인다. 같은 lane에서 같은 signature로 연달아 실패한 횟수와
+ * 그 연속의 첫 실행이다. 그 lane이 통과했거나 다른 이유로 실패한 실행에서 연속이 끊긴다.
+ */
+export function withRecurrence(runs: { sha: string; at: string | null; failures: RawFailure[] }[]): Failure[][] {
+  const same = (run: { failures: RawFailure[] }, failure: RawFailure) =>
+    run.failures.some(other => other.lane === failure.lane && other.signature === failure.signature);
+  return runs.map((run, index) =>
+    run.failures.map(failure => {
+      let first = run;
+      let streak = 1;
+      for (let back = index - 1; back >= 0 && same(runs[back], failure); back--) {
+        first = runs[back];
+        streak++;
+      }
+      return { ...failure, streak, firstSha: first.sha, firstAt: first.at };
+    }),
+  );
 }

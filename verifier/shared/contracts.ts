@@ -5,6 +5,8 @@ export const laneSchema = z.object({
   name: z.string(),
   state: z.enum(['pending', 'running', 'passed', 'failed']),
   seconds: z.number().nullable(),
+  // 결과 뒤 괄호 안 설명. 예: `failed (timed out) in 1803s` → "timed out"
+  note: z.string().nullable(),
 });
 
 export const failureSchema = z.object({
@@ -12,6 +14,10 @@ export const failureSchema = z.object({
   classification: z.string(),
   reason: z.string(),
   signature: z.string(),
+  // 같은 lane·signature 실패가 이 실행까지 연달아 나온 횟수와, 그 연속의 첫 실행(최근 기록 안에서)
+  streak: z.number(),
+  firstSha: z.string(),
+  firstAt: z.string().nullable(),
 });
 
 export const currentRunSchema = z.object({

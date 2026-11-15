@@ -1,10 +1,19 @@
 import { defineAgentTool } from '@getpaseo/plugin/server';
 import { z } from 'zod';
-import type { VerifierStatus } from '../shared/contracts';
+import type { Failure, Lane, VerifierStatus } from '../shared/contracts';
 import { estimateRun, formatDuration, formatGiB, headline, shortSha } from '../shared/summary';
 
 function clock(iso: string | number) {
   return new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+}
+
+function laneText(lane: Lane) {
+  return `${lane.name}=${lane.state}${lane.note ? `(${lane.note})` : ''}`;
+}
+
+/** 같은 실패가 반복되는지: 새 실패인지, 몇 번째인지, 처음 나온 SHA */
+export function recurrenceText(failure: Failure) {
+  return failure.streak > 1 ? `${failure.streak} runs in a row since ${failure.firstSha.slice(0, 12)}${failure.firstAt ? ` (${clock(failure.firstAt)})` : ''}` : 'new in this run';
 }
 
 /** 에이전트가 읽기 좋은 짧은 요약. 사용자에게 보여 줄 문장이 아니라 판단 근거다. */
@@ -16,16 +25,17 @@ export function describeStatus(status: VerifierStatus, now = Date.now()): string
     const estimate = estimateRun(status, now);
     const done = current.lanes.filter(lane => lane.state === 'passed' || lane.state === 'failed').length;
     lines.push(`running: ${current.sha} ${current.subject ?? ''}`.trim());
-    lines.push(`lanes: ${done}/${current.lanes.length} done; ${current.lanes.map(lane => `${lane.name}=${lane.state}`).join(', ')}`);
+    lines.push(`lanes: ${done}/${current.lanes.length} done; ${current.lanes.map(laneText).join(', ')}`);
     if (estimate.endAt) lines.push(`estimated end: ${clock(estimate.endAt)}`);
     lines.push('note: a running verifier holds the machine heavy lock until it ends.');
+    for (const failure of current.failures) lines.push(`current failure ${failure.lane}: ${failure.classification}/${failure.reason} signature=${failure.signature.slice(0, 12)}, ${recurrenceText(failure)}`);
   }
   if (status.deferral) lines.push(`deferred since ${clock(status.deferral.since)} x${status.deferral.count}: ${status.deferral.reason}`);
   const last = status.recent.at(-1);
   if (last) lines.push(`last finished: ${last.status} ${last.sha} at ${clock(last.endedAt)}${last.failedLanes.length ? ` failed=${last.failedLanes.join(',')}` : ''}`);
   if (status.lastSuccess) lines.push(`last success: ${status.lastSuccess.sha} at ${clock(status.lastSuccess.endedAt)}`);
   if (status.redSince) lines.push(`red since ${clock(status.redSince)} (${formatDuration((now - Date.parse(status.redSince)) / 1000)}), failure streak ${status.failureStreak}`);
-  for (const failure of last?.failures ?? []) lines.push(`failure ${failure.lane}: ${failure.classification}/${failure.reason} signature=${failure.signature.slice(0, 12)}`);
+  for (const failure of last?.failures ?? []) lines.push(`failure ${failure.lane}: ${failure.classification}/${failure.reason} signature=${failure.signature.slice(0, 12)}, ${recurrenceText(failure)}`);
   for (const stats of status.stats) {
     lines.push(`last ${stats.hours}h: ${stats.successes}/${stats.runs} passed, ${stats.deferrals} deferred${stats.longestRedSeconds !== null ? `, longest red ${formatDuration(stats.longestRedSeconds)}` : ''}`);
   }
@@ -49,13 +59,8 @@ export function createVerifierTool(read: (includeGithub: boolean) => Promise<Ver
     }),
     async execute({ includeGithub }) {
       try {
-        const status = await read(includeGithub === true);
-        const { recent, beats, ...rest } = status;
-        return {
-          text: describeStatus(status),
-          // 막대·lane 표용 이력은 빼고 넘긴다.
-          structuredContent: { ...rest, recent: recent.slice(-5).map(({ lanes, ...run }) => run) },
-        };
+        // 텍스트만 돌려준다. structuredContent가 있으면 일부 클라이언트(Claude)가 텍스트 대신 큰 JSON을 보여 준다.
+        return { text: describeStatus(await read(includeGithub === true)) };
       } catch (error) {
         return { text: `verifier status unavailable: ${error instanceof Error ? error.message : String(error)}`, isError: true };
       }

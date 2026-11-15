@@ -106,6 +106,20 @@ describe('Collector', () => {
     expect((await collector(fakeExec({ running: true })).status({ includeGithub: false })).current).toBeNull();
   });
 
+  it('carries failure recurrence from finished runs into the current run without mutating cached logs', async () => {
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
+    const failing = runningLog.replace(/2026-11-15T07:01:31\.\d+Z/g, startedAt).replace('[app-packages] start\n', '[app-packages] start\n[app-packages] failed in 120s (exit 1)\n[app-packages] classification=unknown reason=failure-unidentified signature=e918\n');
+    await writeFile(path.join(logs, 'p-run-20261115-160131-tip-full-cccccccccccc.log'), failing);
+    const instance = collector(fakeExec({ running: true }));
+    const status = await instance.status({ includeGithub: false });
+    expect(status.recent[1].failures[0]).toMatchObject({ lane: 'app-packages', streak: 1, firstSha: SHA_B });
+    expect(status.current?.failures[0]).toMatchObject({ lane: 'app-packages', streak: 2, firstSha: SHA_B, firstAt: '2026-11-15T06:56:28.669Z' });
+    // 두 번째 읽기에서도 같은 값(캐시된 로그를 고치지 않음)
+    const again = await instance.status({ includeGithub: false, refresh: true });
+    expect(again.current?.failures[0].streak).toBe(2);
+    expect(again.recent[1].failures[0].streak).toBe(1);
+  });
+
   it('reads commit subjects once and tolerates missing commits', async () => {
     const instance = collector(fakeExec({ running: false, subjects: { [SHA_A]: 'feat: a (#1)' } }));
     const status = await instance.status({ includeGithub: false });

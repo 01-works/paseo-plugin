@@ -28,7 +28,7 @@ describe('headline', () => {
   it('orders off > running > deferred > last result', () => {
     expect(headline({ ...base, agent: { loaded: false, running: false, runs: null, intervalSeconds: null } })).toEqual({ tone: 'danger', label: 'LaunchAgent 꺼짐' });
     const current = { sha: 'c'.repeat(40), subject: null, startedAt: null, lanesStartedAt: null, failures: [], phase: 'lanes' as const, lanes: [
-      { name: 'a', state: 'passed' as const, seconds: 1 }, { name: 'b', state: 'failed' as const, seconds: 1 }, { name: 'c', state: 'running' as const, seconds: null },
+      { name: 'a', state: 'passed' as const, seconds: 1, note: null }, { name: 'b', state: 'failed' as const, seconds: 1, note: null }, { name: 'c', state: 'running' as const, seconds: null, note: null },
     ] };
     expect(headline({ ...base, current, deferral: { since: '', count: 1, reason: 'x' } })).toEqual({ tone: 'warning', label: '실행 중 2/3 · 실패 1 · ccccccc' });
     expect(headline({ ...base, current: { ...current, phase: 'waiting-lock', lanes: [] } }).label).toBe('lock 대기 · ccccccc');
@@ -51,9 +51,9 @@ describe('formatting', () => {
     const current = {
       sha: 'c', subject: null, startedAt: '2026-11-15T07:00:00.000Z', lanesStartedAt: '2026-11-15T07:01:00.000Z', failures: [], phase: 'lanes' as const,
       lanes: [
-        { name: 'a', state: 'passed' as const, seconds: 600 },
-        { name: 'b', state: 'running' as const, seconds: null },
-        { name: 'c', state: 'pending' as const, seconds: null },
+        { name: 'a', state: 'passed' as const, seconds: 600, note: null },
+        { name: 'b', state: 'running' as const, seconds: null, note: null },
+        { name: 'c', state: 'pending' as const, seconds: null, note: null },
       ],
     };
     // b는 07:11에 시작해 19분째. 평소 30분이면 11분, c 평소 10분 → 21분 뒤
