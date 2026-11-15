@@ -17,6 +17,14 @@ Paseo용 자체 플러그인과 외부 커뮤니티 플러그인의 설치·사�
 mac-monitor와 agent-list는 이 저장소에서 관리하고, ZeroSub는 Kapybara가 배포하는 외부 플러그인입니다.
 다른 커뮤니티 플러그인은 [커뮤니티 안내](docs/community-plugins.md)에서 찾을 수 있습니다.
 
+### 기기별 플러그인
+
+특정 기기에서만 의미가 있어 기본 목록과 bootstrap에 넣지 않는 플러그인입니다. 필요한 기기에만 개별 설치합니다.
+
+| 플러그인 | 기능 | 설치 소스 | 조건·상세 |
+|---|---|---|---|
+| [verifier](verifier/README.md) | 01-software verifier의 실행·연기·최근 결과·디스크·승격 후보 | `github:01-works/paseo-plugin:verifier` | verifier가 설치된 macOS, `gh` 로그인(승격 정보), Paseo 0.13.0 이상 |
+
 [bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
 [플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.
 설치할 플러그인과 버전(커밋·레지스트리 버전)을 bootstrap의 `paseo` 단계가 모든 기기에 맞춥니다.
@@ -44,6 +52,7 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 
 - mac-monitor: [사용·관리](mac-monitor/README.md), [측정 기준](mac-monitor/docs/MEASUREMENTS.md), [검증 기록](mac-monitor/docs/VALIDATION.md)
 - agent-list: [사용·관리](agent-list/README.md), [현재 설계](agent-list/docs/PLAN.md), [검증 기록](agent-list/docs/VALIDATION.md)
+- verifier: [사용·읽는 것·한계](verifier/README.md)
 - ZeroSub: [계정 추가·선택·전환·제거](docs/plugins/zerosub.md). 설치 후 사이드바의 **Accounts (ZeroSub)**를 엽니다.
 
 공통 관리 명령·설치 문제 확인은 [커뮤니티 안내](docs/community-plugins.md#관리와-문제-확인)에 있습니다.
