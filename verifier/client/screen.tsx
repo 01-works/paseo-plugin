@@ -31,6 +31,7 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     laneName: { color: theme.colors.foreground, width: compact ? 150 : 210 },
     progressCell: { width: compact ? 10 : 12, height: 14, borderRadius: 2 },
     tab: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+    tip: { position: 'absolute' as const, top: 22, left: -8, width: compact ? 240 : 320, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface2, zIndex: 10, elevation: 6 },
   };
 }
 
@@ -44,6 +45,37 @@ function Card({ styles, title, trailing, children }: { styles: Styles; title: st
         {trailing}
       </View>
       {children}
+    </View>
+  );
+}
+
+/**
+ * 설명을 화면에 늘 띄우지 않고 ⓘ 아이콘 뒤에 둔다. 데스크톱·웹은 마우스를 올리면, 터치 기기는 누르면 보인다.
+ * 말풍선은 아이콘 아래에 겹쳐 띄워 주변 배치를 밀지 않는다.
+ */
+export function InfoTip({ text, styles, theme }: { text: string; styles: Styles; theme: PluginTheme }) {
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = hovered || pinned;
+  return (
+    <View style={{ position: 'relative', zIndex: open ? 10 : 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="설명"
+        accessibilityHint={text}
+        accessibilityState={{ expanded: open }}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        onPress={() => setPinned(!pinned)}
+        hitSlop={8}
+      >
+        <Text style={{ color: open ? theme.colors.accent : theme.colors.foregroundMuted }}>ⓘ</Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.tip} pointerEvents="none">
+          <Text style={styles.text}>{text}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -203,14 +235,23 @@ function CurrentRunLine({ status, now, styles, theme }: { status: VerifierStatus
           <Text style={styles.text}>{done}/{current.lanes.length}</Text>
           <Text style={styles.muted}>{open ? '▾' : '▸'}</Text>
         </Pressable>
-        {estimate.endAt ? <Text style={styles.muted}>예상 종료 {formatClock(estimate.endAt, now)}{estimate.perLane ? '' : ' (전체 중앙값 기준)'}</Text> : null}
+        {estimate.endAt ? <Text style={styles.muted}>예상 종료 {formatClock(estimate.endAt, now)}</Text> : null}
+        {estimate.endAt ? (
+          <InfoTip
+            styles={styles}
+            theme={theme}
+            text={estimate.perLane
+              ? '남은 lane의 평소 시간(최근 20회 통과 시간의 중앙값)을 더한 값입니다. 진행 막대를 누르면 lane별 상세가 펼쳐집니다.'
+              : 'lane별 기록이 부족해 최근 실행 전체 시간의 중앙값으로 냈습니다. 진행 막대를 누르면 lane별 상세가 펼쳐집니다.'}
+          />
+        ) : null}
       </View>
       {open ? <CurrentLaneDetails status={status} now={now} styles={styles} theme={theme} /> : null}
     </View>
   );
 }
 
-function PromotionLine({ status, styles }: { status: VerifierStatus; styles: Styles }) {
+function PromotionLine({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
   const github = status.github;
   if (!github) return null;
   return (
@@ -227,6 +268,7 @@ function PromotionLine({ status, styles }: { status: VerifierStatus; styles: Sty
       <Text style={styles.muted}>dev</Text>
       <Sha sha={github.devSha} repoUrl={status.repoUrl} styles={styles} />
       <Text style={styles.muted}>{devState(status)} · main보다 {github.devAheadOfMain}커밋 앞섬</Text>
+      <InfoTip styles={styles} theme={theme} text={`승격 후보는 main에 아직 없는, verifier를 통과한 가장 최근 SHA입니다. 마이그레이션 여부와 승격 절차는 release 세션에서 판단합니다. GitHub 정보는 ${formatClock(github.fetchedAt)} 기준이며 10분마다 갱신합니다.`} />
     </View>
   );
 }
@@ -246,7 +288,7 @@ function SummaryCard({ state, status, now, onRefresh, styles, theme }: { state: 
       {status ? (
         <>
           <CurrentRunLine status={status} now={now} styles={styles} theme={theme} />
-          <PromotionLine status={status} styles={styles} />
+          <PromotionLine status={status} styles={styles} theme={theme} />
         </>
       ) : null}
     </View>
@@ -291,6 +333,7 @@ function NoticeItem({ item, styles, theme }: { item: Extract<AttentionItem, { ki
       <View style={styles.row}>
         <Dot color={toneColor(theme, item.tone)} size={8} />
         <Text style={[styles.text, { flexShrink: 1 }]}>{item.title}</Text>
+        {item.help ? <InfoTip text={item.help} styles={styles} theme={theme} /> : null}
       </View>
       {item.lines.map(line => (
         <Text key={line} style={[styles.muted, { paddingLeft: 16 }]} selectable>{line}</Text>
@@ -346,6 +389,7 @@ function BeatStrip({ status, styles, theme }: { status: VerifierStatus; styles: 
         ))}
         {status.current ? <View accessibilityLabel="지금 실행" style={{ width: 8, height: 22, borderRadius: 2, backgroundColor: beatColor(theme, 'running') }} /> : null}
         <Text style={styles.muted}> 최근 {status.beats.length}회</Text>
+        <InfoTip styles={styles} theme={theme} text="요약 로그의 최근 기록입니다. 초록은 통과, 빨강은 실패, 회색은 연기, 마지막 파랑은 지금 실행입니다. 막대를 누르면 그 기록을 보여 줍니다." />
       </View>
       {beat ? (
         <View style={styles.row}>
@@ -354,9 +398,7 @@ function BeatStrip({ status, styles, theme }: { status: VerifierStatus; styles: 
           <Sha sha={beat.sha} repoUrl={status.repoUrl} styles={styles} />
           {beat.status === 'none' ? <Text style={styles.muted}>{beat.reason}</Text> : beat.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(beat.runSeconds)}</Text> : null}
         </View>
-      ) : (
-        <Text style={styles.muted}>막대를 누르면 그 기록을 보여 줍니다. 회색은 연기, 파랑은 지금 실행입니다.</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -426,7 +468,10 @@ function LaneMatrixTab({ status, styles, theme }: { status: VerifierStatus; styl
   const selectedLane = selectedRun && selected ? laneOf(selectedRun, selected.lane) : undefined;
   return (
     <View style={{ gap: 8 }}>
-      <Text style={styles.muted}>최근 {runs.length}회. 위 막대는 실행 전체 시간, 칸은 lane이 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다. 칸을 누르면 자세히 보여 줍니다.</Text>
+      <View style={styles.row}>
+        <Text style={styles.muted}>최근 {runs.length}회</Text>
+        <InfoTip styles={styles} theme={theme} text="열 위 막대는 실행 전체 시간, 칸은 lane이 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다. 칸을 누르면 자세히 보여 줍니다." />
+      </View>
       <View style={{ flexDirection: 'row' }}>
         <View style={{ gap: 4 }}>
           <Text style={[styles.muted, { height: BAR_MAX_HEIGHT + 4 + 34 }]}> </Text>
@@ -521,7 +566,11 @@ function StatsTab({ status, now, styles, theme }: { status: VerifierStatus; now:
             {hostIndicators(host).map(item => (
               <Text key={item.key} style={{ color: item.warning ? theme.colors.statusWarning : theme.colors.foreground }}>{item.label}</Text>
             ))}
-            <Text style={styles.muted}>{formatClock(host.measuredAt, now)} 측정 · 60초 캐시{host.leftoverContainers ? ` · 컨테이너 ${formatClock(host.leftoverContainers.measuredAt, now)} 확인` : status.current ? ' · 실행 중에는 컨테이너를 확인하지 않음' : ''}</Text>
+            <InfoTip
+              styles={styles}
+              theme={theme}
+              text={`${formatClock(host.measuredAt, now)} 측정, 60초마다 다시 읽습니다.${host.leftoverContainers ? ` 컨테이너는 ${formatClock(host.leftoverContainers.measuredAt, now)}에 확인했습니다.` : status.current ? ' 실행 중에는 남은 컨테이너를 확인하지 않습니다.' : ''} 경고 기준: swap 80%, fseventsd 2 GiB, verifier가 쉬는 동안 2시간 넘게 남은 lane 컨테이너.`}
+            />
           </>
         ) : (
           <Text style={styles.muted}>원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.</Text>

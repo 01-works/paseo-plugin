@@ -138,7 +138,8 @@ export function failureGroups(status: VerifierStatus): FailureGroup[] {
 
 export type AttentionItem =
   | { kind: 'failure'; key: string; tone: Tone; group: FailureGroup }
-  | { kind: 'notice'; key: string; tone: Tone; title: string; lines: string[] };
+  // lines는 항상 보이는 사실, help는 ⓘ에 숨기는 설명·조치 안내다.
+  | { kind: 'notice'; key: string; tone: Tone; title: string; lines: string[]; help?: string };
 
 /** 문제가 있을 때만 항목을 만든다. 순서는 실패 → 기기 → 디스크 → 연기 → GitHub → 읽기 경고. */
 export function attentionItems(status: VerifierStatus, now = Date.now()): AttentionItem[] {
@@ -151,9 +152,8 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
     if (warnings.some(item => item.key === 'containers') && host.leftoverContainers) {
       lines.push(`남은 컨테이너: ${host.leftoverContainers.names.join(', ')} (${formatClock(host.leftoverContainers.measuredAt, now)} 확인 · 가동 2시간 초과)`);
     }
-    lines.push(`조치: ${HOST_REMEDIATION}`);
-    lines.push(`${formatClock(host.measuredAt, now)} 측정 · 플러그인은 조치를 실행하지 않습니다.`);
-    items.push({ kind: 'notice', key: 'host', tone: 'warning', title: `기기 점검 필요 · ${warnings.map(item => item.label).join(' · ')}`, lines });
+    const help = `조치: ${HOST_REMEDIATION}\n${formatClock(host.measuredAt, now)} 측정 · 플러그인은 조치를 실행하지 않습니다.`;
+    items.push({ kind: 'notice', key: 'host', tone: 'warning', title: `기기 점검 필요 · ${warnings.map(item => item.label).join(' · ')}`, lines, help });
   }
 
   const disk = status.disk;
@@ -164,10 +164,8 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
       key: 'disk',
       tone: below ? 'danger' : 'warning',
       title: `디스크 여유 ${formatGiB(disk.availableKib)} · 실행 최소 ${formatGiB(disk.minimumKib)}`,
-      lines: [
-        below ? '최소 기준보다 적어 verifier가 실행을 미룹니다.' : '최소 기준의 1.5배보다 적습니다.',
-        ...(disk.measuredAt ? [`${formatClock(disk.measuredAt, now)} preflight 기록`] : []),
-      ],
+      lines: disk.measuredAt ? [`${formatClock(disk.measuredAt, now)} preflight 기록`] : [],
+      help: below ? '최소 기준보다 적어 verifier가 실행을 미룹니다.' : '최소 기준의 1.5배보다 적습니다. 더 줄면 verifier가 실행을 미룹니다.',
     });
   }
 
@@ -177,12 +175,13 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
       key: 'deferral',
       tone: 'warning',
       title: `실행 연기 · ${status.deferral.reason}`,
-      lines: [`${formatClock(status.deferral.since, now)}부터 ${status.deferral.count}회 연속 미뤄졌습니다. 원인이 해소되면 다음 확인에서 다시 시작합니다.`],
+      lines: [`${formatClock(status.deferral.since, now)}부터 ${status.deferral.count}회 연속`],
+      help: 'preflight가 실행을 미뤘습니다. 원인이 해소되면 다음 확인에서 다시 시작합니다.',
     });
   }
 
   if (status.githubError) {
-    items.push({ kind: 'notice', key: 'github', tone: 'muted', title: 'GitHub 조회 실패', lines: [status.githubError, ...(status.github ? ['마지막으로 읽은 값을 보여 줍니다.'] : [])] });
+    items.push({ kind: 'notice', key: 'github', tone: 'muted', title: 'GitHub 조회 실패', lines: [status.githubError], ...(status.github ? { help: '마지막으로 읽은 값을 보여 줍니다.' } : {}) });
   }
   if (status.github?.redIssuesError) {
     items.push({ kind: 'notice', key: 'red-issues', tone: 'muted', title: 'red 이슈 조회 실패', lines: [status.github.redIssuesError] });

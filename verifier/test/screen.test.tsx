@@ -104,7 +104,17 @@ describe('VerifierView', () => {
     await render(hostWarning);
     const text = lines();
     expect(text).toContain('기기 점검 필요 · swap 92.5% · 남은 lane 컨테이너 1개');
-    expect(text.join('\n')).toContain('조치: run 사이에 loop를 내리고');
+    // 조치 안내는 ⓘ 뒤에 숨어 있다가, 누르거나(터치) 마우스를 올리면(데스크톱) 보인다.
+    expect(text.join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
+    const hostTip = renderer!.root.find(node => node.type === ('Pressable' as unknown as React.ElementType) && node.props.accessibilityLabel === '설명' && /조치: run 사이에/.test(node.props.accessibilityHint));
+    await act(async () => hostTip.props.onPress());
+    expect(lines().join('\n')).toContain('조치: run 사이에 loop를 내리고');
+    await act(async () => hostTip.props.onPress());
+    expect(lines().join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
+    await act(async () => hostTip.props.onHoverIn());
+    expect(lines().join('\n')).toContain('조치: run 사이에 loop를 내리고');
+    await act(async () => hostTip.props.onHoverOut());
+    expect(lines().join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
     expect(text).not.toContain('fseventsd RSS 0.0 GiB');
     expect(text).toContain('디스크 여유 12.0 GiB · 실행 최소 10.0 GiB');
     expect(text).toContain('실행 연기 · disk low-space 9.7GiB');
@@ -135,7 +145,8 @@ describe('VerifierView', () => {
     expect(open.some(line => line.startsWith(`console-ci: reproduced · both-failed · ${SIG_CI.slice(0, 12)} · 2회 연속`))).toBe(true);
 
     await press(byRole('tab', 'lane 표'));
-    expect(lines().some(line => line.startsWith('최근 3회. 위 막대는'))).toBe(true);
+    expect(lines()).toContain('최근 3회');
+    expect(lines().some(line => line.startsWith('열 위 막대는'))).toBe(false);
     await press(byRole('tab', '통계'));
     const stats = lines();
     expect(stats.some(line => line.startsWith('지금 red:'))).toBe(true);
