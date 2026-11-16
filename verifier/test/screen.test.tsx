@@ -62,7 +62,7 @@ describe('VerifierView', () => {
     expect(text).toContain('확인할 것 없음');
     expect(text.join('\n')).toContain('승격 후보');
     expect(text.join('\n')).toContain('main보다 7커밋 앞섬');
-    expect(text.some(line => line.startsWith('LaunchAgent 대기 · 5분마다 확인 · 누적 751회 · 디스크 여유 40.0 GiB'))).toBe(true);
+    expect(text.some(line => line.startsWith('디스크 여유 40.0 GiB / 최소 10.0 GiB · '))).toBe(true);
     // 없앤 카드: 디스크·실행 연기·읽기 경고·따로 있던 최근 실행 카드
     for (const removed of ['디스크', '실행 연기', '읽기 경고', '최근 실행', '기기 상태', '승격', '기간 요약']) expect(headers()).not.toContain(removed);
   });
@@ -104,17 +104,8 @@ describe('VerifierView', () => {
     await render(hostWarning);
     const text = lines();
     expect(text).toContain('기기 점검 필요 · swap 92.5% · 남은 lane 컨테이너 1개');
-    // 조치 안내는 ⓘ 뒤에 숨어 있다가, 누르거나(터치) 마우스를 올리면(데스크톱) 보인다.
-    expect(text.join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
-    const hostTip = renderer!.root.find(node => node.type === ('Pressable' as unknown as React.ElementType) && node.props.accessibilityLabel === '설명' && /조치: run 사이에/.test(node.props.accessibilityHint));
-    await act(async () => hostTip.props.onPress());
-    expect(lines().join('\n')).toContain('조치: run 사이에 loop를 내리고');
-    await act(async () => hostTip.props.onPress());
-    expect(lines().join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
-    await act(async () => hostTip.props.onHoverIn());
-    expect(lines().join('\n')).toContain('조치: run 사이에 loop를 내리고');
-    await act(async () => hostTip.props.onHoverOut());
-    expect(lines().join('\n')).not.toContain('조치: run 사이에 loop를 내리고');
+    // 조치 안내는 짧은 한 줄로 늘 보인다.
+    expect(text.join('\n')).toContain('조치: run 사이에 loop를 내리고');
     expect(text).not.toContain('fseventsd RSS 0.0 GiB');
     expect(text).toContain('디스크 여유 12.0 GiB · 실행 최소 10.0 GiB');
     expect(text).toContain('실행 연기 · disk low-space 9.7GiB');
@@ -127,7 +118,7 @@ describe('VerifierView', () => {
     await render(remote, { compact: true });
     const text = lines();
     expect(text.join('\n')).not.toContain('승격 후보');
-    expect(text.some(line => line.startsWith('원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB ('))).toBe(true);
+    expect(text.some(line => line.startsWith('원격 verifier-box · 디스크 여유 40.0 GiB / 최소 10.0 GiB ('))).toBe(true);
     expect(text).toContain('확인 안 됨');
     await press(byRole('tab', '통계'));
     expect(lines()).toContain('원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.');

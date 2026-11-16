@@ -85,14 +85,10 @@ describe('attentionItems', () => {
     expect(items.map(item => [item.key, item.tone])).toEqual([['host', 'warning'], ['disk', 'warning'], ['deferral', 'warning'], ['errors', 'muted']]);
     const host = items[0];
     expect(host.kind === 'notice' && host.title).toBe('기기 점검 필요 · swap 92.5% · 남은 lane 컨테이너 1개');
-    // 조치 안내는 늘 보이는 줄이 아니라 ⓘ 설명(help)에 둔다.
-    expect(host.kind === 'notice' && host.help).toContain('sudo killall fseventsd');
-    expect(host.kind === 'notice' && host.lines.join('\n')).not.toContain('sudo killall fseventsd');
+    expect(host.kind === 'notice' && host.lines.join('\n')).toContain('sudo killall fseventsd');
     expect(host.kind === 'notice' && host.lines[0]).toContain('console-12345678');
     const disk = items[1];
     expect(disk.kind === 'notice' && disk.title).toBe('디스크 여유 12.0 GiB · 실행 최소 10.0 GiB');
-    expect(disk.kind === 'notice' && disk.help).toContain('1.5배');
-    expect(items[2].kind === 'notice' && items[2].help).toContain('다음 확인에서 다시 시작');
     expect(attentionItems({ ...hostWarning, disk: { availableKib: 9 * 1024 * 1024, minimumKib: 10 * 1024 * 1024, measuredAt: null } }, NOW).find(item => item.key === 'disk')?.tone).toBe('danger');
     expect(attentionItems({ ...healthy, disk: { availableKib: 15 * 1024 * 1024, minimumKib: 10 * 1024 * 1024, measuredAt: null } }, NOW)).toEqual([]);
   });
@@ -104,10 +100,10 @@ describe('attentionItems', () => {
 });
 
 describe('footerLine', () => {
-  it('shows LaunchAgent, interval, disk and time locally', () => {
-    expect(footerLine(healthy, NOW)).toBe(`LaunchAgent 대기 · 5분마다 확인 · 누적 751회 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB · ${formatClock(NOW, NOW)} 기준`);
+  it('shows only disk and time locally', () => {
+    expect(footerLine(healthy, NOW)).toBe(`디스크 여유 40.0 GiB / 최소 10.0 GiB · ${formatClock(NOW, NOW)} 기준`);
   });
   it('shows the remote target and the preflight disk record remotely', () => {
-    expect(footerLine(remote, NOW)).toBe(`원격 verifier-box · LaunchAgent 상태 알 수 없음 · 디스크 여유 40.0 GiB / 실행 최소 10.0 GiB (${formatClock('2026-11-16T06:00:00.000Z', NOW)} preflight) · ${formatClock(NOW, NOW)} 기준`);
+    expect(footerLine(remote, NOW)).toBe(`원격 verifier-box · 디스크 여유 40.0 GiB / 최소 10.0 GiB (${formatClock('2026-11-16T06:00:00.000Z', NOW)} preflight) · ${formatClock(NOW, NOW)} 기준`);
   });
 });

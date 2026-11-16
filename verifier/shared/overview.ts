@@ -144,8 +144,7 @@ export function failureGroups(status: VerifierStatus): FailureGroup[] {
 
 export type AttentionItem =
   | { kind: 'failure'; key: string; tone: Tone; group: FailureGroup }
-  // lines는 항상 보이는 사실, help는 ⓘ에 숨기는 설명·조치 안내다.
-  | { kind: 'notice'; key: string; tone: Tone; title: string; lines: string[]; help?: string };
+  | { kind: 'notice'; key: string; tone: Tone; title: string; lines: string[] };
 
 /** 문제가 있을 때만 항목을 만든다. 순서는 실패 → 기기 → 디스크 → 연기 → GitHub → 읽기 경고. */
 export function attentionItems(status: VerifierStatus, now = Date.now()): AttentionItem[] {
@@ -158,8 +157,8 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
     if (warnings.some(item => item.key === 'containers') && host.leftoverContainers) {
       lines.push(`남은 컨테이너: ${host.leftoverContainers.names.join(', ')} (${formatClock(host.leftoverContainers.measuredAt, now)} 확인 · 가동 2시간 초과)`);
     }
-    const help = `조치: ${HOST_REMEDIATION}\n${formatClock(host.measuredAt, now)} 측정 · 플러그인은 조치를 실행하지 않습니다.`;
-    items.push({ kind: 'notice', key: 'host', tone: 'warning', title: `기기 점검 필요 · ${warnings.map(item => item.label).join(' · ')}`, lines, help });
+    lines.push(`조치: ${HOST_REMEDIATION}`);
+    items.push({ kind: 'notice', key: 'host', tone: 'warning', title: `기기 점검 필요 · ${warnings.map(item => item.label).join(' · ')}`, lines });
   }
 
   const disk = status.disk;
@@ -171,7 +170,6 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
       tone: below ? 'danger' : 'warning',
       title: `디스크 여유 ${formatGiB(disk.availableKib)} · 실행 최소 ${formatGiB(disk.minimumKib)}`,
       lines: disk.measuredAt ? [`${formatClock(disk.measuredAt, now)} preflight 기록`] : [],
-      help: below ? '최소 기준보다 적어 verifier가 실행을 미룹니다.' : '최소 기준의 1.5배보다 적습니다. 더 줄면 verifier가 실행을 미룹니다.',
     });
   }
 
@@ -182,12 +180,11 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
       tone: 'warning',
       title: `실행 연기 · ${status.deferral.reason}`,
       lines: [`${formatClock(status.deferral.since, now)}부터 ${status.deferral.count}회 연속`],
-      help: 'preflight가 실행을 미뤘습니다. 원인이 해소되면 다음 확인에서 다시 시작합니다.',
     });
   }
 
   if (status.githubError) {
-    items.push({ kind: 'notice', key: 'github', tone: 'muted', title: 'GitHub 조회 실패', lines: [status.githubError], ...(status.github ? { help: '마지막으로 읽은 값을 보여 줍니다.' } : {}) });
+    items.push({ kind: 'notice', key: 'github', tone: 'muted', title: 'GitHub 조회 실패', lines: [status.githubError] });
   }
   if (status.github?.redIssuesError) {
     items.push({ kind: 'notice', key: 'red-issues', tone: 'muted', title: 'red 이슈 조회 실패', lines: [status.github.redIssuesError] });
@@ -199,17 +196,11 @@ export function attentionItems(status: VerifierStatus, now = Date.now()): Attent
   return items;
 }
 
-/** 맨 아래 작은 회색 한 줄 */
+/** 맨 아래 작은 회색 한 줄. LaunchAgent가 꺼지면 머리글이 알리므로 여기서는 디스크와 기준 시각만 둔다. */
 export function footerLine(status: VerifierStatus, now = Date.now()): string {
   const parts: string[] = [];
-  if (status.agent) {
-    parts.push(`LaunchAgent ${status.agent.loaded ? (status.agent.running ? '실행 중' : '대기') : '꺼짐'}`);
-    if (status.agent.intervalSeconds) parts.push(`${Math.round(status.agent.intervalSeconds / 60)}분마다 확인`);
-    if (status.agent.runs !== null) parts.push(`누적 ${status.agent.runs}회`);
-  } else {
-    parts.push(`원격 ${status.source.target ?? ''}`.trim(), 'LaunchAgent 상태 알 수 없음');
-  }
-  if (status.disk) parts.push(`디스크 여유 ${formatGiB(status.disk.availableKib)} / 실행 최소 ${formatGiB(status.disk.minimumKib)}${status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt, now)} preflight)` : ''}`);
+  if (status.source.kind === 'ssh') parts.push(`원격 ${status.source.target ?? ''}`.trim());
+  if (status.disk) parts.push(`디스크 여유 ${formatGiB(status.disk.availableKib)} / 최소 ${formatGiB(status.disk.minimumKib)}${status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt, now)} preflight)` : ''}`);
   parts.push(`${formatClock(status.collectedAt, now)} 기준`);
   return parts.join(' · ');
 }
