@@ -13,6 +13,7 @@ import {
   parseLaunchctl,
   parseRunLog,
   parseSummary,
+  redIssuesFrom,
 } from '../server/parse';
 import { dfOutput, finishedFailureLog, launchctlRunning, LOW_DISK, runningLog, SHA_A, SHA_B, SHA_C, summaryLine, waitingLog } from './fixtures';
 
@@ -184,5 +185,23 @@ Lane order summary: {"order":["ecommerce-db","migration-exec"],"source":null}
     // 통과한 실행(c)이 연속을 끊는다. 다른 signature도 새 실패다.
     expect(result[3].map(x => [x.lane, x.streak, x.firstSha])).toEqual([['packages', 1, 'd'], ['ci', 1, 'd']]);
     expect(result[4].map(x => [x.lane, x.streak, x.firstSha, x.firstAt])).toEqual([['packages', 2, 'd', '4'], ['ci', 2, 'd', '4']]);
+  });
+});
+
+describe('red issues', () => {
+  const sig = (char: string) => char.repeat(64);
+  it('maps the body signature marker of each open nightly-local-red issue to its number', () => {
+    const json = JSON.stringify([
+      { number: 10196, title: '[nightly-local red] console-ci: x', body: `요약\n<!-- nightly-red-signature:${sig('a')} -->\n<!-- nightly-red-run:${sig('f')} -->` },
+      { number: 10200, title: '[nightly-local red] sdk', body: `<!-- nightly-red-signature:${sig('b')} -->` },
+      // 같은 signature가 둘이면 최근 이슈, 형식이 다른 marker·본문 없음·번호 없음은 무시한다.
+      { number: 10210, title: 'again', body: `<!-- nightly-red-signature:${sig('b')} -->` },
+      { number: 10220, title: 'short', body: '<!-- nightly-red-signature:abc -->' },
+      { number: 10230, title: 'no body', body: null },
+      { title: 'no number', body: `<!-- nightly-red-signature:${sig('c')} -->` },
+    ]);
+    expect(redIssuesFrom(json)).toEqual({ [sig('a')]: 10196, [sig('b')]: 10210 });
+    expect(redIssuesFrom('[]')).toEqual({});
+    expect(() => redIssuesFrom('{}')).toThrow();
   });
 });

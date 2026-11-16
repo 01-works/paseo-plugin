@@ -75,6 +75,9 @@ export const githubSchema = z.object({
   devAheadOfMain: z.number(),
   // main에 아직 없는, verifier를 통과한 가장 최근 SHA
   candidate: z.object({ sha: z.string(), aheadOfMain: z.number() }).nullable(),
+  // 열린 `nightly-local-red` 이슈의 본문 marker signature(64자 hex) → 이슈 번호. 조회에 실패하면 null이다.
+  redIssues: z.record(z.string(), z.number()).nullable(),
+  redIssuesError: z.string().nullable(),
 });
 
 export const hostSchema = z.object({

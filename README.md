@@ -23,7 +23,7 @@ mac-monitor와 agent-list는 이 저장소에서 관리하고, ZeroSub는 Kapyba
 
 | 플러그인 | 기능 | 설치 소스 | 조건·상세 |
 |---|---|---|---|
-| [verifier](verifier/README.md) | 01-software verifier의 실행·연기·lane 이력·기간 요약·디스크·기기 상태·승격 후보 | `github:01-works/paseo-plugin:verifier` | verifier 기기 또는 그 읽기 전용 SSH에 접속하는 macOS, `gh` 로그인(승격 정보), Paseo 0.15.0 이상 |
+| [verifier](verifier/README.md) | 01-software verifier의 dev 상태 요약·지금 실행·확인할 것(실패와 red 이슈, 기기·디스크·연기)·기록·승격 후보 | `github:01-works/paseo-plugin:verifier` | verifier 기기 또는 그 읽기 전용 SSH에 접속하는 macOS, `gh` 로그인(승격 정보·red 이슈), Paseo 0.15.0 이상 |
 
 [bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
 [플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.

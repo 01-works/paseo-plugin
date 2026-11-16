@@ -3,23 +3,16 @@ import { openExternalUrl, type PluginScreenProps } from '@getpaseo/plugin/client
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import type { Beat, Failure, Lane, Run, VerifierStatus, WindowStats } from '../shared/contracts';
-import { HOST_REMEDIATION, hostIndicators } from '../shared/host';
-import { estimateRun, formatDuration, formatGiB, headline, isSlow, prNumber, shortSha } from '../shared/summary';
+import { hostIndicators } from '../shared/host';
+import { attentionItems, devState, footerLine, formatClock, overallLine, redIssueOf, type AttentionItem, type FailureGroup } from '../shared/overview';
+import { estimateRun, formatDuration, isSlow, prNumber, shortSha } from '../shared/summary';
 import { toneColor } from './sidebar';
-import { useStatus, type StatusStore } from './store';
+import { useStatus, type StatusStore, type StoreState } from './store';
+
+export { formatClock } from '../shared/overview';
 
 const RECENT_LIST = 10;
 const BAR_MAX_HEIGHT = 28;
-
-function pad(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-export function formatClock(iso: string | number, now = Date.now()): string {
-  const date = new Date(iso);
-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  return new Date(now).toDateString() === date.toDateString() ? time : `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`;
-}
 
 function makeStyles(theme: PluginTheme, compact: boolean) {
   return {
@@ -36,18 +29,27 @@ function makeStyles(theme: PluginTheme, compact: boolean) {
     buttonText: { color: theme.colors.foreground },
     cell: { width: 44, height: 26, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 4, backgroundColor: theme.colors.surface2 },
     laneName: { color: theme.colors.foreground, width: compact ? 150 : 210 },
+    progressCell: { width: compact ? 10 : 12, height: 14, borderRadius: 2 },
+    tab: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   };
 }
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function Card({ styles, title, children }: { styles: Styles; title: string; children: ReactNode }) {
+function Card({ styles, title, trailing, children }: { styles: Styles; title: string; trailing?: ReactNode; children: ReactNode }) {
   return (
     <View style={styles.card}>
-      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+      <View style={styles.row}>
+        <Text accessibilityRole="header" style={[styles.title, { flex: 1 }]}>{title}</Text>
+        {trailing}
+      </View>
       {children}
     </View>
   );
+}
+
+function Dot({ color, size = 10 }: { color: string; size?: number }) {
+  return <View accessibilityElementsHidden style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
 }
 
 function Sha({ sha, repoUrl, styles }: { sha: string; repoUrl: string | null; styles: Styles }) {
@@ -55,6 +57,16 @@ function Sha({ sha, repoUrl, styles }: { sha: string; repoUrl: string | null; st
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={`커밋 ${shortSha(sha)}를 GitHub에서 열기`} onPress={() => void openExternalUrl(`${repoUrl}/commit/${sha}`)}>
       <Text style={styles.link}>{shortSha(sha)}</Text>
+    </Pressable>
+  );
+}
+
+function GithubLink({ kind, number, repoUrl, styles }: { kind: 'pull' | 'issues'; number: string | number; repoUrl: string | null; styles: Styles }) {
+  const label = kind === 'pull' ? `PR ${number}` : `이슈 ${number}`;
+  if (!repoUrl) return <Text style={styles.mono}>#{number}</Text>;
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`${label}를 GitHub에서 열기`} onPress={() => void openExternalUrl(`${repoUrl}/${kind}/${number}`)}>
+      <Text style={styles.link}>#{number}</Text>
     </Pressable>
   );
 }
@@ -67,11 +79,7 @@ function Subject({ subject, repoUrl, styles }: { subject: string | null; repoUrl
   return (
     <View style={styles.row}>
       <Text style={[styles.text, { flexShrink: 1 }]} numberOfLines={1}>{title}</Text>
-      {pr && repoUrl ? (
-        <Pressable accessibilityRole="link" accessibilityLabel={`PR ${pr}를 GitHub에서 열기`} onPress={() => void openExternalUrl(`${repoUrl}/pull/${pr}`)}>
-          <Text style={styles.link}>#{pr}</Text>
-        </Pressable>
-      ) : null}
+      {pr ? <GithubLink kind="pull" number={pr} repoUrl={repoUrl} styles={styles} /> : null}
     </View>
   );
 }
@@ -85,38 +93,68 @@ function laneColor(theme: PluginTheme, state: Lane['state']) {
   return theme.colors.foregroundMuted;
 }
 
-function FailureLines({ failures, styles }: { failures: Failure[]; styles: Styles }) {
+function recurrence(streak: number, firstSha: string, firstAt: string | null) {
+  return streak > 1 ? `${streak}회 연속 (처음 ${shortSha(firstSha)}${firstAt ? ` ${formatClock(firstAt)}` : ''})` : '이번에 처음';
+}
+
+/** 기록 안에서 펼친 실행의 실패 분류. 연결된 red 이슈가 있으면 함께 보여 준다. */
+function FailureLines({ failures, status, styles }: { failures: Failure[]; status: VerifierStatus; styles: Styles }) {
   if (failures.length === 0) return null;
   return (
     <>
-      {failures.map(failure => (
-        <Text key={`${failure.lane}-${failure.signature}`} style={styles.muted} selectable>
-          {failure.lane}: {failure.classification} · {failure.reason} · {failure.signature.slice(0, 12)} · {failure.streak > 1 ? `${failure.streak}회 연속 (처음 ${shortSha(failure.firstSha)}${failure.firstAt ? ` ${formatClock(failure.firstAt)}` : ''})` : '이번에 처음'}
-        </Text>
-      ))}
+      {failures.map(failure => {
+        const issue = redIssueOf(status, failure.signature);
+        return (
+          <View key={`${failure.lane}-${failure.signature}`} style={styles.row}>
+            <Text style={[styles.muted, { flexShrink: 1 }]} selectable>
+              {failure.lane}: {failure.classification} · {failure.reason} · {failure.signature.slice(0, 12)} · {recurrence(failure.streak, failure.firstSha, failure.firstAt)}
+            </Text>
+            {issue !== null ? <GithubLink kind="issues" number={issue} repoUrl={status.repoUrl} styles={styles} /> : null}
+          </View>
+        );
+      })}
     </>
   );
 }
 
-function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+// ── 1. 요약 ───────────────────────────────────────────────────────────
+
+function LaneProgress({ lanes, styles, theme }: { lanes: Lane[]; styles: Styles; theme: PluginTheme }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {lanes.map(lane => (
+        <View
+          key={lane.name}
+          style={[
+            styles.progressCell,
+            lane.state === 'pending'
+              ? { backgroundColor: theme.colors.surface2, borderWidth: 1, borderColor: theme.colors.border }
+              : { backgroundColor: laneColor(theme, lane.state) },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+function CurrentLaneDetails({ status, now, styles, theme }: { status: VerifierStatus; now: number; styles: Styles; theme: PluginTheme }) {
   const current = status.current;
   if (!current) return null;
   const started = current.startedAt ? Date.parse(current.startedAt) : NaN;
-  const estimate = estimateRun(status);
+  const estimate = estimateRun(status, now);
   return (
-    <Card styles={styles} title="지금 실행">
-      <View style={styles.row}>
-        <Sha sha={current.sha} repoUrl={status.repoUrl} styles={styles} />
-        {Number.isFinite(started) ? <Text style={styles.muted}>{formatClock(started)} 시작 · {formatDuration((Date.now() - started) / 1000)}째</Text> : null}
-        {estimate.endAt ? <Text style={styles.muted}>· 예상 종료 {formatClock(estimate.endAt)}{estimate.perLane ? '' : ' (전체 중앙값 기준)'}</Text> : null}
-      </View>
+    <View style={{ gap: 4, paddingLeft: 4 }}>
       <Subject subject={current.subject} repoUrl={status.repoUrl} styles={styles} />
-      {current.phase === 'waiting-lock' ? <Text style={styles.muted}>heavy lock을 기다리는 중입니다.</Text> : null}
+      {Number.isFinite(started) ? (
+        <Text style={styles.muted}>
+          {formatClock(started, now)} 시작 · {formatDuration((now - started) / 1000)}째
+        </Text>
+      ) : null}
       {current.lanes.map(lane => {
         const median = status.laneMedians[lane.name];
         const slow = isSlow(lane.state === 'running' ? estimate.runningLaneSeconds : lane.seconds, median);
         const usual = median !== undefined ? `평소 ${formatDuration(median)}` : null;
-        let detail: string | null = null;
+        let detail: string | null;
         if (lane.state === 'running') detail = [estimate.runningLaneSeconds !== null ? `약 ${formatDuration(estimate.runningLaneSeconds)}째` : null, usual].filter(Boolean).join(' · ');
         else if (lane.state === 'pending') detail = usual;
         // 끝난 lane: 시간이 없어도 괄호 설명(시간 초과 등)은 보여 준다.
@@ -129,10 +167,153 @@ function CurrentRunCard({ status, styles, theme }: { status: VerifierStatus; sty
           </View>
         );
       })}
-      <FailureLines failures={current.failures} styles={styles} />
+    </View>
+  );
+}
+
+function CurrentRunLine({ status, now, styles, theme }: { status: VerifierStatus; now: number; styles: Styles; theme: PluginTheme }) {
+  const [open, setOpen] = useState(false);
+  const current = status.current;
+  if (!current) return <Text style={styles.muted}>지금 실행 없음</Text>;
+  if (current.phase === 'waiting-lock') {
+    return (
+      <View style={styles.row}>
+        <Text style={styles.text}>지금</Text>
+        <Sha sha={current.sha} repoUrl={status.repoUrl} styles={styles} />
+        <Text style={styles.muted}>heavy lock 대기{current.startedAt ? ` · ${formatClock(current.startedAt, now)}부터` : ''}</Text>
+      </View>
+    );
+  }
+  const done = current.lanes.filter(lane => lane.state === 'passed' || lane.state === 'failed').length;
+  const estimate = estimateRun(status, now);
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={styles.row}>
+        <Text style={styles.text}>지금</Text>
+        <Sha sha={current.sha} repoUrl={status.repoUrl} styles={styles} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`lane 진행 ${done}/${current.lanes.length}, 누르면 lane별 상세를 ${open ? '접습니다' : '펼칩니다'}`}
+          accessibilityState={{ expanded: open }}
+          onPress={() => setOpen(!open)}
+          hitSlop={6}
+          style={styles.row}
+        >
+          <LaneProgress lanes={current.lanes} styles={styles} theme={theme} />
+          <Text style={styles.text}>{done}/{current.lanes.length}</Text>
+          <Text style={styles.muted}>{open ? '▾' : '▸'}</Text>
+        </Pressable>
+        {estimate.endAt ? <Text style={styles.muted}>예상 종료 {formatClock(estimate.endAt, now)}</Text> : null}
+      </View>
+      {open ? <CurrentLaneDetails status={status} now={now} styles={styles} theme={theme} /> : null}
+    </View>
+  );
+}
+
+function PromotionLine({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  const github = status.github;
+  if (!github) return null;
+  return (
+    <View style={styles.row}>
+      {github.candidate ? (
+        <>
+          <Text style={styles.text}>승격 후보</Text>
+          <Sha sha={github.candidate.sha} repoUrl={status.repoUrl} styles={styles} />
+          <Text style={styles.muted}>main보다 {github.candidate.aheadOfMain}커밋 앞섬 ·</Text>
+        </>
+      ) : (
+        <Text style={styles.muted}>승격 후보 없음 ·</Text>
+      )}
+      <Text style={styles.muted}>dev</Text>
+      <Sha sha={github.devSha} repoUrl={status.repoUrl} styles={styles} />
+      <Text style={styles.muted}>{devState(status)} · main보다 {github.devAheadOfMain}커밋 앞섬</Text>
+    </View>
+  );
+}
+
+function SummaryCard({ state, status, now, onRefresh, styles, theme }: { state: StoreState; status: VerifierStatus | undefined; now: number; onRefresh: () => void; styles: Styles; theme: PluginTheme }) {
+  const overall = status ? overallLine(status, now) : null;
+  return (
+    <View style={styles.card}>
+      <View style={styles.row}>
+        {overall ? <Dot color={toneColor(theme, overall.tone)} /> : null}
+        <Text accessibilityRole="header" style={[styles.title, { flex: 1 }]}>{overall?.label ?? (state.error ? '읽기 실패' : '불러오는 중…')}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="지금 다시 읽기" disabled={state.loading} onPress={onRefresh} style={styles.button}>
+          <Text style={styles.buttonText}>{state.loading ? '읽는 중…' : '새로고침'}</Text>
+        </Pressable>
+      </View>
+      {state.error ? <Text style={{ color: theme.colors.statusDanger }}>{state.error}</Text> : null}
+      {status ? (
+        <>
+          <CurrentRunLine status={status} now={now} styles={styles} theme={theme} />
+          <PromotionLine status={status} styles={styles} theme={theme} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+// ── 2. 확인할 것 ──────────────────────────────────────────────────────
+
+const WHERE_LABEL: Record<FailureGroup['where'], string> = { current: '지금 실행', last: '마지막 실행', both: '지금·마지막 실행' };
+
+function FailureItem({ group, status, styles, theme }: { group: FailureGroup; status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  return (
+    <View style={{ gap: 2 }}>
+      <View style={styles.row}>
+        <Dot color={theme.colors.statusDanger} size={8} />
+        <Text style={styles.title}>{group.lanes.length > 0 ? group.lanes.join(', ') : '실패 lane 모름 (실행 로그 없음)'}</Text>
+        <Text style={styles.text}>{group.streak > 1 ? `${group.streak}회 연속` : '이번에 처음'}</Text>
+        <Text style={styles.muted}>· {WHERE_LABEL[group.where]}</Text>
+      </View>
+      <View style={[styles.row, { paddingLeft: 16 }]}>
+        <Text style={styles.muted}>처음</Text>
+        <Sha sha={group.firstSha} repoUrl={status.repoUrl} styles={styles} />
+        {group.firstAt ? <Text style={styles.muted}>{formatClock(group.firstAt)}</Text> : null}
+        {group.firstPr ? <GithubLink kind="pull" number={group.firstPr} repoUrl={status.repoUrl} styles={styles} /> : null}
+        <Text style={styles.muted}>· red 이슈</Text>
+        {group.issue !== null ? (
+          <GithubLink kind="issues" number={group.issue} repoUrl={status.repoUrl} styles={styles} />
+        ) : (
+          <Text style={styles.muted}>{group.issueKnown ? '없음' : '확인 안 됨'}</Text>
+        )}
+      </View>
+      <Text style={[styles.muted, { paddingLeft: 16 }]} selectable>
+        {group.classification ? `${group.classification} · ${group.reason} · ${group.signature?.slice(0, 12)}` : '실패 분류 기록 없음'}
+      </Text>
+    </View>
+  );
+}
+
+function NoticeItem({ item, styles, theme }: { item: Extract<AttentionItem, { kind: 'notice' }>; styles: Styles; theme: PluginTheme }) {
+  return (
+    <View style={{ gap: 2 }}>
+      <View style={styles.row}>
+        <Dot color={toneColor(theme, item.tone)} size={8} />
+        <Text style={[styles.text, { flexShrink: 1 }]}>{item.title}</Text>
+      </View>
+      {item.lines.map(line => (
+        <Text key={line} style={[styles.muted, { paddingLeft: 16 }]} selectable>{line}</Text>
+      ))}
+    </View>
+  );
+}
+
+function AttentionCard({ status, now, styles, theme }: { status: VerifierStatus; now: number; styles: Styles; theme: PluginTheme }) {
+  const items = attentionItems(status, now);
+  return (
+    <Card styles={styles} title="확인할 것" trailing={items.length > 0 ? <Text style={styles.muted}>{items.length}건</Text> : null}>
+      {items.length === 0 ? <Text style={styles.muted}>확인할 것 없음</Text> : null}
+      {items.map(item =>
+        item.kind === 'failure'
+          ? <FailureItem key={item.key} group={item.group} status={status} styles={styles} theme={theme} />
+          : <NoticeItem key={item.key} item={item} styles={styles} theme={theme} />,
+      )}
     </Card>
   );
 }
+
+// ── 3. 기록 ───────────────────────────────────────────────────────────
 
 function beatColor(theme: PluginTheme, status: Beat['status'] | 'running') {
   if (status === 'success') return theme.colors.statusSuccess;
@@ -173,42 +354,67 @@ function BeatStrip({ status, styles, theme }: { status: VerifierStatus; styles: 
           <Sha sha={beat.sha} repoUrl={status.repoUrl} styles={styles} />
           {beat.status === 'none' ? <Text style={styles.muted}>{beat.reason}</Text> : beat.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(beat.runSeconds)}</Text> : null}
         </View>
-      ) : (
-        <Text style={styles.muted}>막대를 누르면 그 기록을 보여 줍니다.</Text>
-      )}
+      ) : null}
     </View>
   );
 }
 
-function StatsCard({ status, styles }: { status: VerifierStatus; styles: Styles }) {
-  if (status.stats.length === 0) return null;
-  const label = (stats: WindowStats) => (stats.hours % 24 === 0 && stats.hours > 24 ? `${stats.hours / 24}일` : `${stats.hours}시간`);
+function RunRow({ run, status, styles, theme }: { run: Run; status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  const [open, setOpen] = useState(false);
+  const ok = run.status === 'success';
   return (
-    <Card styles={styles} title="기간 요약">
-      {status.redSince ? <Text style={styles.text}>지금 red: {formatClock(status.redSince)}부터 {formatDuration((Date.now() - Date.parse(status.redSince)) / 1000)}째 (verifier 관측 기준)</Text> : null}
-      {status.stats.map(stats => {
-        const rate = stats.runs > 0 ? `${Math.round((stats.successes / stats.runs) * 100)}%` : '-';
-        return (
-          <View key={stats.hours} style={styles.row}>
-            <Text style={[styles.title, { width: 48 }]}>{label(stats)}</Text>
-            <Text style={styles.text}>실행 {stats.runs} (통과 {stats.successes} · 실패 {stats.failures}) · 성공률 {rate}</Text>
-            <Text style={styles.muted}>
-              {stats.medianRunSeconds !== null ? `중앙 ${formatDuration(stats.medianRunSeconds)}` : ''}
-              {stats.deferrals > 0 ? ` · 연기 ${stats.deferrals}` : ''}
-              {stats.longestRedSeconds !== null ? ` · 가장 긴 red ${formatDuration(stats.longestRedSeconds)}` : ''}
-            </Text>
+    <View style={{ gap: 2 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${formatClock(run.endedAt)} ${ok ? '통과' : '실패'} ${shortSha(run.sha)}, 누르면 ${open ? '접습니다' : '펼칩니다'}`}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={styles.row}
+      >
+        <Text style={{ color: ok ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{ok ? '✓' : '✗'}</Text>
+        <Text style={styles.muted}>{formatClock(run.endedAt)}</Text>
+        <Text style={styles.mono}>{shortSha(run.sha)}</Text>
+        {run.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(run.runSeconds)}</Text> : null}
+        {run.failedLanes.length > 0 ? <Text style={{ color: theme.colors.statusDanger }}>{run.failedLanes.join(', ')}</Text> : null}
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 2, paddingLeft: 16 }}>
+          <View style={styles.row}>
+            <Sha sha={run.sha} repoUrl={status.repoUrl} styles={styles} />
+            <Text style={styles.muted}>{formatClock(run.endedAt)} 종료</Text>
           </View>
-        );
-      })}
-    </Card>
+          {run.subject ? <Subject subject={run.subject} repoUrl={status.repoUrl} styles={styles} /> : <Text style={styles.muted}>커밋 제목 없음</Text>}
+          {!ok ? <FailureLines failures={run.failures} status={status} styles={styles} /> : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function RecentTab({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <BeatStrip status={status} styles={styles} theme={theme} />
+      {status.lastSuccess ? (
+        <View style={styles.row}>
+          <Text style={styles.muted}>마지막 통과</Text>
+          <Sha sha={status.lastSuccess.sha} repoUrl={status.repoUrl} styles={styles} />
+          <Text style={styles.muted}>{formatClock(status.lastSuccess.endedAt)}{status.failureStreak > 0 ? ` · 그 뒤 ${status.failureStreak}회 연속 실패` : ''}</Text>
+        </View>
+      ) : null}
+      {status.recent.length === 0 ? <Text style={styles.muted}>기록이 없습니다.</Text> : null}
+      {[...status.recent].reverse().slice(0, RECENT_LIST).map(run => (
+        <RunRow key={`${run.endedAt}-${run.sha}`} run={run} status={status} styles={styles} theme={theme} />
+      ))}
+    </View>
   );
 }
 
 /** lane을 행, 실행을 열(최근이 왼쪽)로 둔 표. 칸은 걸린 분이고, 평소보다 오래 걸린 통과는 경고색이다. */
-function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+function LaneMatrixTab({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
   const [selected, setSelected] = useState<{ key: string; lane: string } | null>(null);
   const runs = [...status.recent].reverse();
-  if (runs.length === 0) return null;
+  if (runs.length === 0) return <Text style={styles.muted}>기록이 없습니다.</Text>;
   // 실패 lane이 다음 실행에서 앞으로 옮겨지므로 순서가 아니라 이름으로 맞춘다.
   const names: string[] = [];
   for (const run of [...runs].reverse()) for (const lane of run.lanes) if (!names.includes(lane.name)) names.push(lane.name);
@@ -217,8 +423,10 @@ function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; sty
   const selectedRun = selected ? runs.find(run => `${run.endedAt}-${run.sha}` === selected.key) : undefined;
   const selectedLane = selectedRun && selected ? laneOf(selectedRun, selected.lane) : undefined;
   return (
-    <Card styles={styles} title={`lane 이력 (최근 ${runs.length}회)`}>
-      <Text style={styles.muted}>위 막대는 실행 전체 시간, 칸은 lane이 걸린 분입니다. 빨강은 실패, 노랑은 평소보다 1.5배 넘게 걸린 통과, –는 기록 없음입니다. 칸을 누르면 자세히 보여 줍니다.</Text>
+    <View style={{ gap: 8 }}>
+      <View style={styles.row}>
+        <Text style={styles.muted}>최근 {runs.length}회</Text>
+      </View>
       <View style={{ flexDirection: 'row' }}>
         <View style={{ gap: 4 }}>
           <Text style={[styles.muted, { height: BAR_MAX_HEIGHT + 4 + 34 }]}> </Text>
@@ -278,172 +486,116 @@ function LaneMatrixCard({ status, styles, theme }: { status: VerifierStatus; sty
             {selectedRun.runSeconds !== null ? <Text style={styles.muted}>전체 {formatDuration(selectedRun.runSeconds)}</Text> : null}
           </View>
           <Subject subject={selectedRun.subject} repoUrl={status.repoUrl} styles={styles} />
-          <FailureLines failures={selectedRun.failures.filter(failure => failure.lane === selected.lane)} styles={styles} />
+          <FailureLines failures={selectedRun.failures.filter(failure => failure.lane === selected.lane)} status={status} styles={styles} />
         </View>
       ) : null}
-    </Card>
-  );
-}
-
-function RunRow({ run, repoUrl, styles, theme }: { run: Run; repoUrl: string | null; styles: Styles; theme: PluginTheme }) {
-  const ok = run.status === 'success';
-  return (
-    <View style={{ gap: 2 }}>
-      <View style={styles.row}>
-        <Text style={{ color: ok ? theme.colors.statusSuccess : theme.colors.statusDanger }}>{ok ? '✓' : '✗'}</Text>
-        <Text style={styles.muted}>{formatClock(run.endedAt)}</Text>
-        <Sha sha={run.sha} repoUrl={repoUrl} styles={styles} />
-        {run.runSeconds !== null ? <Text style={styles.muted}>{formatDuration(run.runSeconds)}</Text> : null}
-        {run.failedLanes.length > 0 ? <Text style={{ color: theme.colors.statusDanger }}>{run.failedLanes.join(', ')}</Text> : null}
-      </View>
-      <Subject subject={run.subject} repoUrl={repoUrl} styles={styles} />
-      {!ok ? <FailureLines failures={run.failures} styles={styles} /> : null}
     </View>
   );
 }
 
-function HostCard({ status, styles, theme }: { status: VerifierStatus; styles: Styles; theme: PluginTheme }) {
+function StatsTab({ status, now, styles, theme }: { status: VerifierStatus; now: number; styles: Styles; theme: PluginTheme }) {
+  const label = (stats: WindowStats) => (stats.hours % 24 === 0 && stats.hours > 24 ? `${stats.hours / 24}일` : `${stats.hours}시간`);
   const host = status.host;
-  const indicators = host ? hostIndicators(host) : [];
   return (
-    <Card styles={styles} title="기기 상태">
-      {host ? (
-        <>
-          <Text style={styles.muted}>{formatClock(host.measuredAt)} 기준 · 60초 캐시</Text>
-          {indicators.map(item => (
-            <Text key={item.key} style={{ color: item.warning ? theme.colors.statusWarning : theme.colors.foreground }}>{item.label}</Text>
-          ))}
-          {host.leftoverContainers ? (
-            <>
-              <Text style={styles.muted}>컨테이너 {formatClock(host.leftoverContainers.measuredAt)} 기준 · verifier 실행 없음 · 가동 2시간 초과</Text>
-              {host.leftoverContainers.names.map(name => <Text key={name} selectable style={{ color: theme.colors.statusWarning }}>{name}</Text>)}
-            </>
-          ) : <Text style={styles.muted}>{status.current ? 'verifier 실행 중에는 잔여 컨테이너를 확인하지 않습니다.' : '확인 실패 사유는 읽기 경고에서 확인하세요. 실행 여부를 알 수 없어도 컨테이너 확인을 건너뜁니다.'}</Text>}
-          {indicators.some(item => item.warning) ? <Text style={{ color: theme.colors.statusWarning }}>조치: {HOST_REMEDIATION}</Text> : null}
-        </>
-      ) : <Text style={styles.muted}>원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.</Text>}
-    </Card>
+    <View style={{ gap: 8 }}>
+      {status.redSince ? <Text style={styles.text}>지금 red: {formatClock(status.redSince, now)}부터 {formatDuration((now - Date.parse(status.redSince)) / 1000)}째 (verifier 관측 기준)</Text> : null}
+      {status.stats.length === 0 ? <Text style={styles.muted}>기록이 없습니다.</Text> : null}
+      {status.stats.map(stats => {
+        const rate = stats.runs > 0 ? `${Math.round((stats.successes / stats.runs) * 100)}%` : '-';
+        return (
+          <View key={stats.hours} style={styles.row}>
+            <Text style={[styles.title, { width: 48 }]}>{label(stats)}</Text>
+            <Text style={styles.text}>실행 {stats.runs} (통과 {stats.successes} · 실패 {stats.failures}) · 성공률 {rate}</Text>
+            <Text style={styles.muted}>
+              {stats.medianRunSeconds !== null ? `중앙 ${formatDuration(stats.medianRunSeconds)}` : ''}
+              {stats.deferrals > 0 ? ` · 연기 ${stats.deferrals}` : ''}
+              {stats.longestRedSeconds !== null ? ` · 가장 긴 red ${formatDuration(stats.longestRedSeconds)}` : ''}
+            </Text>
+          </View>
+        );
+      })}
+      <View style={styles.row}>
+        <Text style={[styles.title, { width: 48 }]}>기기</Text>
+        {host ? (
+          <>
+            {hostIndicators(host).map(item => (
+              <Text key={item.key} style={{ color: item.warning ? theme.colors.statusWarning : theme.colors.foreground }}>{item.label}</Text>
+            ))}
+          </>
+        ) : (
+          <Text style={styles.muted}>원격 SSH 모드에서는 기기 상태를 읽을 수 없습니다.</Text>
+        )}
+      </View>
+    </View>
   );
 }
 
-function PromotionCard({ status, styles }: { status: VerifierStatus; styles: Styles }) {
-  const { github, githubError } = status;
-  if (!github) {
-    return (
-      <Card styles={styles} title="승격">
-        <Text style={styles.muted}>{githubError ? `GitHub 조회 실패: ${githubError}` : 'GitHub에서 읽는 중…'}</Text>
-      </Card>
-    );
-  }
-  const devVerified = status.recent.some(run => run.sha === github.devSha && run.status === 'success');
-  const devChecked = status.recent.find(run => run.sha === github.devSha);
-  const devRunning = status.current?.sha === github.devSha;
-  const devState = devVerified ? '통과' : devRunning ? '검증 중' : devChecked ? '실패' : '아직 검증 안 됨';
+type HistoryTab = 'recent' | 'lanes' | 'stats';
+const TABS: Array<{ id: HistoryTab; label: string }> = [
+  { id: 'recent', label: '최근' },
+  { id: 'lanes', label: 'lane 표' },
+  { id: 'stats', label: '통계' },
+];
+
+function HistoryCard({ status, now, styles, theme }: { status: VerifierStatus; now: number; styles: Styles; theme: PluginTheme }) {
+  const [tab, setTab] = useState<HistoryTab>('recent');
   return (
-    <Card styles={styles} title="승격">
+    <View style={styles.card}>
       <View style={styles.row}>
-        <Text style={styles.muted}>main</Text>
-        <Sha sha={github.mainSha} repoUrl={status.repoUrl} styles={styles} />
-        <Text style={styles.muted}>· dev</Text>
-        <Sha sha={github.devSha} repoUrl={status.repoUrl} styles={styles} />
-        <Text style={styles.muted}>({devState}) · dev가 {github.devAheadOfMain}커밋 앞섬</Text>
-      </View>
-      {github.candidate ? (
-        <View style={styles.row}>
-          <Text style={styles.text}>후보</Text>
-          <Sha sha={github.candidate.sha} repoUrl={status.repoUrl} styles={styles} />
-          <Text style={styles.muted}>verifier 통과 · main보다 {github.candidate.aheadOfMain}커밋 앞섬</Text>
+        <Text accessibilityRole="header" style={[styles.title, { flex: 1 }]}>기록</Text>
+        <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4 }}>
+          {TABS.map(item => {
+            const active = item.id === tab;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setTab(item.id)}
+                style={[styles.tab, active ? { backgroundColor: theme.colors.surface2 } : null]}
+              >
+                <Text style={active ? styles.text : styles.muted}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-      ) : (
-        <Text style={styles.muted}>main에 없는 verifier 통과 SHA가 없습니다.</Text>
-      )}
-      <Text style={styles.muted}>마이그레이션 여부와 승격 절차는 release 세션에서 확인합니다. GitHub 정보는 {formatClock(github.fetchedAt)} 기준이며 10분마다 갱신합니다.</Text>
-    </Card>
+      </View>
+      {tab === 'recent' ? <RecentTab status={status} styles={styles} theme={theme} /> : null}
+      {tab === 'lanes' ? <LaneMatrixTab status={status} styles={styles} theme={theme} /> : null}
+      {tab === 'stats' ? <StatsTab status={status} now={now} styles={styles} theme={theme} /> : null}
+    </View>
+  );
+}
+
+// ── 화면 ──────────────────────────────────────────────────────────────
+
+export interface VerifierViewProps {
+  state: StoreState;
+  theme: PluginTheme;
+  compact: boolean;
+  onRefresh: () => void;
+  now?: number;
+}
+
+/** 요약 → 확인할 것 → 기록 → 맨 아래 한 줄. 데이터 구독 없이 그리기만 해서 렌더 테스트가 쓴다. */
+export function VerifierView({ state, theme, compact, onRefresh, now = Date.now() }: VerifierViewProps) {
+  const styles = useMemo(() => makeStyles(theme, compact), [theme, compact]);
+  const status = state.data;
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <SummaryCard state={state} status={status} now={now} onRefresh={onRefresh} styles={styles} theme={theme} />
+      {status ? (
+        <>
+          <AttentionCard status={status} now={now} styles={styles} theme={theme} />
+          <HistoryCard status={status} now={now} styles={styles} theme={theme} />
+          <Text style={styles.muted} selectable>{footerLine(status, now)}</Text>
+        </>
+      ) : null}
+    </ScrollView>
   );
 }
 
 export function VerifierScreen({ store, theme, layout }: PluginScreenProps & { store: StatusStore }) {
   const state = useStatus(store, true);
-  const styles = useMemo(() => makeStyles(theme, layout.compact), [theme, layout.compact]);
-  const status = state.data;
-  const top = status ? headline(status) : null;
-
-  return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.row}>
-        {top ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: toneColor(theme, top.tone) }} /> : null}
-        <Text accessibilityRole="header" style={[styles.title, { flex: 1 }]}>{top?.label ?? (state.error ? '읽기 실패' : '불러오는 중…')}</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="지금 다시 읽기"
-          disabled={state.loading}
-          onPress={() => void store.refresh()}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>{state.loading ? '읽는 중…' : '새로고침'}</Text>
-        </Pressable>
-      </View>
-      {state.error ? <Text style={{ color: theme.colors.statusDanger }}>{state.error}</Text> : null}
-      {status ? (
-        <>
-          <Text style={styles.muted}>
-            {status.agent
-              ? `LaunchAgent ${status.agent.loaded ? (status.agent.running ? '실행 중' : '대기') : '꺼짐'}${status.agent.intervalSeconds ? ` · ${Math.round(status.agent.intervalSeconds / 60)}분마다 확인` : ''}${status.agent.runs !== null ? ` · 누적 ${status.agent.runs}회` : ''}`
-              : `원격 ${status.source.target ?? ''}에서 읽음 · LaunchAgent 상태는 알 수 없음`}
-            {` · ${formatClock(status.collectedAt)} 기준`}
-          </Text>
-
-          <BeatStrip status={status} styles={styles} theme={theme} />
-
-          <CurrentRunCard status={status} styles={styles} theme={theme} />
-
-          <HostCard status={status} styles={styles} theme={theme} />
-
-          {status.deferral ? (
-            <Card styles={styles} title="실행 연기">
-              <Text style={styles.text}>{status.deferral.reason}</Text>
-              <Text style={styles.muted}>{formatClock(status.deferral.since)}부터 {status.deferral.count}회 연속 미뤄졌습니다. 원인이 해소되면 다음 확인에서 다시 시작합니다.</Text>
-            </Card>
-          ) : null}
-
-          {status.disk ? (
-            <Card styles={styles} title="디스크">
-              <Text style={{ color: status.disk.availableKib < status.disk.minimumKib ? theme.colors.statusDanger : status.disk.availableKib < status.disk.minimumKib * 1.5 ? theme.colors.statusWarning : theme.colors.foreground }}>
-                여유 {formatGiB(status.disk.availableKib)} · 실행 최소 {formatGiB(status.disk.minimumKib)}
-                {status.disk.measuredAt ? ` (${formatClock(status.disk.measuredAt)} preflight 기록)` : ''}
-              </Text>
-            </Card>
-          ) : null}
-
-          <PromotionCard status={status} styles={styles} />
-
-          <StatsCard status={status} styles={styles} />
-
-          <LaneMatrixCard status={status} styles={styles} theme={theme} />
-
-          <Card styles={styles} title="최근 실행">
-            {status.lastSuccess ? (
-              <View style={styles.row}>
-                <Text style={styles.muted}>마지막 통과</Text>
-                <Sha sha={status.lastSuccess.sha} repoUrl={status.repoUrl} styles={styles} />
-                <Text style={styles.muted}>{formatClock(status.lastSuccess.endedAt)}{status.failureStreak > 0 ? ` · 그 뒤 ${status.failureStreak}회 연속 실패` : ''}</Text>
-              </View>
-            ) : null}
-            {status.recent.length === 0 ? <Text style={styles.muted}>기록이 없습니다.</Text> : null}
-            {[...status.recent].reverse().slice(0, RECENT_LIST).map(run => (
-              <RunRow key={`${run.endedAt}-${run.sha}`} run={run} repoUrl={status.repoUrl} styles={styles} theme={theme} />
-            ))}
-          </Card>
-
-          {status.errors.length > 0 ? (
-            <Card styles={styles} title="읽기 경고">
-              {status.errors.map(error => (
-                <Text key={error} style={styles.muted}>{error}</Text>
-              ))}
-            </Card>
-          ) : null}
-        </>
-      ) : null}
-    </ScrollView>
-  );
+  return <VerifierView state={state} theme={theme} compact={layout.compact} onRefresh={() => void store.refresh()} />;
 }
