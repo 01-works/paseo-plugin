@@ -47,18 +47,18 @@ describe('verifier_status tool', () => {
 
   it('includes one host line with readings, warning, container names and manual guidance', () => {
     const local = { ...status, source: { kind: 'local' as const, target: null }, host: {
-      measuredAt: status.collectedAt, swapUsedPercent: 95, fseventsdRssKib: 5.3 * 1024 * 1024,
+      measuredAt: status.collectedAt, swapUsedMib: 11980, fseventsdRssKib: 5.3 * 1024 * 1024,
       leftoverContainers: { measuredAt: status.collectedAt, count: 1, names: ['console-12345678-1234-4234-8234-123456789abc-ecommerce-test'] },
     } };
     const lines = describeStatus(local).split('\n').filter(line => line.startsWith('host:'));
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('WARNING swap 95.0%');
+    expect(lines[0]).toContain('WARNING swap 11.7 GiB');
     expect(lines[0]).toContain('WARNING fseventsd RSS 5.3 GiB');
     expect(lines[0]).toContain('남은 lane 컨테이너 1개');
     expect(lines[0]).toContain('names=console-');
     expect(lines[0]).toContain('sudo killall fseventsd');
-    const healthy = describeStatus({ ...local, host: { ...local.host, swapUsedPercent: 20, fseventsdRssKib: 1024, leftoverContainers: null } });
-    expect(healthy).toContain('host: swap 20.0%');
+    const healthy = describeStatus({ ...local, host: { ...local.host, swapUsedMib: 1536, fseventsdRssKib: 1024, leftoverContainers: null } });
+    expect(healthy).toContain('host: swap 1.5 GiB');
     expect(healthy).not.toContain('WARNING');
     expect(healthy).not.toContain('조치:');
   });

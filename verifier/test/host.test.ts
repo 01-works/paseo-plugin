@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HostCollector, parseFseventsdRssKib, parseSwapUsedPercent } from '../server/host';
+import { HostCollector, parseFseventsdRssKib, parseSwapUsedMib } from '../server/host';
 import type { Exec } from '../server/exec';
 import { HOST_WARNING_THRESHOLDS, hostIndicators } from '../shared/host';
 
@@ -30,10 +30,12 @@ afterEach(() => vi.useRealTimers());
 
 describe('host health', () => {
   it('parses swap units, no allocated swap, and sums only fseventsd RSS in KiB', () => {
-    expect(parseSwapUsedPercent('vm.swapusage: total = 1024.00M used = 0.50G free = 512.00M (encrypted)')).toBe(50);
-    expect(parseSwapUsedPercent('total = 0.00M used = 0.00M free = 0.00M')).toBe(0);
-    expect(() => parseSwapUsedPercent('unreadable')).toThrow();
-    expect(() => parseSwapUsedPercent('total = 1M used = 2M')).toThrow();
+    expect(parseSwapUsedMib('vm.swapusage: total = 1024.00M used = 0.50G free = 512.00M (encrypted)')).toBe(512);
+    expect(parseSwapUsedMib('total = 0.00M used = 0.00M free = 0.00M')).toBe(0);
+    // 11-17 실측: 동적 총량이 작아 비율은 87.8%였지만 사용량은 2.6 GiB로 정상
+    expect(parseSwapUsedMib('vm.swapusage: total = 3072.00M  used = 2697.81M  free = 374.19M  (encrypted)')).toBeCloseTo(2697.81);
+    expect(() => parseSwapUsedMib('unreadable')).toThrow();
+    expect(() => parseSwapUsedMib('total = 1M used = 2M')).toThrow();
     expect(parseFseventsdRssKib(' 10 /System/Library/CoreServices/fseventsd\n 20 fseventsd\n 999 /usr/bin/other\n')).toBe(30);
     expect(parseFseventsdRssKib(' 999 /usr/bin/other\n')).toBe(0);
     expect(() => parseFseventsdRssKib('')).toThrow();
@@ -45,7 +47,7 @@ describe('host health', () => {
     const exec = fakeExec({ warning: true });
     const result = await new HostCollector(exec).read(true);
     expect(result.errors).toEqual([]);
-    expect(result.host).toMatchObject({ swapUsedPercent: 80, fseventsdRssKib: 2097152, leftoverContainers: { count: 1, names: [old] } });
+    expect(result.host).toMatchObject({ swapUsedMib: 8192, fseventsdRssKib: 2097152, leftoverContainers: { count: 1, names: [old] } });
     expect(hostIndicators(result.host).every(item => item.warning)).toBe(true);
     expect(exec.mock.calls.find(([, args]) => args[0] === 'inspect')?.[1]).toEqual([
       'inspect', '--type', 'container', '--format', '{{.Name}}\t{{.State.Running}}\t{{.State.StartedAt}}', 'aaaaaaaaaaaa', 'bbbbbbbbbbbb', 'cccccccccccc', 'dddddddddddd',
@@ -64,7 +66,7 @@ describe('host health', () => {
     const collector = new HostCollector(exec);
     const result = await collector.read(true);
     expect(result.host.leftoverContainers).toBeNull();
-    expect(result.host.swapUsedPercent).toBe(80);
+    expect(result.host.swapUsedMib).toBe(8192);
     expect(result.errors).toEqual([expect.stringMatching(/^host docker:/)]);
     const calls = exec.mock.calls.length;
     expect(await collector.read(true)).toEqual(result);
@@ -74,7 +76,7 @@ describe('host health', () => {
   it('returns null and warnings for failed or malformed resource readings', async () => {
     const exec: Exec = async command => command === 'sysctl' ? ok('bad swap output') : { code: 1, stdout: '', stderr: 'ps unavailable' };
     const result = await new HostCollector(exec).read(false);
-    expect(result.host).toMatchObject({ swapUsedPercent: null, fseventsdRssKib: null, leftoverContainers: null });
+    expect(result.host).toMatchObject({ swapUsedMib: null, fseventsdRssKib: null, leftoverContainers: null });
     expect(result.errors).toEqual([expect.stringContaining('host swap:'), expect.stringContaining('host fseventsd:')]);
   });
 

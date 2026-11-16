@@ -47,7 +47,7 @@ export const healthy: VerifierStatus = {
   disk: { availableKib: 40 * 1024 * 1024, minimumKib: 10 * 1024 * 1024, measuredAt: null },
   host: {
     measuredAt: new Date(NOW).toISOString(),
-    swapUsedPercent: 20,
+    swapUsedMib: 1536,
     fseventsdRssKib: 1024,
     leftoverContainers: { measuredAt: new Date(NOW).toISOString(), count: 0, names: [] },
   },
@@ -100,7 +100,7 @@ export const hostWarning: VerifierStatus = {
   ...healthy,
   host: {
     measuredAt: new Date(NOW).toISOString(),
-    swapUsedPercent: 92.5,
+    swapUsedMib: 9472,
     fseventsdRssKib: 1024,
     leftoverContainers: { measuredAt: new Date(NOW).toISOString(), count: 1, names: ['console-12345678-1234-4234-8234-123456789abc-ecommerce-test'] },
   },

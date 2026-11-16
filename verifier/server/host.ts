@@ -7,7 +7,7 @@ const LANE_CONTAINER = /^console-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
 type Sample<T> = { at: number; value: T; errors: string[] };
 type Resources = Omit<HostStatus, 'leftoverContainers'>;
 
-export function parseSwapUsedPercent(text: string): number {
+export function parseSwapUsedMib(text: string): number {
   const kib = (key: string) => {
     const match = new RegExp(`\\b${key}\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*([KMGT])\\b`, 'i').exec(text);
     if (!match) throw new Error('vm.swapusage output unreadable');
@@ -16,7 +16,7 @@ export function parseSwapUsedPercent(text: string): number {
   const total = kib('total');
   const used = kib('used');
   if (used > total) throw new Error('vm.swapusage used exceeds total');
-  return total === 0 ? 0 : used / total * 100;
+  return used / 1024;
 }
 
 export function parseFseventsdRssKib(text: string): number {
@@ -66,12 +66,12 @@ export class HostCollector {
       errors.push(`host ${label}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     };
-    const [swapUsedPercent, fseventsdRssKib] = await Promise.all([
-      this.command('sysctl', ['vm.swapusage']).then(parseSwapUsedPercent).catch(warn('swap')),
+    const [swapUsedMib, fseventsdRssKib] = await Promise.all([
+      this.command('sysctl', ['vm.swapusage']).then(parseSwapUsedMib).catch(warn('swap')),
       this.command('ps', ['-axo', 'rss=,comm=']).then(parseFseventsdRssKib).catch(warn('fseventsd')),
     ]);
     const at = Date.now();
-    return { at, value: { measuredAt: new Date(at).toISOString(), swapUsedPercent, fseventsdRssKib }, errors };
+    return { at, value: { measuredAt: new Date(at).toISOString(), swapUsedMib, fseventsdRssKib }, errors };
   }
 
   private async readContainers() {

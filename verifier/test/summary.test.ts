@@ -27,14 +27,14 @@ const run = (status: 'success' | 'failure', sha: string) => ({ endedAt: '2026-11
 
 describe('headline', () => {
   it('places host warnings after off/running and before deferrals and finished results', () => {
-    const host = { measuredAt: base.collectedAt, swapUsedPercent: 80, fseventsdRssKib: 0, leftoverContainers: null };
+    const host = { measuredAt: base.collectedAt, swapUsedMib: 8192, fseventsdRssKib: 0, leftoverContainers: null };
     const warned = { ...base, host, deferral: { since: '', count: 1, reason: 'x' }, recent: [run('failure', 'b'.repeat(40))] };
-    expect(headline(warned)).toEqual({ tone: 'warning', label: '기기 점검 필요 · swap 80.0%' });
+    expect(headline(warned)).toEqual({ tone: 'warning', label: '기기 점검 필요 · swap 8.0 GiB' });
     expect(headline({ ...warned, agent: { loaded: false, running: false, runs: null, intervalSeconds: null } }).label).toBe('LaunchAgent 꺼짐');
     const current = { sha: 'c'.repeat(40), subject: null, startedAt: null, lanesStartedAt: null, phase: 'lanes' as const, lanes: [], failures: [] };
     expect(headline({ ...warned, current }).label).toBe('실행 중 0/0 · ccccccc');
     expect(headline({ ...warned, current: { ...current, phase: 'waiting-lock' } }).label).toBe('lock 대기 · ccccccc');
-    expect(headline({ ...warned, host: { ...host, swapUsedPercent: 79.99 } }).label).toBe('연기 · x');
+    expect(headline({ ...warned, host: { ...host, swapUsedMib: 8191 } }).label).toBe('연기 · x');
   });
 
   it('orders off > running > deferred > last result', () => {
