@@ -1,6 +1,6 @@
 # verifier
 
-01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면, 그리고 에이전트 도구로 보여 주는 플러그인입니다. **Paseo SDK 0.15.4 · 플러그인 0.4.0** 기준이며, 지원 범위는 `>=0.15.0`입니다.
+01-software verifier(`local.01-software.verifier-loop`)의 현황을 Paseo 사이드바와 화면, 그리고 에이전트 도구로 보여 주는 플러그인입니다. **Paseo SDK 0.15.4 · 플러그인 0.4.1** 기준이며, 지원 범위는 `>=0.15.0`입니다.
 
 verifier 기기에서는 로그를 직접 읽고, 다른 기기(작업 기기)에서는 verifier 기기의 읽기 전용 SSH로 읽습니다. verifier를 보는 기기에만 의미가 있어서 [기본 설치 목록](../README.md#기본-설치-목록)에는 넣지 않습니다. 필요한 기기에만 따로 설치합니다.
 
@@ -56,7 +56,7 @@ verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstr
   - 같은 lane이 같은 signature로 연달아 실패한 횟수입니다. 그 lane이 통과했거나 다른 signature로 실패한 실행에서 연속이 끊기고, 최근 20회 안에서만 셉니다. 지금 실행이 마지막 실행의 실패를 이어 가면 큰 쪽(지금 실행) 횟수를 씁니다. 처음 나온 SHA가 원인이 들어온 범위의 끝입니다.
   - **red 이슈:** 01-software의 자동 red 이슈(라벨 `nightly-local-red`, 본문의 `<!-- nightly-red-signature:<64자 hex> -->`)를 signature로 맞춰 `#번호`를 링크합니다. 맞는 열린 이슈가 없으면 `없음`, 이슈 목록을 아직 못 읽었거나 조회에 실패했으면 `확인 안 됨`입니다.
   - 분류 줄이 없는 실패 lane은 `실패 분류 기록 없음`으로 따로 한 줄을 둡니다.
-- **기기(로컬만):** swap **80% 이상**, `fseventsd` RSS **2 GiB 이상**, 남은 lane 컨테이너 **1개 이상** 중 기준을 넘은 것만 한 항목으로 모아, 컨테이너 이름과 수동 조치 안내(run 사이에 loop를 내리고, 남은 컨테이너를 지운 뒤 `sudo killall fseventsd`), 측정 시각을 함께 보여 줍니다. 플러그인은 조치를 실행하지 않습니다.
+- **기기(로컬만):** swap 사용량 **8 GiB 이상**(비율이 아니라 사용량. macOS는 swap 총량이 동적이라 비율은 저하를 나타내지 못함), `fseventsd` RSS **2 GiB 이상**, 남은 lane 컨테이너 **1개 이상** 중 기준을 넘은 것만 한 항목으로 모아, 컨테이너 이름과 수동 조치 안내(run 사이에 loop를 내리고, 남은 컨테이너를 지운 뒤 `sudo killall fseventsd`), 측정 시각을 함께 보여 줍니다. 플러그인은 조치를 실행하지 않습니다.
   - 컨테이너는 verifier 실행이 없고 실행 여부를 읽는 데 문제가 없을 때만 확인하며, 이름이 `console-<UUID>`(선택적 접미사 포함)이고 현재 가동 시간이 **2시간 초과**인 것만 셉니다. 생성 시각 대신 시작 시각을 써서 재시작한 컨테이너를 잘못 세지 않습니다. 실행 중에는 캐시에 있는 잔여 컨테이너 경고도 숨깁니다. 읽기 실패는 0으로 처리하지 않고 읽기 경고에 남깁니다.
 - **디스크:** verifier preflight와 같은 `df -Pk <verifier checkout>` 여유 공간이 실행 최소 기준의 1.5배보다 적을 때 나옵니다(기준 아래면 빨간 점). 기준은 최근 preflight 기록에서 읽고, 없으면 10 GiB를 씁니다. 원격은 마지막 preflight 기록 값과 그 시각입니다.
 - **실행 연기:** 마지막 실제 실행 뒤 preflight가 실행을 미룬 사유와 시작 시각, 횟수입니다. 예: `실행 연기 · disk low-space 9.7GiB`.
@@ -97,7 +97,7 @@ verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstr
 | 같은 폴더의 `01-software-run-*.log` | 지금 실행의 lane 진행, 최근 20회의 lane 시간과 실패 분류 |
 | `git show -s` (verifier checkout) | 커밋 제목 |
 | `df -Pk ~/.local/share/01-software-verifier` | 디스크 여유 |
-| `sysctl vm.swapusage` (로컬만) | swap 전체·사용량으로 사용률 계산 |
+| `sysctl vm.swapusage` (로컬만) | swap 사용량(MiB) |
 | `ps -axo rss=,comm=` (로컬만) | 이름이 `fseventsd`인 프로세스의 RSS 합계(KiB). 명령 인자 전체는 읽지 않습니다 |
 | `docker ps --format` → `docker inspect --type container --format` (로컬만, verifier 실행 없음) | 실행 중 컨테이너의 ID·이름 목록에서 UUID lane만 고르고, 이름·가동 여부·시작 시각만 확인. 환경 변수 등은 읽지 않습니다. 명령이 없거나 실패하면 `null`과 읽기 경고 |
 | `ssh -o BatchMode=yes <대상> ls·tail·cat` (원격 모드) | 위 로그 파일들. LaunchAgent·`df`·`sysctl`·`ps`·Docker는 읽지 않습니다 |

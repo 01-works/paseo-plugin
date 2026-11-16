@@ -103,7 +103,7 @@ describe('VerifierView', () => {
   it('lists only exceeded host warnings with guidance, plus disk, deferral and read warnings', async () => {
     await render(hostWarning);
     const text = lines();
-    expect(text).toContain('기기 점검 필요 · swap 92.5% · 남은 lane 컨테이너 1개');
+    expect(text).toContain('기기 점검 필요 · swap 9.3 GiB · 남은 lane 컨테이너 1개');
     // 조치 안내는 짧은 한 줄로 늘 보인다.
     expect(text.join('\n')).toContain('조치: run 사이에 loop를 내리고');
     expect(text).not.toContain('fseventsd RSS 0.0 GiB');
@@ -141,7 +141,7 @@ describe('VerifierView', () => {
     await press(byRole('tab', '통계'));
     const stats = lines();
     expect(stats.some(line => line.startsWith('지금 red:'))).toBe(true);
-    expect(stats).toContain('swap 20.0%');
+    expect(stats).toContain('swap 1.5 GiB');
     expect(stats.some(line => line.startsWith('최근 3회. 위 막대는'))).toBe(false);
   });
 

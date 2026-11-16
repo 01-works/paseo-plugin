@@ -93,7 +93,7 @@ describe('Collector', () => {
     expect(status.failureStreak).toBe(1);
     expect(status.typicalRunSeconds).toBe(6138);
     expect(status.disk).toEqual({ availableKib: 38545204, minimumKib: 10485760, measuredAt: null });
-    expect(status.host).toMatchObject({ swapUsedPercent: 25, fseventsdRssKib: 1024, leftoverContainers: { count: 0, names: [] } });
+    expect(status.host).toMatchObject({ swapUsedMib: 256, fseventsdRssKib: 1024, leftoverContainers: { count: 0, names: [] } });
     expect(status.source).toEqual({ kind: 'local', target: null });
     expect(status.github).toBeNull();
     expect(status.errors).toEqual([]);

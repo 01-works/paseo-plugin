@@ -82,7 +82,8 @@ export const githubSchema = z.object({
 
 export const hostSchema = z.object({
   measuredAt: z.string(),
-  swapUsedPercent: z.number().nullable(),
+  // 사용 중인 swap(MiB). 비율은 macOS의 동적 총량 때문에 저하 정도를 나타내지 못한다.
+  swapUsedMib: z.number().nullable(),
   fseventsdRssKib: z.number().nullable(),
   // 실행 중이거나 실행 여부/수집 결과를 알 수 없으면 null. 빈 목록은 확인된 0개다.
   leftoverContainers: z.object({ measuredAt: z.string(), count: z.number(), names: z.array(z.string()) }).nullable(),

@@ -84,7 +84,7 @@ describe('attentionItems', () => {
     const items = attentionItems(hostWarning, NOW);
     expect(items.map(item => [item.key, item.tone])).toEqual([['host', 'warning'], ['disk', 'warning'], ['deferral', 'warning'], ['errors', 'muted']]);
     const host = items[0];
-    expect(host.kind === 'notice' && host.title).toBe('기기 점검 필요 · swap 92.5% · 남은 lane 컨테이너 1개');
+    expect(host.kind === 'notice' && host.title).toBe('기기 점검 필요 · swap 9.3 GiB · 남은 lane 컨테이너 1개');
     expect(host.kind === 'notice' && host.lines.join('\n')).toContain('sudo killall fseventsd');
     expect(host.kind === 'notice' && host.lines[0]).toContain('console-12345678');
     const disk = items[1];
