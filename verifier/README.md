@@ -97,7 +97,7 @@ verifier 기기의 [bootstrap verifier role](https://github.com/01-works/bootstr
 | 같은 폴더의 `01-software-run-*.log` | 지금 실행의 lane 진행, 최근 20회의 lane 시간과 실패 분류 |
 | `git show -s` (verifier checkout) | 커밋 제목 |
 | `df -Pk ~/.local/share/01-software-verifier` | 디스크 여유 |
-| `sysctl vm.swapusage` (로컬만) | swap 전체·사용량으로 사용률 계산 |
+| `sysctl vm.swapusage` (로컬만) | swap 사용량(MiB) |
 | `ps -axo rss=,comm=` (로컬만) | 이름이 `fseventsd`인 프로세스의 RSS 합계(KiB). 명령 인자 전체는 읽지 않습니다 |
 | `docker ps --format` → `docker inspect --type container --format` (로컬만, verifier 실행 없음) | 실행 중 컨테이너의 ID·이름 목록에서 UUID lane만 고르고, 이름·가동 여부·시작 시각만 확인. 환경 변수 등은 읽지 않습니다. 명령이 없거나 실패하면 `null`과 읽기 경고 |
 | `ssh -o BatchMode=yes <대상> ls·tail·cat` (원격 모드) | 위 로그 파일들. LaunchAgent·`df`·`sysctl`·`ps`·Docker는 읽지 않습니다 |
