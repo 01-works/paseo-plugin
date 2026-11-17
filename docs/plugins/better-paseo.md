@@ -54,12 +54,14 @@ bootstrap 기기는 `agents/paseo-plugins.json`의 검토 커밋으로 맞추므
 | 별도 모델 (`customModel`) | 꺼짐 | 꺼져 있으면 대상 에이전트와 같은 provider·모델을 씁니다 |
 | 추론 끄기 (`disableThinking`) | 켜짐 | 모델이 지원하는 가장 낮은 추론 단계를 고릅니다 |
 
-제목 생성을 쓴다면 **별도 모델**을 켜고 가벼운 모델을 지정합니다. 꺼 두면 고성능 모델 대화의 제목도 같은 모델이 만듭니다.
+별도 모델을 꺼 두면 고성능 모델 대화의 제목도 같은 모델이 만듭니다.
+
+**bootstrap 기기의 값:** 자동 생성 켬, 별도 모델 켬(Codex `gpt-6-luna`), 추론 끄기 켬. 이름 없이 시작한 대화의 제목을 첫 턴에 GPT-6-Luna의 가장 낮은 추론 단계(`low`)로 만듭니다. 이 값은 bootstrap의 [플러그인 설정](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인-설정)이 모든 기기에 맞추므로, 바꾸려면 앱이 아니라 bootstrap 목록을 고칩니다. 프롬프트처럼 목록에 없는 설정은 앱에서 바꿔도 유지됩니다.
 
 ## 제약
 
 - 성능 수치는 제작자가 Paseo 0.13.0에서 잰 값이며 이후 버전에서 다시 재지 않았습니다.
 - 키보드 단축키·호버 미리보기 등 일부 기능은 웹·데스크톱 전용입니다.
-- 2026-11-17 확인 범위: 데몬 설치와 `running`, 데몬 로그의 오류 없음, 위 소스 검토. 앱 화면의 실제 동작은 사용자가 데스크톱 앱에서 확인했습니다.
+- 2026-11-17 확인 범위: 데몬 설치와 `running`, 데몬 로그의 오류 없음, 위 소스 검토, 설정 RPC로 위 제목 설정 저장. 앱 화면은 사용자가 데스크톱 앱에서 확인했습니다. GPT-6-Luna로 실제 제목이 생성되는지는 확인하지 않았습니다.
 
 출처: [공식 소개 페이지](https://paseo.sh/plugins/roundreddot/better-paseo), [제작자 README](https://github.com/RoundRedDot/better-paseo#readme), 제작자 저장소의 `server/tasks/title-generation.ts`·`server/update-check.ts`·`server/open-terminal.ts`.
