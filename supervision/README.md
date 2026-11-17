@@ -17,7 +17,7 @@ Paseo 0.15.4·0.16.1은 명령 이름을 `^[a-z][a-z0-9-]*$`로 제한하여 `/�
 
 ## 설치와 설정
 
-Paseo 앱·데몬 **0.15.4 이상**, 호스트의 `yw-supervisor` 스킬과 `bootstrap-supervisor` 프로필이 필요합니다. 명령은 기존 agent 컨텍스트에만 나타납니다. 새 대화 초안에는 나타나지 않습니다.
+Paseo 앱·데몬 **0.15.4 이상**, 호스트 PATH의 `paseo` CLI, `yw-supervisor` 스킬과 `bootstrap-supervisor` 프로필이 필요합니다. 명령은 기존 agent 컨텍스트에만 나타납니다. 새 대화 초안에는 나타나지 않습니다.
 
 ```sh
 paseo plugin install github:01-works/paseo-plugin:supervision

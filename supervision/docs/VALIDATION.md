@@ -1,7 +1,53 @@
 # Supervision 0.1.0 검증
 
-2026-11-17, 개발 브랜치 `feat/supervision-plugin`에서 검증합니다. 아래 항목은 최종 실행 결과로 갱신합니다.
+2026-11-17, 개발 브랜치 `feat/supervision-plugin`, 구현 커밋 `c661b60`을 검증했습니다.
 
-- 자동 검사: 실행 대기.
-- 로컬 설치·실제 명령·대화 이동: 실행 대기.
-- 임시 에이전트·workspace·lane 정리와 플러그인 원상 복구: 실행 대기.
+## 자동 검사
+
+| SDK | 빌드·타입·모듈 경계 | Vitest |
+|---|---|---|
+| 0.15.4 | 통과 | 4개 파일·36개 테스트 통과 |
+| 0.16.1 | 통과 | 4개 파일·36개 테스트 통과 |
+
+[두 버전 검사 실행 기록](https://github.com/01-works/paseo-plugin/actions/runs/44075340316).
+[최신 SDK 검사](https://github.com/01-works/paseo-plugin/actions/runs/44075340411)의 supervision 작업도 통과했습니다.
+로컬 Node 24.22.0에서도 0.15.4 타입 검사와 경계 검사를 통과했습니다.
+처음 경계 검사에서 TypeScript `Set<string>`을 HTML로 잘못 판정하여 검사 정규식을 수정했습니다.
+
+## 실제 데몬과 GUI
+
+로컬 데몬·CLI는 0.15.4, 에이전트 Chrome에서 연 Paseo 웹앱은 0.16.1입니다.
+SDK의 실제 `hosts.list` 연결과 `config.get().config.agentProfiles` 읽기도 통과했습니다.
+현재 Supervisor는 `claude/claude-opus-5-5`, `bypassPermissions`, `high`이며 features는 비어 있습니다.
+
+공용 heavy 차례에서 별도 고정 경로의 소스 snapshot을 `paseo plugin install <snapshot>/supervision --json`으로 로컬 설치했습니다. `running`과 `Plugin ready` 로그를 확인했습니다. Paseo는 로컬 디렉터리 소스도 설치 시 번들하므로 차례 밖에서 설치하지 않았습니다. 개발 의존성 설치·전체 검사는 반복하지 않았습니다.
+
+설치된 서버 RPC에 연결한 실제 SDK 문맥에서 `client/actions.ts`의 시작·복귀 함수를 실행했습니다. 첫 요청에는 기록 확인만 수행하고 자식·스케줄·코드 변경·외부 메시지를 만들지 않도록 명시했습니다.
+
+| 확인 항목 | 결과 |
+|---|---|
+| lane·`tasks.md` 생성 | 정규화된 목표·날짜·임의 접미사 폴더 생성, 목표 원문·소유 ID·원 대화 주소 readback 일치 |
+| local workspace | 코드 프로젝트 `prj_3d723d21175723bc` 아래 생성, `감독 · ` 제목과 lane cwd 일치 |
+| Supervisor 생성 | 실제 프로필의 model·mode·thinking 적용, `yw.role=supervisor` 검증 후 연결 |
+| 원 대화 | `yw.supervisor` readback 일치, 기존 대화는 `idle` 유지 |
+| 첫 요청 | 감독이 오류 없이 응답 완료(`idle`) |
+| 감독 찾기 | 시작·복귀의 화면 열기 콜백이 같은 감독 주소를 선택 |
+| 오류 경로 | 연결 없음 안내, archive 후 감독 열기 차단 확인 |
+| 다른 에이전트 | 설치·제거 전후 기존 에이전트의 새 `error` 상태 없음 |
+
+검증용 원 대화는 `a913bc7e-8b40-4d04-b2f3-1e45b8dcf3b1`, 감독은 `4610831e-f9b2-4d26-b6e0-d8736349026f`였습니다. 자식 0개·실행 중 아님·원 폴더 비어 있음·두 cwd 모두 Git 저장소가 아님을 확인했습니다. lane에는 `tasks.md`만 있었습니다. 두 에이전트와 workspace(`wks_60f014844b59c48b`, `wks_21b1e7987d856ccd`)를 archive하고 lane·원 폴더·설치 snapshot을 제거한 뒤 해당 경로가 사라졌는지 확인했습니다.
+
+HTTPS 웹앱에서 직접 로컬 연결은 시간 초과되어 기존 릴레이 페어링을 사용했습니다. 사용자가 호스트 연결을 승인한 뒤 프로젝트·실행 중인 플러그인 표시와 검증용 원 대화 열기를 확인했습니다. 설치 후에는 공유 브라우저의 current target이 조율된 인계 탭에서 다른 세션의 탭으로 바뀌었습니다. 감독 지시에 따라 GUI 조작을 시작하지 않았습니다. own 탭은 current를 바꾸지 않고 닫았으며 다른 세션의 current를 보존했습니다.
+
+**GUI 동작은 미확인(공유 브라우저 사용 중)**입니다. composer의 `/supervise` 실행·Command Center 선택·실제 `navigation.openAgent` 렌더링과 스크린샷, compact·테마 전환은 검증하지 못했습니다. 위 콜백 검증은 GUI 검증을 대신하지 않습니다. 0.16.1은 SDK 빌드·단위 검사만 수행했으며 해당 데몬의 실제 설치는 미확인입니다. 비어 있지 않은 features 프로필도 단위 검사로 확인했습니다. 머지 후 앱에서 `/supervise <목표>`와 **⌘K → 내 감독으로 이동**을 직접 확인해야 합니다. `/감독`은 두 버전의 명령 이름 제한으로 사용할 수 없습니다.
+
+## 플러그인 상태
+
+설치 전·설치 중·제거 후 `paseo plugin ls --json`을 각각 저장해 대조했습니다. 기존 플러그인의 path·enabled·installation·source·remote·commit이 동일하고 모두 `running`인 것을 확인했습니다. 전역 활성화 설정과 bootstrap 고정 목록은 변경하지 않았습니다.
+
+| ID | 설치 전 | 설치 중 | 제거 후 | 유지된 revision |
+|---|---|---|---|---|
+| better-paseo | running | running | running | `d4c85ccafe6d5dfc4abcef85667eca0b3cc3bb2e` |
+| mac-monitor | running | running | running | `c9eb48e0a812aa5e6d70366075fa77cb6df16823` |
+| zerosub | running | running | running | `1.5.1` |
+| supervision | 미설치 | running | 미설치 | 임시 로컬 소스 제거 |
