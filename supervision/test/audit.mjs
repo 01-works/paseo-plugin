@@ -10,6 +10,10 @@ for (const path of ['index.client.tsx', ...files('client')]) {
 for (const path of files('shared')) {
   if (/from ['"](?:node:|react|react-native|.*\/server\/)/.test(readFileSync(path, 'utf8'))) throw new Error(`공유 모듈 경계 위반: ${path}`);
 }
+// Git 설치는 npm을 자동 실행하지 않는다. 직접 SDK 타입 import도 로컬 의존성 해석을 요구한다.
+for (const path of ['index.client.tsx', 'index.server.ts', ...files('client'), ...files('server'), ...files('shared')]) {
+  if (/from ['"]@getpaseo\/client(?:\/[^'"]*)?['"]/.test(readFileSync(path, 'utf8'))) throw new Error(`로컬 SDK 의존성 금지: ${path}`);
+}
 const config = JSON.parse(readFileSync('tsconfig.json', 'utf8'));
 if (config.compilerOptions.lib.some(lib => /dom/i.test(lib))) throw new Error('DOM lib 금지');
 console.log('클라이언트·공유 모듈 경계 검사 통과');

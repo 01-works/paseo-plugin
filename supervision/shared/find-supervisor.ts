@@ -1,5 +1,3 @@
-import type { PaseoApi } from '@getpaseo/client';
-
 export interface AgentNode {
   id: string;
   labels: Readonly<Record<string, string>>;
@@ -7,6 +5,10 @@ export interface AgentNode {
   archivedAt?: string | null;
 }
 export interface WorkspaceNode { title?: string | null; name?: string | null; archivingAt?: string | null }
+interface SupervisorLookup {
+  agents: { ref(id: string): { refresh(): Promise<{ agent: AgentNode } | null> } };
+  workspaces: { ref(id: string): { refresh(): Promise<WorkspaceNode | null> } };
+}
 export type SupervisorResult =
   | { status: 'found' | 'archived'; agentId: string; serverId: string }
   | { status: 'missing' | 'cycle' | 'limit' };
@@ -43,7 +45,7 @@ export async function findSupervisor(
   return { status: 'missing' };
 }
 
-export async function hasLiveSupervisor(paseo: Pick<PaseoApi, 'agents' | 'workspaces'>, id?: string): Promise<boolean> {
+export async function hasLiveSupervisor(paseo: SupervisorLookup, id?: string): Promise<boolean> {
   if (!id) return false;
   try {
     const agent = (await paseo.agents.ref(id).refresh())?.agent;

@@ -1,4 +1,3 @@
-import type { PaseoAgentConfig } from '@getpaseo/client';
 import type { PluginAgentCommandContext } from '@getpaseo/plugin/client';
 import { linkOriginRpc, createLaneRpc, reportLaneRpc, goalSchema } from '../shared/contracts';
 import { supervisorPrompt } from '../shared/lane';
@@ -9,7 +8,7 @@ interface Profile {
   id: string; provider: string; model?: string; modeId?: string; thinkingOptionId?: string;
   featureValues?: Record<string, unknown>; options?: Record<string, unknown>;
 }
-export function supervisorConfig(profiles: readonly Profile[] | undefined): PaseoAgentConfig {
+export function supervisorConfig(profiles: readonly Profile[] | undefined) {
   const profile = profiles?.find(value => value.id === 'bootstrap-supervisor');
   if (!profile?.provider || !profile.model) throw new Error('Supervisor 프로필(bootstrap-supervisor)의 provider/model을 확인하세요.');
   if (Object.keys(profile.featureValues ?? {}).length) throw new Error('Supervisor 프로필의 features는 지원하지 않습니다. features를 비운 뒤 실행하세요.');

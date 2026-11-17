@@ -36,6 +36,8 @@ paseo plugin install github:01-works/paseo-plugin:supervision
 paseo plugin ls
 ```
 
+Git 소스는 지정 ref를 checkout한 뒤 Paseo가 번들합니다. 별도 npm 준비나 manifest build 명령은 필요 없습니다. 런타임 소스는 호스트 제공 모듈만 사용하며, SDK 타입도 로컬 패키지 해석 없이 검사할 수 있게 구성합니다. 개발·CI의 타입 검사와 단위 테스트에는 `npm ci`가 필요합니다.
+
 개발본은 안정된 로컬 checkout 경로에서 설치합니다. 현재 PR의 사용자 확인용 절차와 체크리스트는 PR 본문에 있습니다. 실제 설치는 사용자 결정 뒤 진행합니다.
 
 ```sh
