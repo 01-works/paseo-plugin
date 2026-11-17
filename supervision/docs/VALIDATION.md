@@ -1,12 +1,59 @@
 # Supervision 0.1.0 검증
 
-## Git 배포 경로 재검증
+## 실제 Git 설치와 GUI 검증 (`f11e0d3`)
 
-2026-11-18, 검증 대상을 `f11e0d37d41073d07faa7383cf39da2cb90f6d6f`로 변경했습니다. `61440cb`는 배포 불가로 제외합니다. 해당 커밋의 깨끗한 snapshot을 데몬 0.15.4에서 설치했으나 `Could not resolve type dependency "@getpaseo/client"`로 번들에 실패했습니다. `supervision`만 failed로 등록됐고 기존 3개 플러그인의 상태·revision과 오류 에이전트 0개는 유지됐습니다.
+2026-11-18 00:53~01:11 KST에 `f11e0d37d41073d07faa7383cf39da2cb90f6d6f`를 검증했습니다. bootstrap #104가 머지되고 이 호스트의 스킬에 마크다운 기록 계약이 적용된 상태입니다. 에이전트 Chrome Beta의 **Paseo 웹앱 0.16.1**, 연결 **데몬·CLI 0.15.4**를 사용했습니다. 앱 정보 화면에서도 두 버전을 확인했습니다. 설치된 macOS 앱은 0.15.4지만 네이티브 GUI 검증에는 사용하지 않았습니다.
 
-설치된 Paseo의 Git 소스 획득 코드는 clone·고정 ref checkout 후 manifest의 build 명령만 실행하며 npm 의존성을 자동 준비하지 않습니다. 따라서 같은 소스는 bootstrap의 Git 설치 경로에서도 실패합니다. `f11e0d3`는 런타임 코드의 직접 SDK 타입 import 두 곳을 제거하고 경계 검사에 재유입 차단을 추가했습니다. 별도 npm 준비나 build 명령은 추가하지 않았습니다. 수동 npm 재시도 대기는 실행 전 정상 취소했습니다.
+### 배포 결함과 수정
 
-SDK 0.15.4·0.16.1·최신의 빌드·타입·경계 검사와 각 5개 파일·47개 테스트가 통과했습니다. 실제 검증은 `paseo plugin install github:01-works/paseo-plugin:supervision --ref f11e0d37d41073d07faa7383cf39da2cb90f6d6f`로 진행하며 현재 heavy 설치 차례를 기다리고 있습니다. 아직 이 수정판의 설치·GUI 성공을 확인한 것은 아닙니다.
+`61440cb`는 배포 불가로 제외합니다. 해당 커밋의 깨끗한 snapshot을 데몬 0.15.4에서 설치했으나 `Could not resolve type dependency "@getpaseo/client"`로 번들에 실패했습니다. 설치된 Paseo의 Git 소스 획득 코드는 clone·고정 ref checkout 후 manifest의 build 명령만 실행하며 npm 의존성을 자동 준비하지 않습니다. 따라서 같은 소스는 bootstrap의 Git 설치 경로에서도 실패합니다.
+
+`f11e0d3`는 런타임 코드의 직접 SDK 타입 import 두 곳을 제거하고 경계 검사에 재유입 차단을 추가했습니다. 별도 npm 준비나 build 명령은 추가하지 않았습니다. 수동 npm 재시도 대기는 실행 전 정상 취소했습니다. Git 설치 첫 시도는 이전 failed 항목과 ID가 충돌해 거부됐으며, 해당 항목을 제거하고 목록에서 사라진 것을 확인한 뒤 다시 설치했습니다.
+
+공용 heavy 차례에서 아래 명령으로 설치했습니다. 실제 관리 checkout의 SHA가 지정 ref와 일치하고 `node_modules`가 없는 상태에서 `running`과 `Plugin ready`를 확인했습니다. 수동 npm 단계는 실행하지 않았습니다.
+
+```sh
+paseo plugin install github:01-works/paseo-plugin:supervision --ref f11e0d37d41073d07faa7383cf39da2cb90f6d6f
+```
+
+### 자동 검사와 GUI
+
+SDK 0.15.4·0.16.1의 [빌드·타입·경계 검사와 각 5개 파일·47개 테스트](https://github.com/01-works/paseo-plugin/actions/runs/44112079417)가 통과했습니다. [최신 SDK 검사](https://github.com/01-works/paseo-plugin/actions/runs/44112079013)도 통과했습니다. 문서 반영판의 최신 상태는 [PR checks](https://github.com/01-works/paseo-plugin/pull/16/checks)에서 확인합니다.
+
+첫 확인 목표는 실제 구현·코드 변경·외부 게시·스케줄을 금지하고, 감독이 읽기 전용 작업자 1개를 만들어 lane 기록만 확인·보고하도록 했습니다. 재생성 목표는 작업자도 추가하지 않고 기록만 읽어 응답하도록 제한했습니다.
+
+| 실제 UI 확인 | 결과 | 스크린샷 파일 |
+|---|---|---|
+| 원 대화의 `/supervise` | `paseo-plugin` 코드 프로젝트(`prj_3d723d21175723bc`) 아래 local workspace·감독 생성 및 실제 대화 열림 | `gui-supervisor-opened.png` |
+| 원 대화의 ⌘K → 내 감독으로 이동 | 명시적 복귀 링크의 감독 열림 | `gui-original-returned.png` |
+| 감독이 만든 작업자 대화의 ⌘K → 내 감독으로 이동 | `paseo.parent-agent-id`를 따라 감독 열림 | `gui-worker-conversation.png`, `gui-worker-returned-supervisor.png` |
+| 원 대화의 `/my-supervisor` | 실제 감독 대화 열림 | `gui-my-supervisor-returned.png` |
+| 살아 있는 감독에서 `/supervise` 재실행 | 기존 링크 보호 안내, 새 감독 생성 없음 | `gui-live-supervisor-rejected.png` |
+| 웹 브라우저 뒤로 가기 | 감독으로 자동 재이동 없음 | `gui-back-no-bounce.png` |
+| 후손 정리·감독 archive 후 ⌘K | archive 안내, 감독 열지 않음 | `gui-archived-supervisor-notice.png` |
+| archive 후 `/supervise` 재실행 | 새 감독 생성·열림, 원 대화 링크를 새 ID로 갱신 | `gui-replacement-opened.png` |
+| 앱·호스트 버전 | 웹앱 0.16.1 / 데몬 0.15.4 | `gui-web-app-version.png` |
+
+스크린샷과 설치 전·중·후 목록, 소스 SHA·시각·안전 점검 readback은 이 Mac의 `~/.local/state/paseo-plugin-validation/f11e0d3/`에 보존합니다. 다른 대화의 사이드바 정보가 포함될 수 있어 스크린샷은 공개 저장소에 올리지 않았습니다.
+
+공유 브라우저의 각 호출 시작에 current target을 확인하고 own 탭만 조작한 뒤 원래 target으로 복귀했습니다. 종료 시 own 탭 `46E6748005F94232E454FF803CC918DF`을 current가 아닌 상태에서 닫았고, current `B26FAEB2456F505B1884DEFCD5104584`를 보존했습니다. 다른 탭은 읽거나 조작하지 않았습니다. 배경 탭의 키 입력에는 임시 focus emulation을 사용하고 같은 호출에서 해제했습니다.
+
+### 정리와 복원
+
+검증 대화는 원 대화 `85830053-6840-4c4a-8d28-389394108ea2`, 첫 감독 `4eec3df0-114b-47fd-9d33-5dc22d7d5d46`, 감독이 만든 작업자 `84f993ed-fb60-4da1-a813-da757efe6a47`, 재생성 감독 `272a31f6-3bc2-43ff-82d6-7a060a30fd17`입니다. 작업자를 먼저 정리하고 감독의 활성 후손 0개를 확인했습니다. 원 임시 폴더는 비어 있었고 lane 두 곳에는 `tasks.md`만 있었으며 세 cwd 모두 Git 저장소가 아니어서 미커밋 코드 변경이 없었습니다.
+
+대화 4개와 workspace 3개(`wks_8013fd843538889a`, `wks_a330b4485c789a3e`, `wks_4402aa486076b9d8`)를 archive하고 readback으로 활성 workspace 잔여 0개를 확인했습니다. lane 2개·원 임시 폴더·이전 실패 snapshot을 제거했습니다. `paseo plugin remove supervision` 후 개발본·failed 항목·관리 Git 소스가 사라졌음을 확인했습니다. 일회성 검증 프로세스도 종료했습니다.
+
+| ID | 설치 전 | 설치 중 | 제거 후 | 유지된 revision |
+|---|---|---|---|---|
+| better-paseo | running | running | running | `d4c85ccafe6d5dfc4abcef85667eca0b3cc3bb2e` |
+| mac-monitor | running | running | running | `c9eb48e0a812aa5e6d70366075fa77cb6df16823` |
+| zerosub | running | running | running | `1.5.1` |
+| supervision | 미설치 | running | 미설치 | `f11e0d37d41073d07faa7383cf39da2cb90f6d6f` 임시 설치 |
+
+기존 3개 플러그인의 전체 상태·revision은 설치 전 기록과 동일했습니다. 설치·제거 후 오류 상태 에이전트는 0개였으며, 데몬 PID와 시작 시각이 같아 재시작 없이 진행했음을 확인했습니다. 강제 업그레이드와 bootstrap 고정 목록 변경은 하지 않았습니다.
+
+**미확인:** 0.16.1 데몬의 실제 설치, 네이티브 macOS·모바일 GUI, compact·테마 전환, 복귀 링크 실패 경고의 실제 발생은 이번 GUI 범위에 포함하지 않았습니다. 경고의 성공 처리와 일회용 이동 요청은 단위 검사로 확인합니다. 위 뒤로 가기 결과는 웹 브라우저에서 확인한 범위입니다.
 
 ## 독립 리뷰 반영판
 
@@ -14,7 +61,7 @@ SDK 0.15.4·0.16.1·최신의 빌드·타입·경계 검사와 각 5개 파일·
 
 PR #16 리뷰 후 `tasks.md`를 bootstrap #104의 마크다운 한 항목으로 줄이고 원 대화를 맥락 출처로만 전달하도록 변경했습니다. features·버전 호환 분기와 두 단계 소유 기록을 제거했습니다. 지정 ID 생성, 링크 경고, 진단 로그, 일회용 이동 요청과 명시적 링크 우선 동작을 회귀 검사에 포함합니다. CI는 SDK 0.15.4·0.16.1·최신 버전의 빌드·타입·경계·단위 검사를 실행하며 최신 결과는 [PR checks](https://github.com/01-works/paseo-plugin/pull/16/checks)에서 확인합니다.
 
-**수정판의 실제 배포·GUI 검증은 위 재검증 절차로 진행 중입니다.** 설치·확인·제거 절차는 PR 본문에 제공합니다. 아래 실제 RPC·설치·복원 결과는 리뷰 전 구현 `c661b60`의 과거 검증이며 현재 수정판의 동작 근거로 간주하지 않습니다. GUI는 계속 미확인입니다.
+**수정판의 실제 Git 설치·GUI 확인·제거는 위 기록처럼 완료했습니다.** 설치·확인·제거 절차는 PR 본문에 제공합니다. 아래 실제 RPC·설치·복원 결과는 리뷰 전 구현 `c661b60`의 과거 검증이며 현재 수정판의 동작 근거로 간주하지 않습니다. GUI는 계속 미확인입니다.
 
 2026-11-17, 개발 브랜치 `feat/supervision-plugin`, 구현 커밋 `c661b60`을 검증했습니다.
 
