@@ -44,7 +44,7 @@ bootstrap 기기는 `agents/paseo-plugins.json`의 검토 커밋으로 맞추므
 
 제목 생성은 이 호스트의 provider로 실제 Paseo 에이전트(helper)를 잠깐 만들어 실행합니다. 별도 API 키나 외부 서버는 쓰지 않고, 사용량은 그 provider 계정에서 나갑니다.
 
-- helper는 플러그인 데이터의 `title-helper` 폴더에 임시 workspace를 만들어 실행하고, 끝나면 workspace를 보관하고 helper를 지웁니다. 원래 프로젝트의 설정 스크립트와 지침 파일은 읽지 않습니다.
+- helper는 플러그인 데이터의 `title-helper` 폴더에 임시 workspace를 만들어 실행하고, 끝나면 workspace를 보관하고 helper를 지웁니다. 원래 프로젝트의 설정 스크립트와 지침 파일은 읽지 않지만, provider CLI의 전역 설정(Claude의 `~/.claude/CLAUDE.md`·훅 등)은 적용될 수 있습니다(확인하지 않음).
 - 수동 생성은 첫 라운드와 최근 4라운드의 사용자·에이전트 메시지(각각 4000자·2000자까지)를 보냅니다. 자동 생성은 첫 프롬프트 1000자만 보냅니다. 도구 결과는 보내지 않습니다.
 - 시스템 프롬프트로 도구 사용을 금지하지만 권한 모드는 지정하지 않습니다. provider의 기본 권한으로 실행되므로 샌드박스가 아닙니다.
 
