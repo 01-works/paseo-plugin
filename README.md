@@ -26,6 +26,12 @@ agent-list는 2026-11-17에 Better Paseo로 대체하며 제거했습니다. 소
 |---|---|---|---|
 | [verifier](verifier/README.md) | 01-software verifier의 dev 상태 요약·지금 실행·확인할 것(실패와 red 이슈, 기기·디스크·연기)·기록·승격 후보 | `github:01-works/paseo-plugin:verifier` | verifier 기기 또는 그 읽기 전용 SSH에 접속하는 macOS, `gh` 로그인(승격 정보·red 이슈), Paseo 0.15.0 이상 |
 
+### 선택 설치 자체 플러그인
+
+| 플러그인 | 기능 | 설치 소스 | 조건·상세 |
+|---|---|---|---|
+| [supervision](supervision/README.md) | `/supervise <목표>`로 감독 시작·내 감독 대화로 이동 | `github:01-works/paseo-plugin:supervision` | Paseo 0.15.4 이상, `yw-supervisor` 스킬·Supervisor 프로필. 기본 목록과 bootstrap 고정은 별도 변경 |
+
 [bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
 [플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.
 설치할 플러그인과 버전(커밋·레지스트리 버전)을 bootstrap의 `paseo` 단계가 모든 기기에 맞춥니다.
@@ -53,6 +59,7 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 
 - mac-monitor: [사용·관리](mac-monitor/README.md), [측정 기준](mac-monitor/docs/MEASUREMENTS.md), [검증 기록](mac-monitor/docs/VALIDATION.md)
 - verifier: [사용·읽는 것·한계](verifier/README.md)
+- supervision: [감독 시작·복귀·설정·호환 범위](supervision/README.md), [검증 기록](supervision/docs/VALIDATION.md)
 - Better Paseo: [설정·데이터 흐름·제약](docs/plugins/better-paseo.md). 설치 후 채팅 화면이 바뀌고 Tasks 보드가 추가됩니다.
 - ZeroSub: [계정 추가·선택·전환·제거](docs/plugins/zerosub.md). 설치 후 사이드바의 **Accounts (ZeroSub)**를 엽니다.
 
@@ -65,7 +72,7 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 
 ### Paseo 새 버전
 
-개발용 Paseo SDK는 **0.13.0**에 고정합니다. 2026-10-25에 mac-monitor의
+mac-monitor 개발용 Paseo SDK는 **0.13.0**에 고정합니다. supervision은 0.15.4에 고정하고 0.16.1도 검사합니다. 2026-10-25에 mac-monitor의
 타입 검사·테스트·audit을 통과했습니다. 실제 0.13 앱·데몬 동작은 별도 확인이 필요합니다.
 기본 설치 목록의 **ZeroSub 1.3.0은 0.13에서 Claude 자동 전환에 알려진 문제가 있습니다.**
 최신 배포 여부와 영향 범위는 [ZeroSub 호환성 확인](docs/plugins/zerosub.md#paseo-013-호환성-확인-2026-10-25)을 봅니다.

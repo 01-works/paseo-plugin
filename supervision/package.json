@@ -1,0 +1,24 @@
+{
+  "name": "paseo-supervision",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Paseo 대화를 감독 워크플로우로 연결하는 UI",
+  "files": ["paseo-plugin.json", "OVERVIEW.md", "index.client.tsx", "index.server.ts", "client/", "server/", "shared/", "README.md"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "audit": "node test/audit.mjs",
+    "build": "npm run typecheck && npm run audit"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.15.4",
+    "@getpaseo/plugin": "0.15.4",
+    "@types/node": "^24.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "zod": "^4.4.3"
+  }
+}
