@@ -25,7 +25,7 @@ export class LaneStore {
       try { await mkdir(path, { mode: 0o700 }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue; throw error; }
       try { await writeFile(join(path, 'tasks.md'), tasksMarkdown(record), { flag: 'wx', mode: 0o600 }); }
-      catch (error) { console.error('lane 기록 실패', { path, agentId: record.agentId }, error); throw error; }
+      catch (error) { console.error('lane 기록 실패', { path, agentId: record.agentId }, error); throw new Error('lane 기록 실패. 상세: paseo plugin logs supervision'); }
       this.records.set(name, { path, record });
       return { name, path, agentId: record.agentId };
     }
