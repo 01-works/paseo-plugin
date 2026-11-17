@@ -8,13 +8,14 @@
 
 | 하고 싶은 일 | 플러그인 | 제작자 | 안내 |
 |---|---|---|---|
+| 채팅 타임라인을 접힌 행으로 정리하고 호스트 전체 에이전트를 상태별 보드로 보기 | [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) | [RoundRedDot](https://github.com/RoundRedDot) | [설정·데이터 흐름·제약](plugins/better-paseo.md) |
 | Claude·ChatGPT 구독 계정을 여러 개 추가하고 에이전트별로 지정하거나 한도 도달 시 전환 | [ZeroSub](https://paseo.sh/plugins/kapybara-org/zerosub) | [Kapybara](https://github.com/kapybara-org) | [설치·계정 추가·전환](plugins/zerosub.md) |
 
 예를 들어 “Claude 계정을 하나 더 쓰고 싶다”, “Codex 계정별로 에이전트를 나누고 싶다”는 요청에는 ZeroSub가 맞습니다.
 다른 목적의 플러그인은 공식 목록에서 기능과 제작자 안내를 확인한 뒤 같은 방법으로 설치합니다.
 
-2026-10-25 기준 이 저장소에서 개별 안내·기본 설치 버전을 관리하는 커뮤니티 플러그인은 ZeroSub입니다.
-공식 최신은 `1.3.0`이며, Paseo 0.13에서 자동 계정 전환에 영향을 주는 문제가 확인됐습니다.
+이 저장소에서 개별 안내·기본 설치 버전을 관리하는 커뮤니티 플러그인은 Better Paseo(2026-11-17 추가)와 ZeroSub입니다.
+ZeroSub의 2026-10-25 기준 공식 최신은 `1.3.0`이며, Paseo 0.13에서 자동 계정 전환에 영향을 주는 문제가 확인됐습니다.
 설치 가능한 버전 범위와 실제 기능 호환성은 구분하며, [ZeroSub 확인 결과](plugins/zerosub.md#paseo-013-호환성-확인-2026-10-25)를 따릅니다.
 
 ## 소개 페이지에서 설치하기
