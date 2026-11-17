@@ -30,7 +30,7 @@ agent-list는 2026-11-17에 Better Paseo로 대체하며 제거했습니다. 소
 
 | 플러그인 | 기능 | 설치 소스 | 조건·상세 |
 |---|---|---|---|
-| [supervision](supervision/README.md) | `/supervise <목표>`로 감독 시작·내 감독 대화로 이동 | `github:01-works/paseo-plugin:supervision` | Paseo 0.15.4 이상, `yw-supervisor` 스킬·Supervisor 프로필. 기본 목록과 bootstrap 고정은 별도 변경 |
+| [supervision](supervision/README.md) | `/supervise <목표>`로 감독 시작·내 감독 대화로 이동 | `github:01-works/paseo-plugin:supervision` | Paseo 0.15.4 이상, 마크다운 기록 계약의 `yw-supervisor` 스킬·features 없는 Supervisor 프로필. 기본 목록과 bootstrap 고정은 별도 변경 |
 
 [bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
 [플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.

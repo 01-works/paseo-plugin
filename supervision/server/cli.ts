@@ -9,9 +9,3 @@ export async function runPaseo(args: string[]): Promise<string> {
   const { stdout } = await exec('paseo', [...args, '--home', home, '--json'], { timeout: 30_000, maxBuffer: 1024 * 1024 });
   return stdout;
 }
-
-export async function daemonRuntime() {
-  const status = JSON.parse(await runPaseo(['status'])) as { serverId?: string; daemonVersion?: string };
-  if (!status.serverId || !status.daemonVersion) throw new Error('현 데몬의 ID와 버전을 확인할 수 없습니다.');
-  return { serverId: status.serverId, version: status.daemonVersion };
-}

@@ -9,22 +9,22 @@ async function find(nodes: AgentNode[], workspaces: Record<string, WorkspaceNode
 describe('내 감독 탐색', () => {
   it('가장 가까운 supervisor 부모를 선택한다', async () => {
     const result = await find([
-      node('worker', { 'paseo.parent-agent-id': 'reviewer', 'yw.supervisor': 'other' }),
+      node('worker', { 'paseo.parent-agent-id': 'reviewer' }),
       node('reviewer', { 'paseo.parent-agent-id': 'supervisor' }),
       node('supervisor', { 'yw.role': 'supervisor', 'paseo.parent-agent-id': 'chief' }),
       node('chief', { 'yw.role': 'supervisor' }), node('other', { 'yw.role': 'supervisor' }),
     ]);
     expect(result).toEqual({ status: 'found', agentId: 'supervisor', serverId: 'srv_test' });
   });
-  it('부모가 없으면 명시적 링크를 사용하고 role 없이도 연다', async () => {
-    expect(await find([node('worker', { 'yw.supervisor': 'target' }), node('target')])).toEqual({ status: 'found', agentId: 'target', serverId: 'srv_test' });
+  it('명시적 링크를 부모보다 우선하고 role 없이도 연다', async () => {
+    expect(await find([node('worker', { 'yw.supervisor': 'target', 'paseo.parent-agent-id': 'parent' }), node('target'), node('parent', { 'yw.role': 'supervisor' })])).toEqual({ status: 'found', agentId: 'target', serverId: 'srv_test' });
   });
   it('workspace의 감독 제목을 인식한다', async () => {
     expect(await find([node('worker', { 'paseo.parent-agent-id': 'parent' }),
       node('parent', {}, { workspaceId: 'wks' })], { wks: { title: '감독 · 목표' } })).toEqual({ status: 'found', agentId: 'parent', serverId: 'srv_test' });
   });
-  it('표식이 없는 부모도 마지막 수단으로 연다', async () => {
-    expect(await find([node('worker', { 'paseo.parent-agent-id': 'parent' }), node('parent')])).toEqual({ status: 'found', agentId: 'parent', serverId: 'srv_test' });
+  it('표식이 없는 부모를 감독으로 열지 않는다', async () => {
+    expect(await find([node('worker', { 'paseo.parent-agent-id': 'parent' }), node('parent')])).toEqual({ status: 'missing' });
   });
   it.each([true, false])('archive된 감독을 열지 않는다 (agent=%s)', async agentArchived => {
     const result = await find([node('worker', { 'yw.supervisor': 'supervisor' }),
