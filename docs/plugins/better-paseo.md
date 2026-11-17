@@ -56,12 +56,14 @@ bootstrap 기기는 `agents/paseo-plugins.json`의 검토 커밋으로 맞추므
 
 별도 모델을 꺼 두면 고성능 모델 대화의 제목도 같은 모델이 만듭니다.
 
-**bootstrap 기기의 값:** 자동 생성 켬, 별도 모델 켬(Codex `gpt-6-luna`), 추론 끄기 켬. 이름 없이 시작한 대화의 제목을 첫 턴에 GPT-6-Luna의 가장 낮은 추론 단계(`low`)로 만듭니다. 이 값은 bootstrap의 [플러그인 설정](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인-설정)이 모든 기기에 맞추므로, 바꾸려면 앱이 아니라 bootstrap 목록을 고칩니다. 프롬프트처럼 목록에 없는 설정은 앱에서 바꿔도 유지됩니다.
+**한국어 앱에서는 기본 프롬프트로 영어 제목이 나옵니다.** 플러그인은 UI 언어를 영어·중국어로만 판정해 한국어 앱을 영어로 보고, 기본 프롬프트의 "첫 메시지 언어를 따르라"를 "영어 우선"으로 바꿉니다. 프롬프트를 바꾸면 "프롬프트가 언어를 정하지 않을 때만 영어 우선"이 되므로, 프롬프트에 한국어를 명시합니다.
+
+**bootstrap 기기의 값:** 자동 생성 켬, 별도 모델 켬(Claude `claude-haiku-5-5`), 추론 끄기 켬(Haiku는 `off`), 프롬프트는 기본에서 언어 문장만 "한국어 대화면 한국어로"로 바꾼 것. 2026-11-17에 대화 4개를 미리보기로 비교했을 때 Haiku 5.5가 GPT-6-Luna보다 빠르고(평균 4.3초 대 5.3초) 대화 전체의 목표를 더 잘 잡았습니다. 이 값은 bootstrap의 [플러그인 설정](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인-설정)이 모든 기기에 맞추므로, 바꾸려면 앱이 아니라 bootstrap 목록을 고칩니다. 목록에 없는 설정은 앱에서 바꿔도 유지됩니다.
 
 ## 제약
 
 - 성능 수치는 제작자가 Paseo 0.13.0에서 잰 값이며 이후 버전에서 다시 재지 않았습니다.
 - 키보드 단축키·호버 미리보기 등 일부 기능은 웹·데스크톱 전용입니다.
-- 2026-11-17 확인 범위: 데몬 설치와 `running`, 데몬 로그의 오류 없음, 위 소스 검토, 설정 RPC로 위 제목 설정 저장. 앱 화면은 사용자가 데스크톱 앱에서 확인했습니다. GPT-6-Luna로 실제 제목이 생성되는지는 확인하지 않았습니다.
+- 2026-11-17 확인 범위: 데몬 설치와 `running`, 데몬 로그의 오류 없음, 위 소스 검토, 설정 RPC로 위 제목 설정 저장, 미리보기 모드로 Haiku 5.5·GPT-6-Luna의 제목 생성(대화 4개씩, 기본·한국어 프롬프트). 앱 화면은 사용자가 데스크톱 앱에서 확인했습니다. 자동 생성(첫 턴)은 실제 새 대화로 확인하지 않았습니다.
 
 출처: [공식 소개 페이지](https://paseo.sh/plugins/roundreddot/better-paseo), [제작자 README](https://github.com/RoundRedDot/better-paseo#readme), 제작자 저장소의 `server/tasks/title-generation.ts`·`server/update-check.ts`·`server/open-terminal.ts`.
