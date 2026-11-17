@@ -36,7 +36,7 @@ paseo plugin install github:01-works/paseo-plugin:supervision
 paseo plugin ls
 ```
 
-Git 소스는 지정 ref를 checkout한 뒤 Paseo가 번들합니다. 별도 npm 준비나 manifest build 명령은 필요 없습니다. 런타임 소스는 호스트 제공 모듈만 사용하며, SDK 타입도 로컬 패키지 해석 없이 검사할 수 있게 구성합니다. 개발·CI의 타입 검사와 단위 테스트에는 `npm ci`가 필요합니다.
+Git 소스는 지정 ref를 checkout한 뒤 Paseo가 번들합니다. 별도 npm 준비나 manifest build 명령은 필요 없습니다. 런타임 소스는 호스트 제공 모듈만 사용하며, 로컬 패키지 해석을 요구하는 SDK 타입의 직접 import도 두지 않습니다. 개발·CI의 타입 검사와 단위 테스트에는 `npm ci`가 필요합니다.
 
 개발본은 안정된 로컬 checkout 경로에서 설치합니다. 현재 PR의 사용자 확인용 절차와 체크리스트는 PR 본문에 있습니다. 실제 설치는 사용자 결정 뒤 진행합니다.
 
@@ -61,6 +61,6 @@ RPC는 lane 생성, 복귀 라벨 연결, 진단 로그 기록을 담당합니�
 
 SDK는 0.15.4에 고정하고 0.16.1도 CI에서 검사합니다. manifest `>=0.15.4`는 확인한 최소 버전이며 자동 업그레이드를 막지 않습니다. 두 버전 모두 `addSlashCommand`, `addCommandCenterItem`, `config.get`, `workspaces.create`의 directory/projectId, `setTitle`, workspace의 `agents.create({agentId})`, `send`, 화면 `navigation.openAgent`를 지원합니다. SDK 타입과 구현에서 지정 ID 전달을 대조했고 CI에서 실제 SDK를 통한 전달도 검사합니다. local workspace의 CLI 대체와 버전 조회는 필요 없습니다.
 
-자동 검사와 이전 실제 검증의 범위는 [검증 기록](docs/VALIDATION.md)을 확인하세요. 현재 수정판은 GUI를 재시도하거나 로컬 설치하지 않습니다. 운영 규칙·hook·권한 자동 응답·후속 지시·사이드바 감독 보드는 추가하지 않습니다.
+자동 검사와 이전 실제 검증의 범위는 [검증 기록](docs/VALIDATION.md)을 확인하세요. 실제 앱·데몬에서 확인한 버전과 범위는 검증 기록에 구분합니다. 운영 규칙·hook·권한 자동 응답·후속 지시·사이드바 감독 보드는 추가하지 않습니다.
 
 계약 근거: [플러그인 reference](https://paseo.sh/docs/plugins/reference.md), [SDK reference](https://paseo.sh/docs/sdk/reference.md), [bootstrap #104](https://github.com/01-works/bootstrap/pull/104).
