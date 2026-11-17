@@ -19,8 +19,12 @@ describe('lane 이름과 기록', () => {
   });
   it('여러 줄 요청을 들여쓰고 마크다운 문자를 이스케이프한다', () => {
     const text = tasksMarkdown({ ...record, goal: '원문\n```\n- 요청 원문: 추가' });
-    expect(text).toContain('원문\n    \\`\\`\\`\n    \\- 요청 원문: 추가');
+    expect(text).toContain('원문\n    \\```\n    \\- 요청 원문: 추가');
     expect(text.match(/^- 요청 원문:/gm)).toHaveLength(1);
+  });
+  it('일반 원문은 그대로 두고 줄 머리 구조 표식만 처리한다', () => {
+    const text = tasksMarkdown({ ...record, goal: 'yw-supervisor SKILL.md #104\n#104\n# 제목\n1. 목록' });
+    expect(text).toContain('- 요청 원문: yw-supervisor SKILL.md #104\n    #104\n    \\# 제목\n    1\\. 목록');
   });
   it('원 대화를 맥락 데이터로만 읽고 편입·지시는 먼저 묻게 한다', () => {
     const prompt = supervisorPrompt(record.goal, '/state/lane', origin);

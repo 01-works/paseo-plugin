@@ -2,7 +2,7 @@ import type { PaseoAgentConfig } from '@getpaseo/client';
 import type { PluginAgentCommandContext } from '@getpaseo/plugin/client';
 import { linkOriginRpc, createLaneRpc, reportLaneRpc, goalSchema } from '../shared/contracts';
 import { supervisorPrompt } from '../shared/lane';
-import { findSupervisor } from '../shared/find-supervisor';
+import { findSupervisor, hasLiveSupervisor } from '../shared/find-supervisor';
 import { openAgentScreen } from './navigation';
 
 interface Profile {
@@ -23,7 +23,7 @@ export async function startSupervisor(context: PluginAgentCommandContext, goal: 
   const { paseo, rpc, agent, workspace } = context;
   const [{ config: daemonConfig }, original] = await Promise.all([paseo.config.get(), paseo.agents.ref(agent.id).refresh()]);
   if (!original || original.agent.archivedAt || original.agent.workspaceId !== workspace.id) throw new Error('원 대화의 현재 workspace를 확인할 수 없습니다.');
-  if (original.agent.labels['yw.supervisor']) throw new Error('이미 감독 링크가 있습니다. 내 감독으로 이동을 사용하세요. 기존 링크를 덮어쓰지 않습니다.');
+  if (await hasLiveSupervisor(paseo, original.agent.labels['yw.supervisor'])) throw new Error('살아 있는 감독이 연결되어 있습니다. 내 감독으로 이동을 사용하세요. 기존 링크를 덮어쓰지 않습니다.');
   if (!workspace.projectId) throw new Error('원 대화의 코드 프로젝트를 확인할 수 없습니다.');
   const config = supervisorConfig(daemonConfig.agentProfiles);
   const lane = await rpc(createLaneRpc, { goal, provider: config.provider,
@@ -48,7 +48,7 @@ export async function startSupervisor(context: PluginAgentCommandContext, goal: 
       await rpc(linkOriginRpc, { name: lane.name });
       if ((await paseo.agents.ref(agent.id).refresh())?.agent.labels['yw.supervisor'] !== supervisor.id) throw new Error('복귀 링크 readback 불일치');
     } catch (error) { warning = `감독은 시작됐습니다. 복귀 링크 확인 필요. ${await diagnose(`복귀 링크 경고: ${String(error)}`)}`; }
-    openAgentScreen(context, lane.origin.serverId, supervisor.id);
+    openAgentScreen(context, lane.origin.serverId, supervisor.id, warning);
   } catch (error) {
     throw new Error(`감독 시작 중 오류. ${await diagnose(String(error))} (lane: ${lane.name})`);
   }
@@ -74,7 +74,7 @@ export async function openMySupervisor(context: PluginAgentCommandContext) {
   } finally {
     await Promise.all([...remotes.values()].map(remote => remote.dispose()));
   }
-  if (result.status === 'archived') throw new Error('감독 대화 또는 workspace가 archive되어 있습니다. 보관된 대화를 확인하세요.');
+  if (result.status === 'archived') throw new Error('감독 대화 또는 workspace가 archive되어 있습니다. /supervise <목표>로 새 감독을 시작하세요.');
   if (result.status === 'cycle' || result.status === 'limit') throw new Error('부모 연결이 순환하거나 너무 깊습니다. 감독 링크를 확인하세요.');
   if (result.status !== 'found') throw new Error('연결된 감독을 찾지 못했습니다. /supervise <목표>로 감독을 시작하세요.');
   openAgentScreen(context, result.serverId, result.agentId);

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import contribute from '../index.client';
 import { createPaseoApi } from '@getpaseo/client';
 import type { PluginAgentCommandContext } from '@getpaseo/plugin/client';
 import { openMySupervisor, startSupervisor, supervisorConfig } from '../client/actions';
@@ -6,12 +7,17 @@ import { consumeOpen, openAgentScreen } from '../client/navigation';
 import { linkOriginRpc, createLaneRpc, reportLaneRpc } from '../shared/contracts';
 import { record, origin } from './fixtures';
 
+vi.mock('../client/open-agent', () => ({ OpenAgent: () => null }));
+
 function fixture() {
   const events: string[] = [];
   const profile = { id: 'bootstrap-supervisor', provider: 'claude', model: 'claude-opus-5-5', modeId: 'bypassPermissions',
     thinkingOptionId: 'high', featureValues: {} as Record<string, unknown> };
   const snapshot = { id: origin.agentId, workspaceId: origin.workspaceId, labels: {} as Record<string, string> };
   const original = { refresh: vi.fn(async () => ({ agent: snapshot })) };
+  const target = { id: 'existing', workspaceId: 'wks_existing', labels: {}, archivedAt: null as string | null };
+  const linked = { refresh: vi.fn(async (): Promise<{ agent: typeof target } | null> => ({ agent: target })) };
+  const linkedWorkspace = { archivingAt: null as string | null };
   const supervisor = { id: record.agentId, send: vi.fn(async (_text: string) => { events.push('send'); }) };
   const agentsCreate = vi.fn(async () => { events.push('agent'); return supervisor; });
   const setTitle = vi.fn(async () => {});
@@ -25,8 +31,9 @@ function fixture() {
   const config = { agentProfiles: [profile] };
   const context = { agent: { id: snapshot.id }, workspace: { id: snapshot.workspaceId, projectId: origin.projectId }, rpc, openScreen,
     paseo: { config: { get: async () => ({ config }) }, hosts: { list: async () => ({ self: { serverId: origin.serverId } }) },
-      agents: { ref: vi.fn(() => original) }, workspaces: { create: workspacesCreate } } } as unknown as PluginAgentCommandContext;
-  return { context, config, snapshot, rpc, openScreen, original, supervisor, agentsCreate, workspacesCreate, setTitle, events, profile };
+      agents: { ref: vi.fn((id: string) => id === origin.agentId ? original : linked) },
+      workspaces: { create: workspacesCreate, ref: vi.fn(() => ({ refresh: async () => linkedWorkspace })) } } } as unknown as PluginAgentCommandContext;
+  return { context, config, snapshot, rpc, openScreen, original, supervisor, agentsCreate, workspacesCreate, setTitle, events, profile, target, linked, linkedWorkspace };
 }
 
 describe('감독 시작', () => {
@@ -53,6 +60,29 @@ describe('감독 시작', () => {
     delete f.snapshot.labels['yw.supervisor']; f.snapshot.workspaceId = 'other'; await expect(startSupervisor(f.context, '목표')).rejects.toThrow('workspace');
     f.snapshot.workspaceId = origin.workspaceId; f.config.agentProfiles = []; await expect(startSupervisor(f.context, '목표')).rejects.toThrow('프로필');
     expect(f.rpc).not.toHaveBeenCalled();
+  });
+  it.each(['archived', 'missing', 'unavailable', 'workspace-archived'])('기존 감독이 %s이면 새 감독을 만들고 링크를 갱신한다', async state => {
+    const f = fixture(); f.snapshot.labels['yw.supervisor'] = f.target.id;
+    if (state === 'archived') f.target.archivedAt = '2026-11-17';
+    if (state === 'missing') f.linked.refresh.mockResolvedValueOnce(null);
+    if (state === 'unavailable') f.linked.refresh.mockRejectedValueOnce(new Error('not found'));
+    if (state === 'workspace-archived') f.linkedWorkspace.archivingAt = '2026-11-17';
+    await expect(startSupervisor(f.context, record.goal)).resolves.toMatchObject({ agentId: record.agentId });
+    expect(f.snapshot.labels['yw.supervisor']).toBe(record.agentId);
+  });
+  it('링크 경고가 있어도 슬래시 명령을 성공 처리하고 이동 화면에 경고를 표시한다', async () => {
+    const f = fixture(); f.rpc.mockImplementation(async contract => {
+      if (contract === linkOriginRpc) throw new Error('label failed');
+      return contract === reportLaneRpc ? {} : { name: '목표', path: '/state/lane', agentId: record.agentId, origin };
+    });
+    const addSlashCommand = vi.fn((_command: { name: string; onSubmit: (context: PluginAgentCommandContext & { args: string }) => Promise<void> }) => () => {});
+    const cleanup = contribute({ addScreen: () => () => {}, addSlashCommand, addCommandCenterItem: () => () => {} } as never);
+    try {
+      const command = addSlashCommand.mock.calls.find(([item]) => item.name === 'supervise')![0];
+      await expect(command.onSubmit({ ...f.context, args: record.goal })).resolves.toBeUndefined();
+      expect(f.openScreen.mock.calls[0][0].params.warning).toContain('감독은 시작됐습니다');
+      expect(f.supervisor.send).toHaveBeenCalledOnce();
+    } finally { cleanup(); }
   });
   it.each(['link', 'readback'])('%s 실패도 첫 요청과 이동을 막지 않고 경고를 로그에 남긴다', async failure => {
     const f = fixture();

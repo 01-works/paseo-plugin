@@ -15,7 +15,9 @@ export function laneName(goal: string, now: Date, suffix: string): string {
 
 export interface LaneRecord { goal: string; provider: string; agentId: string; serverId: string }
 export function tasksMarkdown(record: LaneRecord): string {
-  const request = record.goal.replace(/[\\`*_[\]{}()#+.!<>|~-]/g, '\\$&').replace(/\r?\n/g, '\n    ');
+  const request = record.goal.split(/\r?\n/).map(line => line
+    .replace(/^(\s*)(#{1,6}(?=\s|$)|[-+*](?=\s|$)|>|[-*_`~]{3,})/, '$1\\$2')
+    .replace(/^(\s*\d+)([.)])(?=\s)/, '$1\\$2')).join('\n    ');
   return `감독: ${record.provider} ${record.agentId} @ ${record.serverId}\n상태: 진행\n\n- 요청 원문: ${request}\n  - 상태: 열림\n  - 대기: 없음\n`;
 }
 

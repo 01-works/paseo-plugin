@@ -11,7 +11,7 @@ export default function contribute(client: PluginClientContext) {
       async onSubmit(context) {
         if (pending.has(context.agent.id)) throw new Error('이 대화의 감독을 만들고 있습니다. 잠시 기다려 주세요.');
         pending.add(context.agent.id);
-        try { const { warning } = await startSupervisor(context, context.args); if (warning) throw new Error(warning); }
+        try { await startSupervisor(context, context.args); }
         finally { pending.delete(context.agent.id); }
       },
     }),

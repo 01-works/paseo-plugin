@@ -1,3 +1,5 @@
+import type { PaseoApi } from '@getpaseo/client';
+
 export interface AgentNode {
   id: string;
   labels: Readonly<Record<string, string>>;
@@ -39,4 +41,15 @@ export async function findSupervisor(
     if (depth === 63) return { status: 'limit' };
   }
   return { status: 'missing' };
+}
+
+export async function hasLiveSupervisor(paseo: Pick<PaseoApi, 'agents' | 'workspaces'>, id?: string): Promise<boolean> {
+  if (!id) return false;
+  try {
+    const agent = (await paseo.agents.ref(id).refresh())?.agent;
+    if (!agent || agent.archivedAt) return false;
+    if (!agent.workspaceId) return true;
+    const workspace = await paseo.workspaces.ref(agent.workspaceId).refresh();
+    return !!workspace && !workspace.archivingAt;
+  } catch { return false; }
 }
