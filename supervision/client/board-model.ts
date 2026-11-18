@@ -62,6 +62,8 @@ export const RESUME: Record<NonNullable<Report['turnEnd']['resume']>['type'], st
 export const ITEM: Record<Report['items'][number]['status'], { label: string; icon: string }> = {
   open: { label: '열림', icon: 'Circle' }, done: { label: '완료', icon: 'CircleCheck' }, deferred: { label: '연기', icon: 'CircleSlash' } };
 export const turnEndText = (report?: Report) => report ? `${TURN_END[report.turnEnd.kind]} · ${report.turnEnd.detail}` : '아직 보고하지 않았습니다.';
+/** 감독이 쓴 현황 한 문장. 없는 기존 보고는 턴 종료 한 줄로 대체한다. */
+export const headlineText = (report?: Report) => report?.headline ?? turnEndText(report);
 export const resumeText = (report?: Report) => report?.turnEnd.resume ? `${RESUME[report.turnEnd.resume.type]} · ${report.turnEnd.resume.ref}` : undefined;
 export const reportAge = (row: Pick<StatusRow, 'state'>, now: number) => row.state ? `보고 ${elapsed(row.state.reportedAt, now)}` : '보고 없음';
 
@@ -79,7 +81,7 @@ export function cardFacts(row: Pick<StatusRow, 'state' | 'status' | 'note'>) {
   if (resume) pills.push({ key: 'resume', icon: 'Clock', label: `${RESUME[resume.type]} · ${resume.ref}` });
   const decisions = report?.decisions ?? [];
   return { progress, pills,
-    turn: report ? { icon: TURN_ICON[report.turnEnd.kind], text: turnEndText(report) } : null,
+    turn: report ? { icon: TURN_ICON[report.turnEnd.kind], text: headlineText(report) } : null,
     decision: decisions.length ? { question: decisions[0].question, count: decisions.length } : null,
     note: row.note ? { text: row.note, danger: row.status === '멈춤' } : null };
 }
@@ -135,4 +137,25 @@ export function boardLayout(width: number | null, compact: boolean, detailOpen =
   const share = (viewport - 2 * LANE.edge - (LANES.length - 1) * LANE.gap) / LANES.length;
   const laneWidth = share >= min ? Math.min(share, LANE.max) : Math.max(LANE.narrow, Math.min(min, viewport - 2 * LANE.edge));
   return { phone: compact, inline, sidebar, laneWidth: Math.floor(laneWidth) };
+}
+
+// "지금 할 일" 띠: 레인별 개수 한 줄과, 사람이 처리할 행(사용자 결정 → 미보고·멈춤·알 수 없음)의 핵심 한 줄.
+const SUMMARY: Record<LaneId, string> = { decision: '결정 대기', attention: '확인 필요', waiting: '대기', running: '진행', done: '완료' };
+export function todoLine(row: Pick<StatusRow, 'status' | 'state' | 'note'>, now: number): string {
+  const report = row.state?.report;
+  const decision = report?.decisions[0];
+  if (decision) return `${decision.question}${decision.recommendation ? ` · 권장: ${decision.recommendation}` : ''}`;
+  if (report?.headline) return report.headline;
+  const age = row.state ? elapsed(row.state.reportedAt, now) : null;
+  if (row.status === '미보고') return `마지막 턴 종료 후 보고 없음${age ? ` · 마지막 보고 ${age}` : ''}`;
+  if (row.status === '멈춤') return row.note ?? '다음 조치가 남았는데 실행 중인 작업자 없음';
+  // 보고는 있으나 턴 시각만 모르는 경우도 있어, 그때는 보고 경과를 함께 쓴다.
+  if (row.status === '알 수 없음') return age ? `턴 종료 시각을 알 수 없음 · 보고 ${age}` : '아직 보고 기록 없음';
+  return turnEndText(report);
+}
+/** statusRows가 이미 rank 순이므로 결정·확인 필요 레인만 거른다. */
+export function todoBand<Row extends Pick<StatusRow, 'key' | 'status' | 'state' | 'note'>>(rows: readonly Row[], now: number, limit: number) {
+  const todo = rows.filter(row => ['decision', 'attention'].includes(laneOf(row.status)));
+  return { counts: groupLanes(rows).map(group => ({ id: group.id, label: SUMMARY[group.id], count: group.rows.length })),
+    items: todo.slice(0, limit).map(row => ({ row, line: todoLine(row, now) })), more: Math.max(0, todo.length - limit) };
 }

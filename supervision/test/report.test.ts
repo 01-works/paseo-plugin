@@ -8,6 +8,14 @@ describe('감독 보고 계약', () => {
     expect(reportInputSchema.parse({ ...report(), laneDir: '/lane' }).laneDir).toBe('/lane');
     expect(z.toJSONSchema(reportInputSchema).type).toBe('object');
   });
+  it('headline은 새 보고에서 필수(공백 금지·120자 이내)이고 기존 보고 파일에는 없어도 읽는다', () => {
+    const { headline: _, ...old } = report();
+    expect(reportSchema.parse(old).headline).toBeUndefined();
+    expect(() => reportInputSchema.parse(old)).toThrow();
+    expect(() => reportInputSchema.parse({ ...report(), headline: '  ' })).toThrow();
+    expect(() => reportInputSchema.parse({ ...report(), headline: '가'.repeat(121) })).toThrow();
+    expect(reportSchema.parse(reportInputSchema.parse({ ...report(), headline: ' 머지 끝, 관찰 중 ' })).headline).toBe('머지 끝, 관찰 중');
+  });
   it('완료인데 열린 항목이 있으면 남은 ID·요약을 안내한다', () => {
     expect(() => reportSchema.parse({ ...report(), turnEnd: { kind: 'done', detail: '끝' } })).toThrow('goal (목표)');
   });

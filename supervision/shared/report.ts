@@ -2,7 +2,10 @@ import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 
 const text = z.string().trim().min(1).max(4000);
+// 사람이 읽을 현황 한 문장. 기존 보고 파일에는 없으므로 읽을 때는 선택, 새 보고(도구 입력)에서는 필수.
+const headline = z.string().trim().min(1).max(120).describe('지금 어디까지 왔고 다음은 무엇인지 사용자에게 말하듯 한 문장(120자 이내). 예: #10221·#10186 머지 끝, 스테이징 관찰 중. 내일 오전 승격 판단');
 export const reportSchema = z.object({
+  headline: headline.optional(),
   items: z.array(z.object({
     id: z.string().trim().min(1).max(128), summary: text,
     status: z.enum(['open', 'done', 'deferred']), evidence: text.optional(), deferredBy: text.optional(),
@@ -30,6 +33,7 @@ export const reportSchema = z.object({
 });
 export const reportInputSchema = z.object({
   ...reportSchema.shape,
+  headline,
   laneDir: z.string().min(1).max(4096).optional().describe('기존 감독의 cwd가 lane 밖일 때만 지정하는 yw-supervisor 아래 lane 절대 경로'),
 }).superRefine((input, ctx) => {
   const parsed = reportSchema.safeParse(input);

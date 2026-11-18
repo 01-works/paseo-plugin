@@ -3,7 +3,7 @@ import { Icon } from '@getpaseo/plugin/client/ui';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { StatusRow } from '../shared/status';
-import { cardFacts, reportAge, TONE, type BoardColors, type Lane, type Status } from './board-model';
+import { cardFacts, itemProgress, reportAge, TONE, type BoardColors, type Lane, type Status } from './board-model';
 
 // Better Paseo 카드·레인의 치수(데스크톱/폰): 여백, 제목 14/500, 메타·pill 12/11, 블록 구분선, 버튼 26(폰 32).
 export type Theme = PluginScreenProps['theme'];
@@ -47,8 +47,8 @@ export function Pill({ icon, label, tint, palette, theme, m }: { icon?: string; 
 }
 
 /** Better Paseo의 테두리 버튼: 채우지 않고 0.5 선, 라벨 12/500, 이동 버튼은 ↗로 끝난다. */
-export function OpenButton({ row, theme, palette, onOpen, height, primary, grow, onActive }: {
-  row: StatusRow; theme: Theme; palette: BoardColors; onOpen?: () => void; height: number; primary?: boolean; grow?: boolean;
+export function OpenButton({ row, theme, palette, onOpen, height, primary, grow, onActive, label = '감독 열기' }: {
+  row: StatusRow; theme: Theme; palette: BoardColors; onOpen?: () => void; height: number; primary?: boolean; grow?: boolean; label?: string;
   /** hover나 키보드 포커스가 들어오고 나갈 때. 카드는 이 동안 버튼을 숨기지 않는다. */
   onActive?: (active: boolean) => void;
 }) {
@@ -62,9 +62,26 @@ export function OpenButton({ row, theme, palette, onOpen, height, primary, grow,
     style={{ height, paddingHorizontal: 10, borderRadius: 6, borderWidth: 0.5, borderColor: primary && !disabled ? palette.primaryBorder : palette.buttonBorder,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: disabled ? 0.6 : 1,
       boxShadow: hovered && !disabled ? palette.shadowHover : undefined, ...(grow ? { flexGrow: 1 } : null) }}>
-    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color }}>{disabled ? '열 수 없음' : '감독 열기'}</Text>
+    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color }}>{disabled ? '열 수 없음' : label}</Text>
     {!disabled && <Icon name="ArrowUpRight" size={13} color={color} />}
   </Pressable>;
+}
+
+/** 얇은 항목 진행 막대(완료 초록 + 연기 흐림). 카드와 상세가 함께 쓴다. */
+export function ProgressBar({ progress, palette, theme }: { progress: ReturnType<typeof itemProgress>; palette: BoardColors; theme: Theme }) {
+  if (!progress.total) return null;
+  return <View accessibilityRole="progressbar" accessibilityLabel="항목 진행" accessibilityValue={{ min: 0, max: progress.total, now: progress.done, text: progress.label }}
+    style={{ height: 3, marginTop: 8, borderRadius: 1.5, overflow: 'hidden', flexDirection: 'row', backgroundColor: palette.pillFill }}>
+    <View style={{ width: `${progress.doneRatio * 100}%`, backgroundColor: theme.colors.statusSuccess }} />
+    <View style={{ width: `${progress.deferredRatio * 100}%`, backgroundColor: theme.colors.foregroundMuted }} />
+  </View>;
+}
+/** Better Paseo 권한 요청 구역의 머리: 양쪽 경고색 선 사이의 라벨. */
+export function WarningRule({ label, palette, theme }: { label: string; palette: BoardColors; theme: Theme }) {
+  const line = <View style={{ flex: 1, height: 0.5, backgroundColor: palette.rule }} />;
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    {line}<Text style={{ fontSize: 11, lineHeight: 16, fontWeight: '600', color: theme.colors.statusWarning }}>{label}</Text>{line}
+  </View>;
 }
 
 export interface CardProps {
@@ -72,7 +89,7 @@ export interface CardProps {
   onSelect?: () => void; onOpen?: () => void;
 }
 /**
- * 카드: 제목 행(상태 표식 + 제목 2줄) → pill 행(항목·연기·재개 조건) → 진행 막대 → 구분선 블록(턴 종료·비고)
+ * 카드: 제목 행(상태 표식 + 제목 2줄) → 현황 한 줄(headline, 없으면 턴 종료) → pill 행 → 진행 막대 → 구분선 블록(비고)
  * → 결정 구역(경고색 구분선 + 첫 질문) → 하단(보고 경과, 데스크톱은 hover·포커스·선택 때만 감독 열기).
  */
 export function Card({ row, now, theme, palette, compact, selected, onSelect, onOpen }: CardProps) {
@@ -101,30 +118,21 @@ export function Card({ row, now, theme, palette, compact, selected, onSelect, on
         <View style={{ width: m.icon, height: m.line, alignItems: 'center', justifyContent: 'center' }}><StatusIcon status={row.status} theme={theme} size={m.icon} /></View>
         <Text numberOfLines={2} style={[text(m.title, m.line, colors.foreground, '500'), { flex: 1, minWidth: 0 }]}>{row.title}</Text>
       </View>
+      {facts.turn && <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+        <View style={iconCell}><Icon name={facts.turn.icon} size={12} color={colors.foregroundMuted} /></View>
+        <Text numberOfLines={3} style={[text(13, 18, colors.foreground), { flex: 1 }]}>{facts.turn.text}</Text>
+      </View>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, rowGap: 6, marginTop: m.gap }}>
         <Pill label={row.status} theme={theme} palette={palette} m={m} tint={row.status === '진행' || row.status === '대기' || row.status === '알 수 없음' ? undefined : colors[TONE[row.status].color]} />
         {facts.pills.map(pill => <Pill key={pill.key} icon={pill.icon} label={pill.label} tint={pill.tone && colors[pill.tone]} theme={theme} palette={palette} m={m} />)}
       </View>
-      {facts.progress.total > 0 && <View accessibilityRole="progressbar" accessibilityLabel="항목 진행"
-        accessibilityValue={{ min: 0, max: facts.progress.total, now: facts.progress.done, text: facts.progress.label }}
-        style={{ height: 3, marginTop: 8, borderRadius: 1.5, overflow: 'hidden', flexDirection: 'row', backgroundColor: palette.pillFill }}>
-        <View style={{ width: `${facts.progress.doneRatio * 100}%`, backgroundColor: colors.statusSuccess }} />
-        <View style={{ width: `${facts.progress.deferredRatio * 100}%`, backgroundColor: colors.foregroundMuted }} />
-      </View>}
-      {facts.turn && <View style={block}>
-        <View style={iconCell}><Icon name={facts.turn.icon} size={12} color={colors.foregroundMuted} /></View>
-        <Text numberOfLines={2} style={[text(m.small, m.smallLine, colors.foreground), { flex: 1 }]}>{facts.turn.text}</Text>
-      </View>}
+      <ProgressBar progress={facts.progress} palette={palette} theme={theme} />
       {facts.note && <View style={block}>
         <View style={iconCell}><Icon name={facts.note.danger ? 'CircleX' : 'Info'} size={12} color={facts.note.danger ? colors.statusDanger : colors.foregroundMuted} /></View>
         <Text numberOfLines={3} style={[text(m.small, m.smallLine, facts.note.danger ? colors.statusDanger : colors.foregroundMuted), { flex: 1 }]}>{facts.note.text}</Text>
       </View>}
       {facts.decision && <View style={{ marginTop: m.gap, gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flex: 1, height: 0.5, backgroundColor: palette.rule }} />
-          <Text style={text(11, 16, colors.statusWarning, '600')}>결정 대기{facts.decision.count > 1 ? ` · ${facts.decision.count}개` : ''}</Text>
-          <View style={{ flex: 1, height: 0.5, backgroundColor: palette.rule }} />
-        </View>
+        <WarningRule label={`결정 대기${facts.decision.count > 1 ? ` · ${facts.decision.count}개` : ''}`} palette={palette} theme={theme} />
         <Text numberOfLines={2} style={text(m.title, m.line, colors.foreground, '500')}>{facts.decision.question}</Text>
       </View>}
     </Pressable>

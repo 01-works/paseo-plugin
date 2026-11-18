@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { StatusRow } from '../shared/status';
 import { ITEM, itemProgress, reportAge, resumeText, turnEndText, type BoardColors } from './board-model';
-import { OpenButton, StatusIcon, type Theme } from './board-parts';
+import { METRICS, OpenButton, Pill, ProgressBar, StatusIcon, WarningRule, type Theme } from './board-parts';
 
 const HAIR = StyleSheet.hairlineWidth;
 const PAD = 12;
@@ -25,7 +25,7 @@ function Section({ title, summary, theme, children }: { title: string; summary?:
 }
 
 /**
- * 상세 카드: 상태 행(표식·상태·보고 경과·닫기) → 제목 14/600 → chip 행 → 감독 열기 → 주 블록
+ * 상세 카드: 상태 행(표식·상태·보고 경과·닫기) → 제목 14/600 → 현황 한 줄(headline) → chip 행 → 감독 열기 → 주 블록
  * (미결 결정이 있으면 경고색 구분선 아래 결정, 없으면 턴 종료 요약) → 구역(턴 종료·항목·비고·기록).
  * 사이드바에서는 둥근 12 카드로 감싸고, host Modal 안에서는 틀 없이 그린다. 결정 응답 버튼은 범위 밖.
  */
@@ -38,11 +38,7 @@ export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
   const resume = resumeText(report);
   const body = { fontSize: 12, lineHeight: 18, color: colors.foreground };
   const muted = { fontSize: 12, lineHeight: 16, color: colors.foregroundMuted };
-  const chip = (label: string, icon?: string) => <View key={label} style={{ height: 20, borderRadius: 10, borderWidth: HAIR, borderColor: palette.pillBorder,
-    backgroundColor: palette.pillFill, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-    {icon && <Icon name={icon} size={11} color={colors.foregroundMuted} />}
-    <Text numberOfLines={1} style={{ fontSize: 11, color: colors.foregroundMuted, fontVariant: ['tabular-nums'] }}>{label}</Text>
-  </View>;
+  const chip = (label: string, icon: string) => <Pill key={label} icon={icon} label={label} theme={theme} palette={palette} m={METRICS.desktop} />;
   const turn = <View style={{ gap: 4 }}>
     <Text selectable style={body}>{turnEndText(report)}</Text>
     {resume && <Text selectable style={muted}>재개 조건: {resume}</Text>}
@@ -62,6 +58,7 @@ export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
         </Pressable>}
       </View>
       <Text selectable style={{ marginTop: 2, fontSize: 14, lineHeight: 20, fontWeight: '600', color: colors.foreground }}>{row.title}</Text>
+      {report?.headline && <Text selectable style={{ ...body, marginTop: 4 }}>{report.headline}</Text>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         {chip(`항목 ${progress.done}/${progress.total}`, 'ListTodo')}
         {progress.deferred > 0 && chip(`연기 ${progress.deferred}`, 'CircleSlash')}
@@ -72,11 +69,7 @@ export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
       </View>}
       <View style={{ marginTop: 12, marginBottom: 10 }}>
         {decisions.length ? <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ flex: 1, height: 0.5, backgroundColor: palette.rule }} />
-            <Text style={{ fontSize: 11, lineHeight: 16, fontWeight: '600', color: colors.statusWarning }}>미결 결정 {decisions.length}개</Text>
-            <View style={{ flex: 1, height: 0.5, backgroundColor: palette.rule }} />
-          </View>
+          <WarningRule label={`미결 결정 ${decisions.length}개`} palette={palette} theme={theme} />
           {decisions.map((decision, index) => <View key={index} style={{ gap: 4 }}>
             <Text selectable style={{ fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.foreground }}>{decision.question}</Text>
             {decision.options.map((option, at) => <Text key={at} selectable style={body}>
@@ -90,12 +83,7 @@ export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
     </View>
     {decisions.length > 0 && <Section title="턴 종료" theme={theme}>{turn}</Section>}
     <Section title="항목" summary={progress.label} theme={theme}>
-      {progress.total > 0 && <View accessibilityRole="progressbar" accessibilityLabel="항목 진행"
-        accessibilityValue={{ min: 0, max: progress.total, now: progress.done, text: progress.label }}
-        style={{ height: 3, borderRadius: 1.5, overflow: 'hidden', flexDirection: 'row', backgroundColor: palette.pillFill, marginBottom: 4 }}>
-        <View style={{ width: `${progress.doneRatio * 100}%`, backgroundColor: colors.statusSuccess }} />
-        <View style={{ width: `${progress.deferredRatio * 100}%`, backgroundColor: colors.foregroundMuted }} />
-      </View>}
+      <ProgressBar progress={progress} palette={palette} theme={theme} />
       {report?.items.map(item => <View key={item.id} style={{ flexDirection: 'row', gap: 6, minHeight: 30, paddingVertical: 4 }}>
         <View style={{ width: 14, height: 18, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={ITEM[item.status].icon} size={12} color={item.status === 'done' ? colors.statusSuccess : colors.foregroundMuted} />

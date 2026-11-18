@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { listReportsRpc } from '../shared/report';
 import type { StatusRow } from '../shared/status';
-import { boardColors, boardLayout, defaultLane, groupLanes, keepSelection, keepTab, LANE, LANE_MARK, SIDEBAR, type LaneId } from './board-model';
+import { boardColors, boardLayout, defaultLane, groupLanes, keepSelection, keepTab, LANE, LANE_MARK, SIDEBAR, todoBand, TONE, type LaneId } from './board-model';
 import { Detail } from './board-detail';
-import { Card, LaneEmpty, StatusIcon } from './board-parts';
+import { Card, LaneEmpty, OpenButton, StatusIcon } from './board-parts';
 import { loadStatus } from './status-data';
 
 const HAIR = StyleSheet.hairlineWidth;
@@ -103,6 +103,27 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
     </View>
   </View>;
 
+  // "지금 할 일" 띠: 레인별 개수 한 줄과 사람이 처리할 행(최대 5개, 폰 3개). 줄을 누르면 상세, 끝의 열기는 감독 대화로.
+  const band = (() => {
+    const { counts, items, more } = todoBand(rows, now, phone ? 3 : 5);
+    return <View style={{ marginHorizontal: LANE.edge, marginBottom: 8, paddingVertical: 8, paddingHorizontal: 12, gap: 6, borderRadius: 8,
+      borderWidth: HAIR, borderColor: colors.border, backgroundColor: palette.panel }}>
+      <Text style={muted}>{counts.map((count, index) => <Text key={count.id} style={count.count && (count.id === 'decision' || count.id === 'attention')
+        ? { color: colors[TONE[LANE_MARK[count.id]].color], fontWeight: '600' } : undefined}>{index ? ' · ' : ''}{count.label} {count.count}</Text>)}</Text>
+      {items.map(({ row, line }) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${row.status}, ${row.title}: ${line}`} onPress={() => setSelectedKey(row.key)}
+          style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <StatusIcon status={row.status} theme={theme} size={14} />
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: colors.foreground }}>
+            <Text style={{ fontWeight: '500' }}>[{row.status}] {row.title}</Text><Text style={{ color: colors.foregroundMuted }}> — {line}</Text>
+          </Text>
+        </Pressable>
+        <OpenButton row={row} theme={theme} palette={palette} onOpen={openFor(row)} height={24} label="열기" />
+      </View>)}
+      {more > 0 ? <Text style={muted}>외 {more}개</Text> : !items.length && <Text style={muted}>지금 처리할 일이 없습니다</Text>}
+    </View>;
+  })();
+
   const body = query.isPending ? <Text style={{ ...muted, paddingHorizontal: 16 }}>감독 상태를 불러옵니다.</Text>
     : !query.data ? null : !rows.length ? empty : width === null ? null : phone ? tabs() : lanes();
 
@@ -116,7 +137,7 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
     {query.error && <Text accessibilityRole="alert" style={{ color: colors.statusDanger, fontSize: 13, paddingHorizontal: 16, paddingBottom: 8 }}>
       상태를 갱신하지 못했습니다{query.data ? '(마지막 결과 표시 중)' : ''}: {query.error.message}</Text>}
     <View style={{ flex: 1, minHeight: 0, flexDirection: 'row' }}>
-      <View style={{ flex: 1, minWidth: 0 }}>{body}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>{rows.length > 0 && width !== null && band}{body}</View>
       {selected && inline && sidebar > 0 && <View style={{ width: sidebar, marginRight: SIDEBAR.gap, paddingTop: 4, paddingBottom: 12 }}>
         <ScrollView style={{ flex: 1 }}>
           <Detail row={selected} now={now} theme={theme} palette={palette} onOpen={openFor(selected)} onClose={() => setSelectedKey(null)} framed />

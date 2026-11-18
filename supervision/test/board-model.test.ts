@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardColors, boardLayout, cardFacts, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, mix, resumeText, SIDEBAR, TONE, turnEndText, type Status } from '../client/board-model';
+import { boardColors, boardLayout, cardFacts, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, mix, resumeText, SIDEBAR, todoBand, TONE, turnEndText, type Status } from '../client/board-model';
 import type { Report } from '../shared/report';
 
 const statuses: Status[] = ['사용자 결정', '미보고', '멈춤', '대기', '진행', '완료', '알 수 없음'];
@@ -79,6 +79,36 @@ describe('카드 내용', () => {
   it('보고가 없으면 블록 없이 비고만, 멈춤 비고는 위험 표시', () => {
     expect(cardFacts({ status: '알 수 없음', state: null, note: '시각을 알 수 없음' })).toMatchObject({ pills: [], turn: null, decision: null, note: { danger: false } });
     expect(cardFacts({ status: '멈춤', state: null, note: '감독 조회 불가' }).note).toEqual({ text: '감독 조회 불가', danger: true });
+  });
+});
+
+describe('지금 할 일과 headline', () => {
+  const now = Date.parse('2026-11-18T00:10:00Z');
+  const report = (extra: Partial<Report> = {}): Report => ({ items: [{ id: 'a', summary: 'A', status: 'open' }], turnEnd: { kind: 'next_action', detail: '배정' }, decisions: [], ...extra });
+  const row = (key: string, status: Status, rep: Report | null, note?: string) =>
+    ({ key, status, note, state: rep && { version: 1 as const, agentId: key, serverId: 's', title: key, reportedAt: '2026-11-18T00:00:00Z', report: rep } });
+  const decision = { question: '배포할까?', options: ['예', '아니오'], recommendation: '예', impact: '운영' };
+  it('카드 현황은 headline, 없으면 턴 종료 한 줄', () => {
+    expect(cardFacts(row('a', '진행', report({ headline: '머지 끝, 관찰 중' }))).turn?.text).toBe('머지 끝, 관찰 중');
+    expect(cardFacts(row('a', '진행', report())).turn?.text).toBe('다음 조치 · 배정');
+  });
+  it('띠 한 줄: 결정 질문(+권장) → headline → 상태별 기본 문구', () => {
+    const band = todoBand([
+      row('d', '사용자 결정', report({ headline: 'h', turnEnd: { kind: 'user_decision', detail: '선택' }, decisions: [decision] })),
+      row('m', '미보고', report()), row('h', '미보고', report({ headline: '스테이징 관찰 중' })),
+      row('s', '멈춤', null), row('n', '멈춤', null, '감독 조회 불가'), row('u', '알 수 없음', null), row('k', '알 수 없음', report()),
+      row('w', '대기', report()), row('r', '진행', report()),
+    ], now, 10);
+    expect(band.items.map(item => item.line)).toEqual(['배포할까? · 권장: 예', '마지막 턴 종료 후 보고 없음 · 마지막 보고 10분 전', '스테이징 관찰 중',
+      '다음 조치가 남았는데 실행 중인 작업자 없음', '감독 조회 불가', '아직 보고 기록 없음', '턴 종료 시각을 알 수 없음 · 보고 10분 전']);
+    expect(band.counts.map(count => `${count.label} ${count.count}`)).toEqual(['결정 대기 1', '확인 필요 6', '대기 1', '진행 1', '완료 0']);
+    expect(band.more).toBe(0);
+  });
+  it('처리할 행은 입력(rank) 순으로 최대 개수까지, 나머지는 개수만', () => {
+    const band = todoBand(['a', 'b', 'c', 'd'].map(key => row(key, '미보고', null)), now, 3);
+    expect(band.items.map(item => item.row.key)).toEqual(['a', 'b', 'c']);
+    expect(band.more).toBe(1);
+    expect(todoBand([row('w', '대기', report())], now, 5)).toMatchObject({ items: [], more: 0 });
   });
 });
 
