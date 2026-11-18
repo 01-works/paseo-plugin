@@ -8,6 +8,7 @@ import { linkOriginRpc, createLaneRpc, reportLaneRpc } from '../shared/contracts
 import { record, origin } from './fixtures';
 
 vi.mock('../client/open-agent', () => ({ OpenAgent: () => null }));
+vi.mock('../client/status-board', () => ({ Supervisors: () => null, SupervisorsItem: () => null }));
 
 function fixture() {
   const events: string[] = [];
@@ -76,7 +77,7 @@ describe('감독 시작', () => {
       return contract === reportLaneRpc ? {} : { name: '목표', path: '/state/lane', agentId: record.agentId, origin };
     });
     const addSlashCommand = vi.fn((_command: { name: string; onSubmit: (context: PluginAgentCommandContext & { args: string }) => Promise<void> }) => () => {});
-    const cleanup = contribute({ addScreen: () => () => {}, addSlashCommand, addCommandCenterItem: () => () => {} } as never);
+    const cleanup = contribute({ addScreen: () => () => {}, addSidebarHeaderItem: () => () => {}, addSlashCommand, addCommandCenterItem: () => () => {} } as never);
     try {
       const command = addSlashCommand.mock.calls.find(([item]) => item.name === 'supervise')![0];
       await expect(command.onSubmit({ ...f.context, args: record.goal })).resolves.toBeUndefined();

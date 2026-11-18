@@ -1,3 +1,92 @@
+# Supervision 0.2.0 상태 보고 검증
+
+2026-11-18 KST, `feat/supervision-status-report` 개발본의 자동 검사와 승인 후 0.16.1 실제 검증입니다. 아래 0.1.0 기록은 과거 버전의 실제 설치·GUI 검증이며 새 목록 화면을 검증한 것으로 취급하지 않습니다.
+
+## 0단계: 도구·reload 계약 확인
+
+- npm SDK 0.15.4·0.16.1의 `server/agent-tools.d.ts`에 `defineAgentTool`과 동일한 실행 문맥(`agent`, `paseo`, `signal`)이 있습니다. 두 버전의 `PluginSessionOpenRequest`에 `labels`, `tools`, `purpose`가 있어 최소 지원 `>=0.15.4`를 유지합니다. 개발 SDK 고정은 0.16.1로 올렸습니다.
+- [0.16.1 hook 문서](https://github.com/getpaseo/paseo/blob/v0.16.1/public-docs/plugins/hooks.md#attach-tools-to-agents), [도구 transport 등록](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/tools/plugin-tools.ts), [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)를 대조했습니다. 붙인 도구는 provider가 지원하는 MCP/native 경로로 같은 콜백에 연결됩니다. [Claude](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/claude/agent.ts)·[Codex](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/codex-app-server-agent.ts)는 모두 `supportsMcpServers: true`입니다. 승인 후 Claude·Codex의 실제 호출 성공은 아래 설치 검증에 기록했습니다. Paseo 도구를 끄거나 provider tool policy로 막은 환경에서는 이 도구도 사용할 수 없습니다.
+- [상류 0.16.1 회귀 테스트](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/agent-tools.e2e.test.ts)는 plugin reload 시 기존 attachment 폐기, idle의 다음 프롬프트에서 한 번 reopen, busy 턴 interrupt 0회, 명시적 SDK reload의 interrupt 1회를 검사합니다. 이 프로젝트에서 상류 테스트를 실행한 것은 아닙니다. 현재 [공식 hook 문서](https://paseo.sh/docs/plugins/hooks.md)와 설치된 공식 스킬도 같은 stale 계약을 설명합니다.
+- session-open hook을 가진 플러그인을 시작·중지·업데이트/reload하면 데몬 전체의 열린 세션이 stale이 되고 다음 유휴 프롬프트 전에 다시 열립니다. 실행 중 턴은 유지하지만 이전 도구 연결은 폐기되므로 reload 직후 실행 중 턴이 호출하는 도구도 실패할 수 있습니다. 재열기에 실패하면 그 프롬프트도 실패합니다. 명시적 `agent.reload()`는 실행 중 턴을 끊으므로 이번 개발에서 호출하지 않습니다.
+
+## 자동 검사
+
+CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 13개 파일 103개 테스트를 통과했습니다(기존 47개 + 신규 56개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
+
+새 검사는 완료의 열린 항목 안내, 완료/연기 근거, 대기 재개 조건, 중복 ID·빈 근거, JSON schema 변환, Claude·Codex 라벨/interactive 선별, 신뢰된 호출자 ID·호스트 저장, 읽기 전용 RPC, 경로 탈출·접두사 혼동·외부 symlink, 동시 쓰기 중 완전한 JSON, 파일 0600, 취소 시 이전 상태·임시 파일 정리, 손상·symlink 파일 격리, 미보고·정렬·호스트·archive 판정을 포함합니다. 파일 검사는 임시 디렉터리만 사용합니다.
+
+목록은 React Native 기본 요소·테마 색상·compact 세로 배치를 사용합니다. lane 최상위 `supervision-state.json`만 읽고 하위 cwd는 첫 경로 조각의 lane으로 귀속합니다. 일반 `state.json`과 하위 폴더의 전용 파일은 읽거나 자동 이관하지 않습니다. 순회 중 폴더가 소멸하거나 파일이 손상되어도 다른 lane을 반환하는 테스트가 있습니다. 파일 소유 검증은 tasks.md 첫 감독 줄을 우선하고, 없으면 전용 상태 파일의 agentId를 사용합니다. 인계 줄 교체 없이 다른 감독이 덮어쓰는 것을 거부합니다. 기존 항목 누락은 거부하며, 이전 보고에서 사용자 결정 출처와 deferred를 먼저 남긴 항목만 제외합니다.
+
+## 독립 리뷰 반영: 미보고와 현재 상태
+
+`lastUserMessageAt`은 에이전트 메시지·자식 알림·heartbeat를 놓치므로 사용하지 않습니다. [0.16.1 envelope](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-messages/envelope.ts)의 `projectAgentMessages`는 이 입력을 `tool_call`로 바꾸며 사용자 메시지 시각을 갱신하지 않습니다.
+
+두 SDK에 공통인 `agent.turn.before/after`에서 시각을 기록합니다. 영속 위치는 `${XDG_STATE_HOME:-~/.local/state}/paseo-supervision/turns/<agentId>.json`이며 파일 0600·원자 교체입니다. before는 현재 시작 시각을 기록하고 after는 그 값을 마지막 종료 턴의 시작 시각으로 옮깁니다. 콜백 도착 때 잡은 시작 시각을 사용하며 ID 비교나 사용자 메시지 시각을 사용하지 않습니다. 에이전트별로 알림 처리를 직렬화합니다. 재시작 사이의 before/after와 완료된 기록 보존을 테스트합니다. after만 관측했거나 파일이 없거나 손상된 경우 시작 시각은 null, 화면은 “알 수 없음”입니다.
+
+소스 emit 확인: [0.16.1 lifecycle](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/lifecycle/index.ts)의 `publishAgentStream`은 `turn_started`를 before, `turn_completed/failed/canceled`를 after로 전달합니다. [0.15.4 lifecycle](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/plugins/lifecycle/index.ts)도 같습니다. 양 버전 [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 accepted-turn 경계는 프롬프트 출처와 무관하게 turn_started를 발행하며, `dispatchStream`은 internal이 아닌 에이전트의 비-timeline 이벤트를 lifecycle로 전달합니다. 따라서 에이전트 메시지로 새 턴이 시작된 경우도 같은 emit 경로입니다. **한계:** 실행 중인 턴에 steer된 입력은 새로운 턴 시작을 만들지 않습니다. 보고 이후 입력이 추가되어도 같은 턴 안에서 처리되면 미보고를 탐지하지 못할 수 있습니다. 승인 후 Claude·Codex의 에이전트 메시지 입력으로 시작한 턴과 보고 호출은 실제 확인했습니다. 자식 완료 알림·heartbeat 각각의 실제 발화는 별도로 검증하지 않았습니다.
+
+마지막 종료 턴 시작이 보고보다 늦으면 idle·closed 상태의 미보고입니다. 미보고는 이전 보고의 사용자 결정·자식 진행보다 우선합니다. 같은 턴의 최종 응답·도구 결과·idle 전환으로는 뒤집히지 않습니다. running은 결정·waiting 보고보다 우선해 진행, closed는 idle과 같은 판정·순위를 적용합니다. 결정 rank는 idle·closed에만 적용합니다. next_action은 같은 호스트의 자식이 running일 때 진행, 아니면 멈춤입니다. archive 감독은 행에서 제외하고 파일은 유지합니다. 감독은 라벨 필터(includeArchived=true)로만, 자식 실행은 includeArchived=false·statuses=running으로만 페이지 조회합니다. archive 전체 목록을 요청하지 않는 계약을 테스트합니다. 원격 호스트 자식은 판정하지 않습니다.
+
+호스트 확인: 상류 [surface-screen](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/app/src/plugins/surface-screen.tsx)은 `host.id = serverId`로 만듭니다. 구현은 표시용 host.id를 가정하지 않고 선택된 API의 SDK `hosts.list().self.serverId`를 상태 판정·이동에 사용하며, 페이지 조회와 자식 판정도 이 값을 쓰는 테스트가 있습니다. 실제 앱에서 두 값을 동시에 readback하는 검증은 미확인입니다.
+
+reload는 [runtime의 notifySessionOpenChange](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/runtime.ts)에서 agent 필터 없이 session-open 변경을 통지하므로 영향 범위는 데몬 전체입니다. 실행 중 턴을 interrupt하지 않는다는 것은 기존 attachment를 계속 쓸 수 있다는 뜻이 아닙니다. 기존 도구 연결이 폐기된 뒤 호출은 실패할 수 있고 다음 유휴 프롬프트에서 재열립니다.
+
+## 환경·손상 파일 복구
+
+모든 저장소(LaneStore·ReportStore·TurnStore)는 같은 XDG 경로 검증을 사용합니다. 상대 경로·NUL 포함·기존 비디렉터리·stat 오류는 `~/.local/state`로 대체하며 없는 절대 경로는 생성 가능한 경로로 유지합니다. 잘못된 설정으로 contribute나 `/supervise`가 함께 실패하지 않는지 임시 home으로 검사합니다. OS 환경 변수는 NUL에서 잘리므로 NUL 검사는 helper 직접 입력으로 수행합니다.
+
+손상된 JSON·스키마는 다음 쓰기에 `.UUID.corrupt`로 격리하고 새 보고·턴 기록을 시작합니다. 읽기 RPC는 그대로 오류/알 수 없음을 반환하고 파일을 변경하지 않습니다. 보고 복구는 tasks.md 소유 확인 이후에만 수행하며, 소유가 다른 호출은 손상 원본도 바꾸지 않습니다. 격리 원문 보존과 다음 before/after 복구를 테스트합니다.
+
+## 실제 검증 경계
+
+아래 승인 후 검증에서 bootstrap 고정 `supervision`만 교체했습니다. bootstrap 고정 목록·실제 스킬 설치·전역 스위치는 변경하지 않았고 데몬·기존 감독을 명시적으로 재시작·interrupt하지 않았습니다. 도구 부착은 reopen부터 적용되므로 이미 열린 세션에 즉시 생겼다고 판단하지 않습니다. 앱 목록 화면·행 이동, compact·모바일·테마 전환은 아래처럼 **미확인**으로 구분합니다.
+
+
+## 승인 후 실제 설치·호출 검증 (`b606ee2`)
+
+2026-11-18 16:45~16:49 KST, 데몬·CLI **0.16.1**에서 사용자 설치 승인(열린 세션의 stale 영향 수용) 후 `b606ee2b66b87f31a20d6fbe2baba4466f26ecdc`를 검증했습니다. 설치 소스는 `github:01-works/paseo-plugin:supervision`입니다. 0.16.1의 [installSource](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/index.ts)는 기존 ID를 거부하므로, 현재 설치의 Git remote·pluginPath가 요청 소스와 같은지 확인한 뒤 기존 버전 복구 경로를 가진 update를 사용했습니다. 교체 명령은 약 3.4초에 끝났고 `Plugin ready`와 관리 checkout의 정확한 revision을 확인했습니다.
+
+```sh
+paseo plugin update supervision --ref b606ee2b66b87f31a20d6fbe2baba4466f26ecdc --json
+```
+
+감독의 추가 지시에 따라 작은 플러그인 하나의 수 초짜리 esbuild 번들 설치를 heavy 대상에서 제외했고, 자기 대기 항목 `supervision-install-b606ee2`만 TERM으로 정상 취소(종료 143·cancel/TERM)한 뒤 실행했습니다. 다른 대기 항목·실행 lock은 변경하지 않았으며 npm install·전체 빌드·테스트는 실행하지 않고 CI로 대체했습니다.
+
+| 항목 | 설치 직전 | 설치 후·정리 후 |
+|---|---|---|
+| supervision | running · `cea05dbd7658b3bef063a6b4e2bb7ce8b1ce5e27` | running · `b606ee2b66b87f31a20d6fbe2baba4466f26ecdc` (유지) |
+| better-paseo | running · `d4c85ccafe6d5dfc4abcef85667eca0b3cc3bb2e` | 상태·revision·설치 메타데이터 동일 |
+| mac-monitor | running · `c9eb48e0a812aa5e6d70366075fa77cb6df16823` | 상태·revision·설치 메타데이터 동일 |
+| zerosub | running · `1.5.1` | 상태·revision·설치 메타데이터 동일 |
+| 비보관 오류 에이전트(백그라운드 포함) | 0 | 설치 직후·검증 후·정리 후 모두 0 |
+| 데몬 | 0.16.1 · PID 45488 · worker 45727 | 동일, 시작 시각 `2026-11-18T05:07:57.112Z` 유지 |
+
+확인용 lane·local workspace 두 곳만 만들고 구현·위임·외부 전송·스케줄·명령 실행·파일 직접 수정을 금지했습니다. 알려진 ID로 만든 에이전트에게 검증자가 `send_agent_prompt`를 보내 새 턴을 시작했습니다. 타임라인에도 `agent_message`가 남고 `lastUserMessageAt`은 모든 확인 턴에서 null이었습니다. 보고 JSON은 실제 도구만 썼습니다.
+
+| 실제 확인 | 결과 |
+|---|---|
+| Claude `claude-opus-5-5` | `mcp__paseo__supervision_report` 성공, 전용 보고 파일 0600 |
+| Codex `gpt-6.1-sol` | `paseo.supervision_report` 성공, 전용 보고·턴 파일 기록 |
+| Claude 같은 턴의 최종 응답·idle 전환 | 첫 보고 `07:45:57.342Z` 후에도 목록 판정은 **대기** |
+| 다음 에이전트 메시지 턴에서 보고 생략 | 마지막 종료 턴 시작 `07:46:33.221Z`가 기존 보고보다 늦음, **미보고** |
+| 열린 항목으로 done 호출 | 실제 도구 거부: `열린 항목이 남았습니다: probe (무해한 도구 연결 확인)` |
+| evidence 없이 done 항목 호출 | 실제 도구 거부: `완료 근거(evidence)가 필요합니다: probe` |
+| 정상 완료 재보고 | 보고 `07:47:15.180Z`가 해당 턴 시작 `07:47:04.656Z`보다 늦음, **완료**로 해소 |
+| before/after 영속 기록 | Claude 3턴의 시작 값과 종료 후 이동을 파일 관측 6건으로 확인. 별도 SDK 연결에서 읽기 RPC로 다시 읽음 |
+| 목록 RPC·클라이언트 판정 | 실제 `state.list` 응답과 SDK 에이전트 목록으로 화면의 `loadStatus`를 실행해 대기→미보고→완료 및 Codex 대기를 검증 |
+
+위 시각은 UTC입니다. 재시작 자체는 실행하지 않았으므로 실제 프로세스 재시작을 통한 보존 검증으로 확대하지 않습니다. 재시작 보존은 자동 검사 범위입니다.
+
+**GUI는 사용자 직접 확인 필요:** 설치 대기 중 에이전트 Chrome 접속을 준비하며 default 연결을 재사용했고, 호출 시작마다 current target을 확인했습니다. 초기 target `B26FAEB2456F505B1884DEFCD5104584`이 작업 탭을 만들려는 호출에서 `D5B9D1C93E16DF9641D65B5A1CB79D57`로 바뀌어 조작 없이 1회 시도를 중단했습니다. 새 탭·스크린샷은 만들지 않았고 다른 탭도 조작하지 않았습니다. RPC 검증은 실제 사이드바 렌더링·행 클릭을 대신하지 않습니다.
+
+기존 라벨 감독 6개에는 프롬프트·reload를 보내지 않았습니다. 16:54 KST의 후속 읽기 전용 조회에서 기존 감독 1개의 로컬 로그에 `2026-11-18T07:49:25.852Z`의 `deferred_tools_delta.addedNames = ["mcp__paseo__supervision_report"]`가 기록된 것을 확인했습니다. 설치 전과 같은 native session ID이며, 도구 목록 변경 로그로 **기존 감독의 후속 턴 도구 부착을 확인**했습니다. API 요청의 선택된 도구 목록은 지연 로딩 도구를 생략할 수 있어 그 목록만으로 미부착을 판단하지 않았습니다. 해당 감독의 영속 턴 파일에서도 종료 턴 시작 시각을 읽었습니다. 기존 세션의 대화 내용·요청 본문은 결과물에 복제하지 않고 도구 이름·시각·세션 식별자만 로컬 증거로 남겼습니다.
+
+정리 전 두 감독의 idle·미결 권한 없음·자식 0개·백그라운드 작업 0개·터미널 0개, workspace별 소유 에이전트 1개, lane의 파일 두 개(`tasks.md`, `supervision-state.json`)와 소유 ID를 대조했습니다. 감독·workspace를 archive한 뒤 readback으로 확인하고 두 lane과 검증용 턴 파일만 제거했습니다. 확인용 ID는 Claude `a4e31a26-27b5-4716-904d-7a6240236249`, Codex `761a6e9c-3aa2-4465-a9cf-6ea815176d38`, workspace는 `wks_113200ff1d913963`·`wks_022466d7732c81ae`입니다. 파일 관측 프로세스도 종료했습니다. 새 플러그인은 설치된 채로 유지하며 bootstrap 고정 ref 변경과 머지는 하지 않았습니다.
+
+설치 전·직전·후·정리 후 목록, 보고·턴 관측·검증 타임라인·정리 대조 기록은 이 Mac의 `~/.local/state/paseo-plugin-validation/b606ee2/`에 보존합니다. 로컬 타임라인은 공개 저장소에 올리지 않았습니다. 이 검증에서 소프트웨어 코드는 변경하지 않았습니다. CI 결과는 [PR #17 checks](https://github.com/01-works/paseo-plugin/pull/17/checks)에서 확인합니다.
+
+---
+
 # Supervision 0.1.0 검증
 
 ## 실제 Git 설치와 GUI 검증 (`f11e0d3`)

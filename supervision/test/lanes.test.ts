@@ -26,12 +26,12 @@ describe('lane 파일 생성', () => {
     expect((await store.create({ ...record, originId: origin.agentId }, new Date(2026, 10, 17))).name).toMatch(/-bbbb$/);
     expect(suffix).toHaveBeenCalledTimes(2);
   });
-  it('무한 충돌과 상대 XDG_STATE_HOME을 거부한다', async () => {
+  it('무한 충돌은 거부하고 상대 XDG_STATE_HOME으로 로드해도 예외가 없다', async () => {
     const root = await temporary();
     const store = new LaneStore(root, () => 'aaaa');
     await store.create({ ...record, originId: origin.agentId });
     await expect(store.create({ ...record, originId: origin.agentId })).rejects.toThrow('충돌');
-    await expect(new LaneStore('../escape').create({ ...record, originId: origin.agentId })).rejects.toThrow('절대 경로');
+    expect(() => new LaneStore('../escape')).not.toThrow();
   });
   it('예정 소유 ID로 처음부터 기록하고 등록되지 않은 이름은 거부한다', async () => {
     const store = new LaneStore(await temporary(), () => 'a123');

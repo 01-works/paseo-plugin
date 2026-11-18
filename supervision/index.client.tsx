@@ -1,10 +1,13 @@
 import type { PluginClientContext } from '@getpaseo/plugin/client';
 import { startSupervisor, openMySupervisor } from './client/actions';
 import { OpenAgent } from './client/open-agent';
+import { Supervisors, SupervisorsItem } from './client/status-board';
 
 export default function contribute(client: PluginClientContext) {
   const pending = new Set<string>();
   const cleanup = [
+    client.addScreen({ id: 'supervisors', title: '감독', Component: Supervisors }),
+    client.addSidebarHeaderItem({ id: 'supervisors', title: '감독', Component: SupervisorsItem }),
     client.addScreen({ id: 'open-agent', title: '감독 대화로 이동', Component: OpenAgent }),
     // 두 버전의 runtime은 이름을 ^[a-z][a-z0-9-]*$로 제한한다. /감독은 등록 불가.
     client.addSlashCommand({ name: 'supervise', description: '이 목표를 맡을 감독 대화 시작', argumentHint: '<목표>', context: 'agent',

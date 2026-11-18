@@ -30,7 +30,7 @@ agent-list는 2026-11-17에 Better Paseo로 대체하며 제거했습니다. 소
 
 | 플러그인 | 기능 | 설치 소스 | 조건·상세 |
 |---|---|---|---|
-| [supervision](supervision/README.md) | `/supervise <목표>`로 감독 시작·내 감독 대화로 이동 | `github:01-works/paseo-plugin:supervision` | Paseo 0.15.4 이상, 마크다운 기록 계약의 `yw-supervisor` 스킬·features 없는 Supervisor 프로필. 기본 목록과 bootstrap 고정은 별도 변경 |
+| [supervision](supervision/README.md) | `/supervise <목표>`로 감독 시작·목표별 상태 보고와 목록·감독 대화로 이동 | `github:01-works/paseo-plugin:supervision` | Paseo 0.15.4 이상, 마크다운 기록 계약의 `yw-supervisor` 스킬·features 없는 Supervisor 프로필. 기본 목록과 bootstrap 고정은 별도 변경 |
 
 [bootstrap](https://github.com/01-works/bootstrap)으로 세팅한 Mac은 bootstrap의
 [플러그인 목록](https://github.com/01-works/bootstrap/blob/main/agents/paseo.md#플러그인)이 기준입니다.
@@ -72,7 +72,7 @@ ZeroSub는 추가 계정 로그인에 앞서 설치하며, 로그인과 실제 �
 
 ### Paseo 새 버전
 
-mac-monitor 개발용 Paseo SDK는 **0.13.0**에 고정합니다. supervision은 0.15.4에 고정하고 0.16.1도 검사합니다. 2026-10-25에 mac-monitor의
+mac-monitor 개발용 Paseo SDK는 **0.13.0**에 고정합니다. supervision은 0.16.1에 고정하고 0.15.4·0.16.1·latest를 검사합니다. 2026-10-25에 mac-monitor의
 타입 검사·테스트·audit을 통과했습니다. 실제 0.13 앱·데몬 동작은 별도 확인이 필요합니다.
 기본 설치 목록의 **ZeroSub 1.3.0은 0.13에서 Claude 자동 전환에 알려진 문제가 있습니다.**
 최신 배포 여부와 영향 범위는 [ZeroSub 호환성 확인](docs/plugins/zerosub.md#paseo-013-호환성-확인-2026-10-25)을 봅니다.
