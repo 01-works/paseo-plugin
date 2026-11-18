@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardColors, boardLayout, cardFacts, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, mix, resumeText, SIDEBAR, todoBand, TONE, turnEndText, type Status } from '../client/board-model';
+import { boardColors, boardLayout, cardFacts, groupLanes, itemProgress, keepSelection, keepTab, LANES, mix, resumeText, replyLine, SIDEBAR, TONE, workersOf, turnEndText, type Status } from '../client/board-model';
 import type { Report } from '../shared/report';
 
 const statuses: Status[] = ['사용자 결정', '미보고', '멈춤', '대기', '진행', '완료', '알 수 없음'];
@@ -8,7 +8,7 @@ describe('레인 분류', () => {
   it('모든 상태가 정확히 한 레인에 속하고 확인 필요는 미보고·멈춤·알 수 없음을 모은다', () => {
     for (const status of statuses) expect(LANES.filter(lane => lane.statuses.includes(status))).toHaveLength(1);
     expect(LANES.map(lane => lane.title)).toEqual(['사용자 결정', '확인 필요', '대기', '진행', '완료']);
-    expect(['미보고', '멈춤', '알 수 없음'].map(status => laneOf(status as Status))).toEqual(['attention', 'attention', 'attention']);
+    expect(groupLanes([{ status: '미보고' }, { status: '멈춤' }, { status: '알 수 없음' }])[1].rows).toHaveLength(3);
   });
   it('입력 정렬을 유지하며 레인별 개수를 세고 빈 레인도 돌려준다', () => {
     const rows = [{ key: 'a', status: '멈춤' }, { key: 'b', status: '진행' }, { key: 'c', status: '미보고' }, { key: 'd', status: '알 수 없음' }] as const;
@@ -17,8 +17,7 @@ describe('레인 분류', () => {
     expect(groups[1].rows.map(row => row.key)).toEqual(['a', 'c', 'd']);
   });
   it('좁은 화면의 첫 탭은 비어 있지 않은 첫 레인, 모두 비면 사용자 결정', () => {
-    expect(defaultLane(groupLanes([{ status: '완료' }, { status: '대기' }]))).toBe('waiting');
-    expect(defaultLane(groupLanes([]))).toBe('decision');
+    expect(keepTab(null, groupLanes([{ status: '완료' }, { status: '대기' }]))).toBe('waiting');
   });
   it('탭은 첫 카드가 보인 갱신에서 한 번 정하고, 새 사용자 결정이 생기거나 레인이 비어도 유지한다', () => {
     expect(keepTab(null, groupLanes([]))).toBeNull();
@@ -82,33 +81,30 @@ describe('카드 내용', () => {
   });
 });
 
-describe('지금 할 일과 headline', () => {
-  const now = Date.parse('2026-11-18T00:10:00Z');
+describe('지금 하는 일', () => {
   const report = (extra: Partial<Report> = {}): Report => ({ items: [{ id: 'a', summary: 'A', status: 'open' }], turnEnd: { kind: 'next_action', detail: '배정' }, decisions: [], ...extra });
-  const row = (key: string, status: Status, rep: Report | null, note?: string) =>
-    ({ key, status, note, state: rep && { version: 1 as const, agentId: key, serverId: 's', title: key, reportedAt: '2026-11-18T00:00:00Z', report: rep } });
-  const decision = { question: '배포할까?', options: ['예', '아니오'], recommendation: '예', impact: '운영' };
-  it('카드 현황은 headline, 없으면 턴 종료 한 줄', () => {
-    expect(cardFacts(row('a', '진행', report({ headline: '머지 끝, 관찰 중' }))).turn?.text).toBe('머지 끝, 관찰 중');
-    expect(cardFacts(row('a', '진행', report())).turn?.text).toBe('다음 조치 · 배정');
+  const row = (rep: Report | null) => ({ status: '진행' as const, state: rep && { version: 1 as const, agentId: 'a', serverId: 's', title: 't', reportedAt: '2026-11-18T00:00:00Z', report: rep } });
+  it('카드 현황은 headline → 마지막 응답 → 턴 종료 순', () => {
+    expect(cardFacts(row(report({ headline: '머지 끝, 관찰 중' })), '응답').turn?.text).toBe('머지 끝, 관찰 중');
+    expect(cardFacts(row(report()), '검증 작업자 배정함').turn).toEqual({ icon: 'MessageSquareText', text: '검증 작업자 배정함' });
+    expect(cardFacts(row(report())).turn?.text).toBe('다음 조치 · 배정');
+    expect(cardFacts(row(null), '응답만 있음').turn?.text).toBe('응답만 있음');
   });
-  it('띠 한 줄: 결정 질문(+권장) → headline → 상태별 기본 문구', () => {
-    const band = todoBand([
-      row('d', '사용자 결정', report({ headline: 'h', turnEnd: { kind: 'user_decision', detail: '선택' }, decisions: [decision] })),
-      row('m', '미보고', report()), row('h', '미보고', report({ headline: '스테이징 관찰 중' })),
-      row('s', '멈춤', null), row('n', '멈춤', null, '감독 조회 불가'), row('u', '알 수 없음', null), row('k', '알 수 없음', report()),
-      row('w', '대기', report()), row('r', '진행', report()),
-    ], now, 10);
-    expect(band.items.map(item => item.line)).toEqual(['배포할까? · 권장: 예', '마지막 턴 종료 후 보고 없음 · 마지막 보고 10분 전', '스테이징 관찰 중',
-      '다음 조치가 남았는데 실행 중인 작업자 없음', '감독 조회 불가', '아직 보고 기록 없음', '턴 종료 시각을 알 수 없음 · 보고 10분 전']);
-    expect(band.counts.map(count => `${count.label} ${count.count}`)).toEqual(['결정 대기 1', '확인 필요 6', '대기 1', '진행 1', '완료 0']);
-    expect(band.more).toBe(0);
+  it('마지막 응답은 마크다운을 벗긴 첫 1~2줄을 120자 안으로', () => {
+    expect(replyLine('## 진행 상황\n\n- **#10452** 검증 [PR](http://x) 배정\n- 세 번째 줄')).toBe('진행 상황 #10452 검증 PR 배정');
+    expect(replyLine('```ts\ncode\n```\n`supervision_report` 기록 완료')).toBe('supervision_report 기록 완료');
+    expect(replyLine('| a | b |\n\n')).toBeUndefined();
+    expect(replyLine('가'.repeat(200))).toHaveLength(120);
   });
-  it('처리할 행은 입력(rank) 순으로 최대 개수까지, 나머지는 개수만', () => {
-    const band = todoBand(['a', 'b', 'c', 'd'].map(key => row(key, '미보고', null)), now, 3);
-    expect(band.items.map(item => item.row.key)).toEqual(['a', 'b', 'c']);
-    expect(band.more).toBe(1);
-    expect(todoBand([row('w', '대기', report())], now, 5)).toMatchObject({ items: [], more: 0 });
+  it('작업자는 같은 호스트의 미보관 자식을 실행 중 → 대기 → 오류로 세고 실행 중 제목 2개를 보인다', () => {
+    const child = (id: string, status: string, extra: object = {}) => ({ id, title: `#${id}`, status, labels: { 'paseo.parent-agent-id': 'sup' }, ...extra });
+    const agents = [child('1', 'idle'), child('2', 'running'), child('3', 'running'), child('4', 'initializing'), child('5', 'error'),
+      child('6', 'running', { archivedAt: '2026-11-18' }), child('7', 'running', { labels: { 'paseo.parent-agent-id': 'sup', 'paseo.parent-server-id': 'other' } }),
+      { id: 'x', title: 'x', status: 'running', labels: {} }];
+    const workers = workersOf(agents, 'sup', 'srv');
+    expect(workers.line).toBe('실행 중 3 · 대기 1 · 오류 1 — #2, #3');
+    expect(workers.all.map(agent => agent.id)).toEqual(['2', '3', '4', '1', '5']);
+    expect(workersOf(agents, 'none', 'srv')).toEqual({ all: [], line: null });
   });
 });
 

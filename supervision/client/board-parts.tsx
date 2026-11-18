@@ -47,8 +47,8 @@ export function Pill({ icon, label, tint, palette, theme, m }: { icon?: string; 
 }
 
 /** Better Paseo의 테두리 버튼: 채우지 않고 0.5 선, 라벨 12/500, 이동 버튼은 ↗로 끝난다. */
-export function OpenButton({ row, theme, palette, onOpen, height, primary, grow, onActive, label = '감독 열기' }: {
-  row: StatusRow; theme: Theme; palette: BoardColors; onOpen?: () => void; height: number; primary?: boolean; grow?: boolean; label?: string;
+export function OpenButton({ row, theme, palette, onOpen, height, primary, grow, onActive }: {
+  row: StatusRow; theme: Theme; palette: BoardColors; onOpen?: () => void; height: number; primary?: boolean; grow?: boolean;
   /** hover나 키보드 포커스가 들어오고 나갈 때. 카드는 이 동안 버튼을 숨기지 않는다. */
   onActive?: (active: boolean) => void;
 }) {
@@ -62,7 +62,7 @@ export function OpenButton({ row, theme, palette, onOpen, height, primary, grow,
     style={{ height, paddingHorizontal: 10, borderRadius: 6, borderWidth: 0.5, borderColor: primary && !disabled ? palette.primaryBorder : palette.buttonBorder,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: disabled ? 0.6 : 1,
       boxShadow: hovered && !disabled ? palette.shadowHover : undefined, ...(grow ? { flexGrow: 1 } : null) }}>
-    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color }}>{disabled ? '열 수 없음' : label}</Text>
+    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color }}>{disabled ? '열 수 없음' : '감독 열기'}</Text>
     {!disabled && <Icon name="ArrowUpRight" size={13} color={color} />}
   </Pressable>;
 }
@@ -86,15 +86,16 @@ export function WarningRule({ label, palette, theme }: { label: string; palette:
 
 export interface CardProps {
   row: StatusRow; now: number; theme: Theme; palette: BoardColors; compact: boolean; selected?: boolean;
-  onSelect?: () => void; onOpen?: () => void;
+  /** 마지막 응답 첫 줄과 작업자 요약 줄("실행 중 2 · 대기 1 — 제목, 제목"). */
+  reply?: string; workers?: string | null; onSelect?: () => void; onOpen?: () => void;
 }
 /**
- * 카드: 제목 행(상태 표식 + 제목 2줄) → 현황 한 줄(headline, 없으면 턴 종료) → pill 행 → 진행 막대 → 구분선 블록(비고)
+ * 카드: 제목 행(상태 표식 + 제목 2줄) → 지금 하는 일(headline → 마지막 응답 → 턴 종료) → 작업자 줄 → pill 행 → 진행 막대 → 구분선 블록(비고)
  * → 결정 구역(경고색 구분선 + 첫 질문) → 하단(보고 경과, 데스크톱은 hover·포커스·선택 때만 감독 열기).
  */
-export function Card({ row, now, theme, palette, compact, selected, onSelect, onOpen }: CardProps) {
+export function Card({ row, now, theme, palette, compact, selected, reply, workers, onSelect, onOpen }: CardProps) {
   const m = compact ? METRICS.phone : METRICS.desktop;
-  const facts = cardFacts(row);
+  const facts = cardFacts(row, reply);
   const { colors } = theme;
   const [hover, setHover] = useState({ body: false, foot: false, button: false });
   const [focused, setFocused] = useState(false);
@@ -121,6 +122,10 @@ export function Card({ row, now, theme, palette, compact, selected, onSelect, on
       {facts.turn && <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
         <View style={iconCell}><Icon name={facts.turn.icon} size={12} color={colors.foregroundMuted} /></View>
         <Text numberOfLines={3} style={[text(13, 18, colors.foreground), { flex: 1 }]}>{facts.turn.text}</Text>
+      </View>}
+      {workers && <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+        <View style={iconCell}><Icon name="Network" size={12} color={colors.foregroundMuted} /></View>
+        <Text numberOfLines={2} style={[text(m.small, m.smallLine, colors.foreground), { flex: 1 }]}>{workers}</Text>
       </View>}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, rowGap: 6, marginTop: m.gap }}>
         <Pill label={row.status} theme={theme} palette={palette} m={m} tint={row.status === '진행' || row.status === '대기' || row.status === '알 수 없음' ? undefined : colors[TONE[row.status].color]} />
@@ -151,12 +156,12 @@ export function Card({ row, now, theme, palette, compact, selected, onSelect, on
 }
 
 /** Better Paseo의 빈 상태: 점선 hairline 상자, 아이콘 20, 제목, 흐린 안내. */
-export function LaneEmpty({ lane, theme, narrow }: { lane: Lane; theme: Theme; narrow?: boolean }) {
+export function LaneEmpty({ empty, theme, narrow }: { empty: Lane['empty']; theme: Theme; narrow?: boolean }) {
   const { colors } = theme;
   return <View style={{ alignItems: 'center', gap: 8, paddingVertical: 28, paddingHorizontal: narrow ? 16 : 20, marginTop: narrow ? 28 : 12,
     borderWidth: HAIR, borderStyle: 'dashed', borderColor: colors.border, borderRadius: 8 }}>
-    <Icon name={lane.empty.icon} size={20} color={colors.foregroundMuted} />
-    <Text style={{ alignSelf: 'stretch', textAlign: 'center', fontSize: narrow ? 14 : 16, fontWeight: '600', color: colors.foreground }}>{lane.empty.title}</Text>
-    <Text style={{ alignSelf: 'stretch', textAlign: 'center', fontSize: 12, lineHeight: 16, color: colors.foregroundMuted }}>{lane.empty.hint}</Text>
+    <Icon name={empty.icon} size={20} color={colors.foregroundMuted} />
+    <Text style={{ alignSelf: 'stretch', textAlign: 'center', fontSize: narrow ? 14 : 16, fontWeight: '600', color: colors.foreground }}>{empty.title}</Text>
+    <Text style={{ alignSelf: 'stretch', textAlign: 'center', fontSize: 12, lineHeight: 16, color: colors.foregroundMuted }}>{empty.hint}</Text>
   </View>;
 }

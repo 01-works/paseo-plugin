@@ -2,7 +2,7 @@ import { Icon } from '@getpaseo/plugin/client/ui';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { StatusRow } from '../shared/status';
-import { ITEM, itemProgress, reportAge, resumeText, turnEndText, type BoardColors } from './board-model';
+import { ITEM, itemProgress, reportAge, resumeText, turnEndText, workerStatus, type BoardColors, type Worker } from './board-model';
 import { METRICS, OpenButton, Pill, ProgressBar, StatusIcon, WarningRule, type Theme } from './board-parts';
 
 const HAIR = StyleSheet.hairlineWidth;
@@ -25,12 +25,13 @@ function Section({ title, summary, theme, children }: { title: string; summary?:
 }
 
 /**
- * 상세 카드: 상태 행(표식·상태·보고 경과·닫기) → 제목 14/600 → 현황 한 줄(headline) → chip 행 → 감독 열기 → 주 블록
+ * 상세 카드: 상태 행(표식·상태·보고 경과·닫기) → 제목 14/600 → 지금 하는 일(headline·마지막 응답)·작업자 목록 → chip 행 → 감독 열기 → 주 블록
  * (미결 결정이 있으면 경고색 구분선 아래 결정, 없으면 턴 종료 요약) → 구역(턴 종료·항목·비고·기록).
  * 사이드바에서는 둥근 12 카드로 감싸고, host Modal 안에서는 틀 없이 그린다. 결정 응답 버튼은 범위 밖.
  */
-export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
-  row: StatusRow; now: number; theme: Theme; palette: BoardColors; onOpen?: () => void; onClose?: () => void; framed?: boolean;
+export function Detail({ row, now, theme, palette, reply, workers, onOpenAgent, onOpen, onClose, framed }: {
+  row: StatusRow; now: number; theme: Theme; palette: BoardColors; reply?: string; workers: readonly Worker[];
+  onOpenAgent?: (agentId: string) => void; onOpen?: () => void; onClose?: () => void; framed?: boolean;
 }) {
   const { colors } = theme;
   const report = row.state?.report;
@@ -58,7 +59,13 @@ export function Detail({ row, now, theme, palette, onOpen, onClose, framed }: {
         </Pressable>}
       </View>
       <Text selectable style={{ marginTop: 2, fontSize: 14, lineHeight: 20, fontWeight: '600', color: colors.foreground }}>{row.title}</Text>
-      {report?.headline && <Text selectable style={{ ...body, marginTop: 4 }}>{report.headline}</Text>}
+      {(report?.headline || reply) && <Text selectable style={{ ...body, marginTop: 4 }}>{report?.headline || reply}</Text>}
+      {workers.map(worker => <Pressable key={worker.id} accessibilityRole="button" accessibilityLabel={`작업자 ${worker.title || worker.id}, ${workerStatus(worker.status)}, 열기`}
+        disabled={!onOpenAgent} onPress={() => onOpenAgent?.(worker.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 26 }}>
+        <Icon name="Network" size={12} color={colors.foregroundMuted} />
+        <Text numberOfLines={1} style={{ ...body, flex: 1 }}><Text style={{ color: colors.foregroundMuted }}>{workerStatus(worker.status)} · </Text>{worker.title || worker.id}</Text>
+        {onOpenAgent && <Icon name="ArrowUpRight" size={12} color={colors.foregroundMuted} />}
+      </Pressable>)}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         {chip(`항목 ${progress.done}/${progress.total}`, 'ListTodo')}
         {progress.deferred > 0 && chip(`연기 ${progress.deferred}`, 'CircleSlash')}

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { loadStatus } from '../client/status-data';
 
-it('감독만 archive 포함 라벨 조회하고 자식은 미보관 running 조회로 분리·페이지 처리한다', async () => {
+it('감독만 archive 포함 라벨 조회하고 자식은 미보관 전체 조회로 분리·페이지 처리한다', async () => {
   const agent = { id: 'a', title: '목표', cwd: '/lane', status: 'idle', labels: { 'yw.role': 'supervisor' } };
   const list = vi.fn(async (options: { filter: { labels?: Record<string, string>; includeArchived: boolean; statuses?: string[] }; page: { cursor?: string } }) => {
     if (options.filter.includeArchived) {
@@ -10,7 +10,7 @@ it('감독만 archive 포함 라벨 조회하고 자식은 미보관 running 조
         ? { entries: [{ agent: { ...agent, id: 'old', archivedAt: '2026-11-18' } }], pageInfo: { hasMore: false, nextCursor: null } }
         : { entries: [{ agent }], pageInfo: { hasMore: true, nextCursor: 'supervisors2' } };
     }
-    expect(options.filter.statuses).toEqual(['running']);
+    expect(options.filter.statuses).toBeUndefined();
     expect(options.filter.labels).toBeUndefined();
     return { entries: [{ agent: { ...agent, id: 'child', status: 'running', labels: { 'paseo.parent-agent-id': 'a' } } }], pageInfo: { hasMore: false, nextCursor: null } };
   });
@@ -21,4 +21,26 @@ it('감독만 archive 포함 라벨 조회하고 자식은 미보관 running 조
   expect(result.rows).toHaveLength(1);
   expect(list).toHaveBeenCalledTimes(3);
   expect(list.mock.calls.some(([options]) => options.page.cursor === 'supervisors2')).toBe(true);
+});
+
+it('마지막 응답은 headline 없는 감독만, updatedAt이 바뀔 때만 읽고 closed는 읽지 않는다', async () => {
+  const agents = [
+    { id: 'idle', title: 'a', cwd: '/a', status: 'idle', updatedAt: 't1', labels: { 'yw.role': 'supervisor' } },
+    { id: 'closed', title: 'b', cwd: '/b', status: 'closed', updatedAt: 't1', labels: { 'yw.role': 'supervisor' } },
+    { id: 'head', title: 'c', cwd: '/c', status: 'idle', updatedAt: 't1', labels: { 'yw.role': 'supervisor' } },
+  ];
+  const refetch = vi.fn(async () => ({ entries: [{ item: { type: 'assistant_message', text: '**검증** 배정함' } }, { item: { type: 'tool_call' } }] }));
+  const paseo = { agents: { list: async () => ({ entries: agents.map(agent => ({ agent })), pageInfo: { hasMore: false, nextCursor: null } }),
+    ref: () => ({ timeline: { refetch } }) }, hosts: { list: async () => ({ self: { serverId: 's' } }) } } as never;
+  const report = { items: [{ id: 'g', summary: '목표', status: 'open' as const }], turnEnd: { kind: 'next_action' as const, detail: 'x' }, decisions: [] };
+  const read = async () => ({ lanes: [{ laneDir: '/c', state: { version: 1 as const, agentId: 'head', serverId: 's', title: 'c', reportedAt: '2026-11-18T00:00:00Z', report: { ...report, headline: '보고함' } } }], turns: [] });
+  const first = await loadStatus(paseo, read);
+  expect(first.reply).toEqual({ idle: '검증 배정함' });
+  expect(refetch).toHaveBeenCalledTimes(1);
+  expect(refetch).toHaveBeenCalledWith({ direction: 'tail', projection: 'projected', limit: 40 });
+  await loadStatus(paseo, read);
+  expect(refetch).toHaveBeenCalledTimes(1);
+  agents[0].updatedAt = 't2';
+  await loadStatus(paseo, read);
+  expect(refetch).toHaveBeenCalledTimes(2);
 });

@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePaseo, useRpc, type PluginScreenProps, type PluginSidebarItemProps } from '@getpaseo/plugin/client';
-import { Icon, Modal, SidebarRow } from '@getpaseo/plugin/client/ui';
+import { Modal, SidebarRow } from '@getpaseo/plugin/client/ui';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { listReportsRpc } from '../shared/report';
 import type { StatusRow } from '../shared/status';
-import { boardColors, boardLayout, defaultLane, groupLanes, keepSelection, keepTab, LANE, LANE_MARK, SIDEBAR, todoBand, TONE, type LaneId } from './board-model';
+import { boardColors, boardLayout, groupLanes, keepSelection, keepTab, LANE, LANE_MARK, SIDEBAR, workersOf, type LaneId } from './board-model';
 import { Detail } from './board-detail';
-import { Card, LaneEmpty, OpenButton, StatusIcon } from './board-parts';
+import { Card, LaneEmpty, StatusIcon } from './board-parts';
 import { loadStatus } from './status-data';
 
 const HAIR = StyleSheet.hairlineWidth;
@@ -48,8 +48,12 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
     ? () => { if (row.agent && row.canOpen) navigation.openAgent({ agentId: row.agent.id, serverId: query.data!.serverId }); }
     : undefined;
   const select = (row: StatusRow) => setSelectedKey(key => key === row.key && !phone ? null : row.key);
-  const card = (row: StatusRow) => <Card key={row.key} row={row} now={now} theme={theme} palette={palette} compact={phone}
-    selected={row.key === selectedKey} onSelect={() => select(row)} onOpen={openFor(row)} />;
+  // 지금 하는 일: 마지막 응답 첫 줄(감독 id별)과 미보관 자식 작업자.
+  const reply = (row: StatusRow) => row.agent && query.data?.reply[row.agent.id];
+  const workers = (row: StatusRow) => row.agent && query.data ? workersOf(query.data.agents, row.agent.id, query.data.serverId) : null;
+  const openAgent = (agentId: string) => navigation?.openAgent({ agentId, serverId: query.data!.serverId });
+  const card = (row: StatusRow) => <Card key={row.key} row={row} now={now} theme={theme} palette={palette} compact={phone} reply={reply(row) || undefined}
+    workers={workers(row)?.line} selected={row.key === selectedKey} onSelect={() => select(row)} onOpen={openFor(row)} />;
 
   const lanes = () => <ScrollView horizontal style={{ flex: 1 }}
     contentContainerStyle={{ gap: LANE.gap, paddingLeft: LANE.edge, paddingRight: LANE.edge, paddingTop: 4, paddingBottom: 12 }}>
@@ -61,14 +65,14 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
         <Text style={{ fontSize: 14, color: colors.foregroundMuted, fontVariant: ['tabular-nums'] }}>{group.rows.length}</Text>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingLeft: 8, paddingRight: WEB ? 4 : 8, paddingTop: WEB ? 4 : 2, paddingBottom: 8, gap: 12 }}>
-        {group.rows.length ? group.rows.map(card) : <LaneEmpty lane={group} theme={theme} narrow />}
+        {group.rows.length ? group.rows.map(card) : <LaneEmpty empty={group.empty} theme={theme} narrow />}
       </ScrollView>
     </View>)}
   </ScrollView>;
 
   // 폰: 패널 색 트랙 위의 세그먼트. 고른 칸은 카드처럼 올라오고, 결정 레인의 개수는 경고색으로 표시한다.
   const tabs = () => {
-    const current = groups.find(group => group.id === (tab ?? defaultLane(groups)))!;
+    const current = groups.find(group => group.id === (tab ?? keepTab(null, groups) ?? 'decision'))!;
     return <View style={{ flex: 1 }}>
       <View style={{ borderBottomWidth: HAIR, borderBottomColor: colors.border, backgroundColor: palette.panel }}>
         <ScrollView horizontal accessibilityRole="tablist" showsHorizontalScrollIndicator={false}
@@ -89,40 +93,14 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
         </ScrollView>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 12 }}>
-        {current.rows.length ? current.rows.map(card) : <LaneEmpty lane={current} theme={theme} />}
+        {current.rows.length ? current.rows.map(card) : <LaneEmpty empty={current.empty} theme={theme} />}
       </ScrollView>
     </View>;
   };
 
-  const empty = <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-    <View style={{ width: '100%', maxWidth: 480, alignItems: 'center', gap: 8, paddingVertical: 28, paddingHorizontal: 20,
-      borderWidth: HAIR, borderStyle: 'dashed', borderColor: colors.border, borderRadius: 8 }}>
-      <Icon name="ListChecks" size={20} color={colors.foregroundMuted} />
-      <Text style={{ fontSize: 16, fontWeight: '600', color: colors.foreground, textAlign: 'center' }}>이 호스트에 감독 보고가 없습니다</Text>
-      <Text style={{ ...muted, lineHeight: 16, textAlign: 'center' }}>작업 대화에서 /supervise &lt;목표&gt;로 감독을 시작하세요.</Text>
-    </View>
-  </View>;
-
-  // "지금 할 일" 띠: 레인별 개수 한 줄과 사람이 처리할 행(최대 5개, 폰 3개). 줄을 누르면 상세, 끝의 열기는 감독 대화로.
-  const band = (() => {
-    const { counts, items, more } = todoBand(rows, now, phone ? 3 : 5);
-    return <View style={{ marginHorizontal: LANE.edge, marginBottom: 8, paddingVertical: 8, paddingHorizontal: 12, gap: 6, borderRadius: 8,
-      borderWidth: HAIR, borderColor: colors.border, backgroundColor: palette.panel }}>
-      <Text style={muted}>{counts.map((count, index) => <Text key={count.id} style={count.count && (count.id === 'decision' || count.id === 'attention')
-        ? { color: colors[TONE[LANE_MARK[count.id]].color], fontWeight: '600' } : undefined}>{index ? ' · ' : ''}{count.label} {count.count}</Text>)}</Text>
-      {items.map(({ row, line }) => <View key={row.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${row.status}, ${row.title}: ${line}`} onPress={() => setSelectedKey(row.key)}
-          style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <StatusIcon status={row.status} theme={theme} size={14} />
-          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: colors.foreground }}>
-            <Text style={{ fontWeight: '500' }}>[{row.status}] {row.title}</Text><Text style={{ color: colors.foregroundMuted }}> — {line}</Text>
-          </Text>
-        </Pressable>
-        <OpenButton row={row} theme={theme} palette={palette} onOpen={openFor(row)} height={24} label="열기" />
-      </View>)}
-      {more > 0 ? <Text style={muted}>외 {more}개</Text> : !items.length && <Text style={muted}>지금 처리할 일이 없습니다</Text>}
-    </View>;
-  })();
+  const empty = <View style={{ flex: 1, justifyContent: 'center', padding: 16 }}><View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }}>
+    <LaneEmpty empty={{ icon: 'ListChecks', title: '이 호스트에 감독 보고가 없습니다', hint: '작업 대화에서 /supervise <목표>로 감독을 시작하세요.' }} theme={theme} />
+  </View></View>;
 
   const body = query.isPending ? <Text style={{ ...muted, paddingHorizontal: 16 }}>감독 상태를 불러옵니다.</Text>
     : !query.data ? null : !rows.length ? empty : width === null ? null : phone ? tabs() : lanes();
@@ -137,16 +115,18 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
     {query.error && <Text accessibilityRole="alert" style={{ color: colors.statusDanger, fontSize: 13, paddingHorizontal: 16, paddingBottom: 8 }}>
       상태를 갱신하지 못했습니다{query.data ? '(마지막 결과 표시 중)' : ''}: {query.error.message}</Text>}
     <View style={{ flex: 1, minHeight: 0, flexDirection: 'row' }}>
-      <View style={{ flex: 1, minWidth: 0 }}>{rows.length > 0 && width !== null && band}{body}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>{body}</View>
       {selected && inline && sidebar > 0 && <View style={{ width: sidebar, marginRight: SIDEBAR.gap, paddingTop: 4, paddingBottom: 12 }}>
         <ScrollView style={{ flex: 1 }}>
-          <Detail row={selected} now={now} theme={theme} palette={palette} onOpen={openFor(selected)} onClose={() => setSelectedKey(null)} framed />
+          <Detail row={selected} now={now} theme={theme} palette={palette} reply={reply(selected) || undefined} workers={workers(selected)?.all ?? []}
+            onOpenAgent={navigation ? openAgent : undefined} onOpen={openFor(selected)} onClose={() => setSelectedKey(null)} framed />
         </ScrollView>
       </View>}
     </View>
     {selected && !inline && width !== null && <Modal title="감독 상세" open onOpenChange={open => { if (!open) setSelectedKey(null); }}>
       <Modal.Content contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 16, gap: 0 }}>
-        <Detail row={selected} now={now} theme={theme} palette={palette} onOpen={openFor(selected)} />
+        <Detail row={selected} now={now} theme={theme} palette={palette} reply={reply(selected) || undefined} workers={workers(selected)?.all ?? []}
+            onOpenAgent={navigation ? openAgent : undefined} onOpen={openFor(selected)} />
       </Modal.Content>
     </Modal>}
   </View>;

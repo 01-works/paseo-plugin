@@ -29,19 +29,13 @@ export const TONE: Record<Status, { color: Tone; shape: Shape }> = {
   '대기': { color: 'foregroundMuted', shape: 'hourglass' }, '진행': { color: 'accent', shape: 'running' }, '완료': { color: 'statusSuccess', shape: 'check' },
 };
 export const LANE_MARK: Record<LaneId, Status> = { decision: '사용자 결정', attention: '미보고', waiting: '대기', running: '진행', done: '완료' };
-export const laneOf = (status: Status): LaneId => LANES.find(lane => lane.statuses.includes(status))!.id;
 
 /** 입력 순서(rank·제목 정렬)를 유지한 채 레인별로 나눈다. 빈 레인도 돌려준다. */
 export function groupLanes<Row extends Pick<StatusRow, 'status'>>(rows: readonly Row[]) {
   return LANES.map(lane => ({ ...lane, rows: rows.filter(row => lane.statuses.includes(row.status)) }));
 }
-/** 좁은 화면의 첫 탭: 사람이 볼 레인을 우선하고, 모두 비면 사용자 결정. */
-export function defaultLane(groups: readonly { id: LaneId; rows: readonly unknown[] }[]): LaneId {
-  return groups.find(group => group.rows.length)?.id ?? 'decision';
-}
-/** 첫 카드가 보인 갱신에서 탭을 한 번 정하고, 이후 갱신에서는 (레인이 비어도) 유지한다. */
 export function keepTab(tab: LaneId | null, groups: readonly { id: LaneId; rows: readonly unknown[] }[]): LaneId | null {
-  return tab ?? (groups.some(group => group.rows.length) ? defaultLane(groups) : null);
+  return tab ?? groups.find(group => group.rows.length)?.id ?? null;
 }
 /** 갱신 결과에서 사라진 카드는 선택을 지워, 같은 키가 돌아와도 상세가 저절로 열리지 않게 한다. */
 export const keepSelection = (key: string | null, rows: readonly { key: string }[]) => key !== null && rows.some(row => row.key === key) ? key : null;
@@ -62,8 +56,6 @@ export const RESUME: Record<NonNullable<Report['turnEnd']['resume']>['type'], st
 export const ITEM: Record<Report['items'][number]['status'], { label: string; icon: string }> = {
   open: { label: '열림', icon: 'Circle' }, done: { label: '완료', icon: 'CircleCheck' }, deferred: { label: '연기', icon: 'CircleSlash' } };
 export const turnEndText = (report?: Report) => report ? `${TURN_END[report.turnEnd.kind]} · ${report.turnEnd.detail}` : '아직 보고하지 않았습니다.';
-/** 감독이 쓴 현황 한 문장. 없는 기존 보고는 턴 종료 한 줄로 대체한다. */
-export const headlineText = (report?: Report) => report?.headline ?? turnEndText(report);
 export const resumeText = (report?: Report) => report?.turnEnd.resume ? `${RESUME[report.turnEnd.resume.type]} · ${report.turnEnd.resume.ref}` : undefined;
 export const reportAge = (row: Pick<StatusRow, 'state'>, now: number) => row.state ? `보고 ${elapsed(row.state.reportedAt, now)}` : '보고 없음';
 
@@ -71,7 +63,7 @@ export const reportAge = (row: Pick<StatusRow, 'state'>, now: number) => row.sta
  * 카드 한 장의 내용. Better Paseo 카드의 계층(제목 행 → pill 행 → 구분선 블록 → 하단 시각)에 감독 데이터를 맞춘다.
  * 사용자 결정은 Better Paseo의 권한 요청 구역처럼 경고색 구분선 아래에 질문을 둔다.
  */
-export function cardFacts(row: Pick<StatusRow, 'state' | 'status' | 'note'>) {
+export function cardFacts(row: Pick<StatusRow, 'state' | 'status' | 'note'>, reply?: string) {
   const report = row.state?.report;
   const progress = itemProgress(report);
   const pills: { key: string; icon?: string; label: string; tone?: Tone }[] = [];
@@ -81,7 +73,9 @@ export function cardFacts(row: Pick<StatusRow, 'state' | 'status' | 'note'>) {
   if (resume) pills.push({ key: 'resume', icon: 'Clock', label: `${RESUME[resume.type]} · ${resume.ref}` });
   const decisions = report?.decisions ?? [];
   return { progress, pills,
-    turn: report ? { icon: TURN_ICON[report.turnEnd.kind], text: headlineText(report) } : null,
+    // 지금 하는 일: 감독이 쓴 headline → 마지막 응답 첫 줄 → 턴 종료 한 줄.
+    turn: report?.headline ? { icon: TURN_ICON[report.turnEnd.kind], text: report.headline } : reply ? { icon: 'MessageSquareText', text: reply }
+      : report ? { icon: TURN_ICON[report.turnEnd.kind], text: turnEndText(report) } : null,
     decision: decisions.length ? { question: decisions[0].question, count: decisions.length } : null,
     note: row.note ? { text: row.note, danger: row.status === '멈춤' } : null };
 }
@@ -139,23 +133,26 @@ export function boardLayout(width: number | null, compact: boolean, detailOpen =
   return { phone: compact, inline, sidebar, laneWidth: Math.floor(laneWidth) };
 }
 
-// "지금 할 일" 띠: 레인별 개수 한 줄과, 사람이 처리할 행(사용자 결정 → 미보고·멈춤·알 수 없음)의 핵심 한 줄.
-const SUMMARY: Record<LaneId, string> = { decision: '결정 대기', attention: '확인 필요', waiting: '대기', running: '진행', done: '완료' };
-export function todoLine(row: Pick<StatusRow, 'status' | 'state' | 'note'>, now: number): string {
-  const report = row.state?.report;
-  const decision = report?.decisions[0];
-  if (decision) return `${decision.question}${decision.recommendation ? ` · 권장: ${decision.recommendation}` : ''}`;
-  if (report?.headline) return report.headline;
-  const age = row.state ? elapsed(row.state.reportedAt, now) : null;
-  if (row.status === '미보고') return `마지막 턴 종료 후 보고 없음${age ? ` · 마지막 보고 ${age}` : ''}`;
-  if (row.status === '멈춤') return row.note ?? '다음 조치가 남았는데 실행 중인 작업자 없음';
-  // 보고는 있으나 턴 시각만 모르는 경우도 있어, 그때는 보고 경과를 함께 쓴다.
-  if (row.status === '알 수 없음') return age ? `턴 종료 시각을 알 수 없음 · 보고 ${age}` : '아직 보고 기록 없음';
-  return turnEndText(report);
+
+/** 마지막 응답의 첫 1~2줄을 마크다운 없이 120자 안으로. 코드 블록·표·빈 줄은 건너뛴다. */
+export function replyLine(text: string): string | undefined {
+  const lines = text.replace(/```[\s\S]*?(```|$)/g, '').split('\n')
+    .map(line => line.replace(/^\s*(#+|>|[-*+]|\d+[.)])\s+/, '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\*\*|__|~~|`|\*/g, '').trim())
+    .filter(line => line && !line.startsWith('|'));
+  const joined = lines.slice(0, 2).join(' ');
+  return joined ? (joined.length > 120 ? `${joined.slice(0, 119)}…` : joined) : undefined;
 }
-/** statusRows가 이미 rank 순이므로 결정·확인 필요 레인만 거른다. */
-export function todoBand<Row extends Pick<StatusRow, 'key' | 'status' | 'state' | 'note'>>(rows: readonly Row[], now: number, limit: number) {
-  const todo = rows.filter(row => ['decision', 'attention'].includes(laneOf(row.status)));
-  return { counts: groupLanes(rows).map(group => ({ id: group.id, label: SUMMARY[group.id], count: group.rows.length })),
-    items: todo.slice(0, limit).map(row => ({ row, line: todoLine(row, now) })), more: Math.max(0, todo.length - limit) };
+
+// 작업자: 감독의 미보관 자식(같은 호스트). 실행 중 → 대기 → 오류 순으로 세고, 실행 중 제목을 먼저 보여 준다.
+export type Worker = { id: string; title: string | null; status: string; archivedAt?: string | null; labels: Record<string, string> };
+const WORKER: Record<string, string> = { running: '실행 중', initializing: '실행 중', idle: '대기', closed: '대기', error: '오류' };
+export const workerStatus = (status: string) => WORKER[status] ?? status;
+export function workersOf(agents: readonly Worker[], supervisorId: string, serverId: string) {
+  const all = agents.filter(agent => !agent.archivedAt && agent.labels['paseo.parent-agent-id'] === supervisorId
+    && (!agent.labels['paseo.parent-server-id'] || agent.labels['paseo.parent-server-id'] === serverId));
+  const order = ['실행 중', '대기', '오류'];
+  all.sort((a, b) => order.indexOf(workerStatus(a.status)) - order.indexOf(workerStatus(b.status)));
+  const counts = order.map(label => [label, all.filter(agent => workerStatus(agent.status) === label).length] as const).filter(([, n]) => n);
+  const running = all.filter(agent => workerStatus(agent.status) === '실행 중').slice(0, 2).map(agent => agent.title || agent.id);
+  return { all, line: all.length ? `${counts.map(([label, n]) => `${label} ${n}`).join(' · ')}${running.length ? ` — ${running.join(', ')}` : ''}` : null };
 }
