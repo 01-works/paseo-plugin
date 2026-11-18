@@ -1,22 +1,22 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { laneName, tasksMarkdown, type LaneRecord } from '../shared/lane';
+import { resolveStateHome } from './files';
 
 export class LaneStore {
   private readonly records = new Map<string, { path: string; record: LaneRecord & { originId: string } }>();
+  private readonly stateHome: string;
   constructor(
-    private readonly stateHome = process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'),
+    stateHome?: string,
     private readonly suffix = () => randomBytes(2).toString('hex'),
-  ) {}
+  ) { this.stateHome = resolveStateHome(stateHome); }
   get(name: string) {
     const entry = this.records.get(name);
     if (!entry) throw new Error('이 실행에서 만든 lane이 아닙니다.');
     return entry;
   }
   async create(record: LaneRecord & { originId: string }, now = new Date()) {
-    if (!isAbsolute(this.stateHome)) throw new Error('XDG_STATE_HOME은 절대 경로여야 합니다.');
     const base = join(this.stateHome, 'yw-supervisor');
     await mkdir(base, { recursive: true, mode: 0o700 });
     for (let attempt = 0; attempt < 32; attempt++) {

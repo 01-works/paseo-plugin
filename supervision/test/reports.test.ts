@@ -27,7 +27,7 @@ describe('lane 상태 파일', () => {
     for (const path of ['goal', f.base, `${f.base}-other`, join(f.base, '..', 'outside')]) await expect(f.store.lane('/code', path)).rejects.toThrow();
     await symlink(f.root, join(f.base, 'escape'));
     await expect(f.store.lane('/code', join(f.base, 'escape'))).rejects.toThrow('심볼릭 링크');
-    await expect(new ReportStore('relative').lane(f.lane)).rejects.toThrow('절대 경로');
+    expect(() => new ReportStore('relative')).not.toThrow();
   });
   it('원자적으로 대체하며 제한된 권한으로 저장한다', async () => {
     const f = await fixture(); const path = join(f.lane, 'supervision-state.json');
@@ -95,6 +95,17 @@ describe('lane 상태 파일', () => {
     await rm(join(f.lane, 'tasks.md')); await f.store.write(f.lane, undefined, state());
     await rm(join(f.lane, 'supervision-state.json'));
     await expect(f.store.write(f.lane, undefined, state())).rejects.toThrow('소유');
+  });
+
+  it('손상 상태는 소유 확인 후 다음 쓰기에서 격리하고 새 보고를 저장한다', async () => {
+    const f = await fixture(); const path = join(f.lane, 'supervision-state.json');
+    await writeFile(path, '{');
+    await expect(f.store.write(f.lane, undefined, { ...state(), agentId: 'other' })).rejects.toThrow('소유');
+    expect(await readFile(path, 'utf8')).toBe('{');
+    await f.store.write(f.lane, undefined, state());
+    const quarantined = (await readdir(f.lane)).filter(name => name.endsWith('.corrupt'));
+    expect(quarantined).toHaveLength(1); expect(await readFile(join(f.lane, quarantined[0]), 'utf8')).toBe('{');
+    expect((await f.store.list())[0].state?.agentId).toBe('supervisor');
   });
 
 });

@@ -11,7 +11,7 @@
 
 ## 자동 검사
 
-CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 12개 파일 90개 테스트를 통과했습니다(기존 47개 + 신규 43개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
+CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 13개 파일 103개 테스트를 통과했습니다(기존 47개 + 신규 56개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
 
 새 검사는 완료의 열린 항목 안내, 완료/연기 근거, 대기 재개 조건, 중복 ID·빈 근거, JSON schema 변환, Claude·Codex 라벨/interactive 선별, 신뢰된 호출자 ID·호스트 저장, 읽기 전용 RPC, 경로 탈출·접두사 혼동·외부 symlink, 동시 쓰기 중 완전한 JSON, 파일 0600, 취소 시 이전 상태·임시 파일 정리, 손상·symlink 파일 격리, 미보고·정렬·호스트·archive 판정을 포함합니다. 파일 검사는 임시 디렉터리만 사용합니다.
 
@@ -23,13 +23,19 @@ CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단�
 
 두 SDK에 공통인 `agent.turn.before/after`에서 시각을 기록합니다. 영속 위치는 `${XDG_STATE_HOME:-~/.local/state}/paseo-supervision/turns/<agentId>.json`이며 파일 0600·원자 교체입니다. before는 현재 시작 시각을 기록하고 after는 그 값을 마지막 종료 턴의 시작 시각으로 옮깁니다. 콜백 도착 때 잡은 시작 시각을 사용하며 ID 비교나 사용자 메시지 시각을 사용하지 않습니다. 에이전트별로 알림 처리를 직렬화합니다. 재시작 사이의 before/after와 완료된 기록 보존을 테스트합니다. after만 관측했거나 파일이 없거나 손상된 경우 시작 시각은 null, 화면은 “알 수 없음”입니다.
 
-소스 emit 확인: [0.16.1 lifecycle](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/lifecycle/index.ts)의 `publishAgentStream`은 `turn_started`를 before, `turn_completed/failed/canceled`를 after로 전달합니다. [0.15.4 lifecycle](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/plugins/lifecycle/index.ts)도 같습니다. 양 버전 [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 accepted-turn 경계는 프롬프트 출처와 무관하게 turn_started를 발행하며, `dispatchStream`은 internal이 아닌 에이전트의 비-timeline 이벤트를 lifecycle로 전달합니다. 따라서 에이전트 메시지로 새 턴이 시작된 경우도 같은 emit 경로입니다. 실행 중인 턴에 steer된 입력은 새로운 턴 시작으로 세지 않습니다. 실제 Claude/Codex 입력별 발화는 설치 승인 전이라 미확인입니다.
+소스 emit 확인: [0.16.1 lifecycle](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/lifecycle/index.ts)의 `publishAgentStream`은 `turn_started`를 before, `turn_completed/failed/canceled`를 after로 전달합니다. [0.15.4 lifecycle](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/plugins/lifecycle/index.ts)도 같습니다. 양 버전 [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 accepted-turn 경계는 프롬프트 출처와 무관하게 turn_started를 발행하며, `dispatchStream`은 internal이 아닌 에이전트의 비-timeline 이벤트를 lifecycle로 전달합니다. 따라서 에이전트 메시지로 새 턴이 시작된 경우도 같은 emit 경로입니다. **한계:** 실행 중인 턴에 steer된 입력은 새로운 턴 시작을 만들지 않습니다. 보고 이후 입력이 추가되어도 같은 턴 안에서 처리되면 미보고를 탐지하지 못할 수 있습니다. 실제 Claude/Codex 입력별 발화는 설치 승인 전이라 미확인입니다.
 
-마지막 종료 턴 시작이 보고보다 늦으면 idle 상태의 미보고입니다. 같은 턴의 최종 응답·도구 결과·idle 전환으로는 뒤집히지 않습니다. running은 결정·waiting 보고보다 우선해 진행, 결정 rank는 idle에만 적용합니다. idle next_action은 같은 호스트의 자식이 running일 때 진행, 아니면 멈춤입니다. archive 감독은 행에서 제외하고 파일은 유지합니다. 감독 이외의 자식도 SDK 페이지 목록으로 조회합니다.
+마지막 종료 턴 시작이 보고보다 늦으면 idle·closed 상태의 미보고입니다. 미보고는 이전 보고의 사용자 결정·자식 진행보다 우선합니다. 같은 턴의 최종 응답·도구 결과·idle 전환으로는 뒤집히지 않습니다. running은 결정·waiting 보고보다 우선해 진행, closed는 idle과 같은 판정·순위를 적용합니다. 결정 rank는 idle·closed에만 적용합니다. next_action은 같은 호스트의 자식이 running일 때 진행, 아니면 멈춤입니다. archive 감독은 행에서 제외하고 파일은 유지합니다. 감독은 라벨 필터(includeArchived=true)로만, 자식 실행은 includeArchived=false·statuses=running으로만 페이지 조회합니다. archive 전체 목록을 요청하지 않는 계약을 테스트합니다. 원격 호스트 자식은 판정하지 않습니다.
 
 호스트 확인: 상류 [surface-screen](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/app/src/plugins/surface-screen.tsx)은 `host.id = serverId`로 만듭니다. 구현은 표시용 host.id를 가정하지 않고 선택된 API의 SDK `hosts.list().self.serverId`를 상태 판정·이동에 사용하며, 페이지 조회와 자식 판정도 이 값을 쓰는 테스트가 있습니다. 실제 앱에서 두 값을 동시에 readback하는 검증은 미확인입니다.
 
 reload는 [runtime의 notifySessionOpenChange](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/runtime.ts)에서 agent 필터 없이 session-open 변경을 통지하므로 영향 범위는 데몬 전체입니다. 실행 중 턴을 interrupt하지 않는다는 것은 기존 attachment를 계속 쓸 수 있다는 뜻이 아닙니다. 기존 도구 연결이 폐기된 뒤 호출은 실패할 수 있고 다음 유휴 프롬프트에서 재열립니다.
+
+## 환경·손상 파일 복구
+
+모든 저장소(LaneStore·ReportStore·TurnStore)는 같은 XDG 경로 검증을 사용합니다. 상대 경로·NUL 포함·기존 비디렉터리·stat 오류는 `~/.local/state`로 대체하며 없는 절대 경로는 생성 가능한 경로로 유지합니다. 잘못된 설정으로 contribute나 `/supervise`가 함께 실패하지 않는지 임시 home으로 검사합니다. OS 환경 변수는 NUL에서 잘리므로 NUL 검사는 helper 직접 입력으로 수행합니다.
+
+손상된 JSON·스키마는 다음 쓰기에 `.UUID.corrupt`로 격리하고 새 보고·턴 기록을 시작합니다. 읽기 RPC는 그대로 오류/알 수 없음을 반환하고 파일을 변경하지 않습니다. 보고 복구는 tasks.md 소유 확인 이후에만 수행하며, 소유가 다른 호출은 손상 원본도 바꾸지 않습니다. 격리 원문 보존과 다음 before/after 복구를 테스트합니다.
 
 ## 실제 검증 경계
 

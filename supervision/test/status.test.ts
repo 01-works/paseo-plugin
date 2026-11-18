@@ -64,4 +64,17 @@ describe('목표별 목록 판정', () => {
     expect(elapsed('2026-11-18T00:00:00Z', Date.parse('2026-11-18T00:02:00Z'))).toBe('2분 전');
     expect(elapsed('2026-11-18T00:00:00Z', 0)).toBe('0초 전');
   });
+  it.each(['idle', 'closed'])('%s의 미보고는 과거 결정 대기·자식 진행보다 우선한다', status => {
+    const expired = [turn('a', '2026-11-18T00:00:01Z')];
+    expect(row(decide(state('a', 'user_decision')), agent('a', status), expired).status).toBe('미보고');
+    const child = { ...agent('child', 'running'), labels: { 'paseo.parent-agent-id': 'a' } };
+    expect(row(state('a'), agent('a', status), expired, [child]).status).toBe('미보고');
+  });
+  it.each(['waiting', 'done', 'next_action', 'user_decision'] as const)('closed는 %s 순위·판정에서 idle과 같다', kind => {
+    const report = kind === 'user_decision' ? decide(state('a', kind)) : state('a', kind);
+    const closed = row(report, agent('a', 'closed')); const idle = row(report, agent('a'));
+    expect([closed.status, closed.rank]).toEqual([idle.status, idle.rank]);
+    expect(closed.canOpen).toBe(true);
+  });
+
 });

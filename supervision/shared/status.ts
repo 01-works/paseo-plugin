@@ -16,18 +16,19 @@ export function statusRows(lanes: LaneState[], agents: Supervisor[], serverId: s
     if (agent) represented.add(agent.id);
     if (agent?.archivedAt) return;
     const foreign = !!state && state.serverId !== serverId;
-    const idle = agent?.status === 'idle';
+    const idle = agent?.status === 'idle' || agent?.status === 'closed';
     const ended = agent && turns.find(turn => turn.agentId === agent.id)?.lastEndedStartedAt;
     const missingReport = !!ended && (!state || Date.parse(ended) > Date.parse(state.reportedAt));
     const childRunning = !!agent && agents.some(child => !child.archivedAt && child.status === 'running'
       && child.labels['paseo.parent-agent-id'] === agent.id
       && (!child.labels['paseo.parent-server-id'] || child.labels['paseo.parent-server-id'] === serverId));
     const kind = state?.report.turnEnd.kind;
-    const stopped = !!error || foreign || !agent || ['error', 'closed'].includes(agent.status);
+    const stopped = !!error || foreign || !agent || agent.status === 'error';
     const status = agent?.status === 'running' ? '진행'
+      : stopped ? '멈춤' : missingReport ? '미보고'
       : idle && (state?.report.decisions.length || kind === 'user_decision') ? '사용자 결정'
-      : stopped ? '멈춤' : idle && kind === 'next_action' && childRunning ? '진행'
-      : missingReport ? '미보고' : idle && kind === 'next_action' ? '멈춤' : !ended ? '알 수 없음'
+      : idle && kind === 'next_action' && childRunning ? '진행'
+      : idle && kind === 'next_action' ? '멈춤' : !ended ? '알 수 없음'
       : kind === 'done' ? '완료' : kind === 'waiting' ? '대기' : '진행';
     const rank = { '사용자 결정': 0, '미보고': 1, '멈춤': 1, '알 수 없음': 1, '대기': 2, '진행': 3, '완료': 4 }[status];
     rows.push({ key, title: state?.title || agent?.title?.replace(/^감독 · /, '') || key.split('/').pop() || key,

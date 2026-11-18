@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TurnStore } from '../server/turns';
@@ -35,4 +35,14 @@ describe('영속 턴 시각', () => {
     expect((await store.list())[0].lastEndedStartedAt).toBe(before);
     await expect(store.record('../escape', 'before', before)).rejects.toThrow('ID');
   });
+  it('손상된 턴 파일은 다음 기록에서 격리하고 새 before/after로 복구한다', async () => {
+    const { root, store } = await fixture(); await store.record('a', 'before', before);
+    const directory = join(root, 'paseo-supervision', 'turns');
+    await writeFile(join(directory, 'a.json'), '{}');
+    await store.record('a', 'before', before); await store.record('a', 'after', after);
+    expect((await store.list())[0].lastEndedStartedAt).toBe(before);
+    const quarantined = (await readdir(directory)).filter(name => name.endsWith('.corrupt'));
+    expect(quarantined).toHaveLength(1); expect(await readFile(join(directory, quarantined[0]), 'utf8')).toBe('{}');
+  });
+
 });

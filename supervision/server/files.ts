@@ -1,6 +1,27 @@
-import { constants } from 'node:fs';
+import { constants, statSync } from 'node:fs';
 import { open, rename, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+
+export function resolveStateHome(value = process.env.XDG_STATE_HOME) {
+  const fallback = join(homedir(), '.local', 'state');
+  if (!value || !isAbsolute(value) || value.includes('\0')) return fallback;
+  try { if (!statSync(value).isDirectory()) return fallback; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return fallback; }
+  return value;
+}
+
+export async function readJson<T>(path: string, schema: { parse(value: unknown): T }, limit = 1024 * 1024, repair = false): Promise<T | null> {
+  const text = await readText(path, limit);
+  if (text === null) return null;
+  try { return schema.parse(JSON.parse(text)); }
+  catch (error) {
+    if (!repair) throw error;
+    await rename(path, `${path}.${randomUUID()}.corrupt`).catch(failure => { if (failure.code !== 'ENOENT') throw failure; });
+    return null;
+  }
+}
 
 export async function readText(path: string, limit = 1024 * 1024, firstLine = false): Promise<string | null> {
   let file;
