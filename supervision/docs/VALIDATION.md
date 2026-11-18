@@ -1,3 +1,28 @@
+# Supervision 0.2.0 상태 보고 검증
+
+2026-11-18 KST, `feat/supervision-status-report` 개발본의 자동 검사입니다. 아래 0.1.0 기록은 과거 버전의 실제 설치·GUI 검증이며 새 목록 화면을 검증한 것으로 취급하지 않습니다.
+
+## 0단계: 도구·reload 계약 확인
+
+- npm SDK 0.15.4·0.16.1의 `server/agent-tools.d.ts`에 `defineAgentTool`과 동일한 실행 문맥(`agent`, `paseo`, `signal`)이 있습니다. 두 버전의 `PluginSessionOpenRequest`에 `labels`, `tools`, `purpose`가 있어 최소 지원 `>=0.15.4`를 유지합니다. 개발 SDK 고정은 0.16.1로 올렸습니다.
+- [0.16.1 hook 문서](https://github.com/getpaseo/paseo/blob/v0.16.1/public-docs/plugins/hooks.md#attach-tools-to-agents), [도구 transport 등록](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/tools/plugin-tools.ts), [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)를 대조했습니다. 붙인 도구는 provider가 지원하는 MCP/native 경로로 같은 콜백에 연결됩니다. [Claude](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/claude/agent.ts)·[Codex](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/codex-app-server-agent.ts)는 모두 `supportsMcpServers: true`입니다. 실제 두 모델 호출은 승인 후 검증할 항목으로 남깁니다. Paseo 도구를 끄거나 provider tool policy로 막은 환경에서는 이 도구도 사용할 수 없습니다.
+- [상류 0.16.1 회귀 테스트](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/agent-tools.e2e.test.ts)는 plugin reload 시 기존 attachment 폐기, idle의 다음 프롬프트에서 한 번 reopen, busy 턴 interrupt 0회, 명시적 SDK reload의 interrupt 1회를 검사합니다. 이 프로젝트에서 상류 테스트를 실행한 것은 아닙니다. 현재 [공식 hook 문서](https://paseo.sh/docs/plugins/hooks.md)와 설치된 공식 스킬도 같은 stale 계약을 설명합니다.
+- session-open hook을 가진 플러그인을 시작·중지·업데이트/reload하면 열린 세션이 stale이 되고 다음 유휴 프롬프트 전에 다시 열립니다. 실행 중 턴은 유지하지만 이전 도구 연결은 폐기됩니다. 재열기에 실패하면 그 프롬프트도 실패합니다. 명시적 `agent.reload()`는 실행 중 턴을 끊으므로 이번 개발에서 호출하지 않습니다.
+
+## 자동 검사
+
+CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 9개 파일 69개 테스트를 통과했습니다(기존 47개 + 신규 22개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
+
+새 검사는 완료의 열린 항목 안내, 완료/연기 근거, 대기 재개 조건, 중복 ID·빈 근거, JSON schema 변환, Claude·Codex 라벨/interactive 선별, 신뢰된 호출자 ID·호스트 저장, 읽기 전용 RPC, 경로 탈출·접두사 혼동·외부 symlink, 동시 쓰기 중 완전한 JSON, 파일 0600, 취소 시 이전 상태·임시 파일 정리, 손상·symlink 파일 격리, 미보고·정렬·호스트·archive 판정을 포함합니다. 파일 검사는 임시 디렉터리만 사용합니다.
+
+목록은 React Native 기본 요소, 테마 색상, compact 시 세로 배치를 사용합니다. `state.list`는 상태 폴더 아래 상태 파일만 읽고, 감독 정보는 기존 SDK의 라벨 필터·페이지 목록을 사용합니다. 목록 DTO에는 `lastActivityAt`이 없어 서버 활동 시각 `updatedAt`을 비교합니다. 최종 응답·idle 전환도 보고 뒤 활동으로 취급될 수 있으며 유예 시간이나 lifecycle hook 보정은 없습니다.
+
+## 실제 검증 경계
+
+설치된 bootstrap 고정 `supervision`을 교체·reload하지 않았고 데몬·기존 감독도 재시작·interrupt하지 않았습니다. bootstrap 목록·실제 스킬 설치·전역 설정은 변경하지 않았습니다. 실제 모델의 도구 호출, Git 소스 번들·설치, 앱 목록 화면·행 이동, compact·모바일·테마 전환은 **미확인**입니다. 머지 전 별도 승인 후 설치된 감독들에 미치는 stale 영향을 조율하고 검증해야 합니다. 도구 부착은 reopen부터 적용되므로 이미 열린 세션에 즉시 생겼다고 판단하지 않습니다.
+
+---
+
 # Supervision 0.1.0 검증
 
 ## 실제 Git 설치와 GUI 검증 (`f11e0d3`)

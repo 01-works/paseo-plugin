@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sdk: ['0.15.4', '0.16.1']
+        sdk: ['0.15.4', '0.16.1', 'latest']
     defaults:
       run:
         working-directory: supervision
@@ -33,7 +33,7 @@ jobs:
       - name: 의존성 설치
         run: npm ci --no-audit --no-fund
       - name: 대상 SDK 설치
-        if: matrix.sdk != '0.15.4'
+        if: matrix.sdk != '0.16.1'
         env:
           SDK: ${{ matrix.sdk }}
         run: npm install --no-save --package-lock=false --no-audit --no-fund "@getpaseo/plugin@$SDK" "@getpaseo/client@$SDK" "@getpaseo/protocol@$SDK"
@@ -41,7 +41,7 @@ jobs:
         env:
           SDK: ${{ matrix.sdk }}
         run: |
-          node -e 'for (const name of ["plugin", "client", "protocol"]) { const version = require(`./node_modules/@getpaseo/${name}/package.json`).version; console.log(`${name}: ${version}`); if (version !== process.env.SDK) throw new Error("SDK 버전 불일치"); }'
+          node -e 'for (const name of ["plugin", "client", "protocol"]) { const version = require(`./node_modules/@getpaseo/${name}/package.json`).version; console.log(`${name}: ${version}`); if (process.env.SDK !== "latest" && version !== process.env.SDK) throw new Error("SDK 버전 불일치"); }'
           npm run build
       - name: lane·탐색·전환 검사
         run: npm test

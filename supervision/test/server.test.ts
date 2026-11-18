@@ -14,7 +14,7 @@ async function fixture() {
   const path = await mkdtemp(join(tmpdir(), 'supervision-server-')); paths.push(path); vi.stubEnv('XDG_STATE_HOME', path);
   type Handler = (input: unknown, context: unknown) => Promise<unknown>;
   const handlers = new Map<unknown, Handler>();
-  contribute({ handle: (contract: unknown, handler: Handler) => { handlers.set(contract, handler); } } as never);
+  contribute({ addHook: () => () => {}, handle: (contract: unknown, handler: Handler) => { handlers.set(contract, handler); } } as never);
   const old = { id: 'existing', workspaceId: 'wks_existing', archivedAt: null as string | null };
   const oldWorkspace = { archivingAt: null as string | null };
   const lookup = vi.fn(async (): Promise<{ agent: typeof old } | null> => ({ agent: old }));

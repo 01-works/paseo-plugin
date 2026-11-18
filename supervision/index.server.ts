@@ -4,8 +4,10 @@ import { createLaneRpc, linkOriginRpc, reportLaneRpc } from './shared/contracts'
 import { hasLiveSupervisor } from './shared/find-supervisor';
 import { LaneStore } from './server/lanes';
 import { runPaseo } from './server/cli';
+import { contributeReports } from './server/report-tool';
 
 export default function contribute(server: PluginServerContext) {
+  const removeReports = contributeReports(server);
   const lanes = new LaneStore();
   server.handle(createLaneRpc, async (input, { paseo }) => {
     const [{ self }, original, workspace] = await Promise.all([paseo.hosts.list(),
@@ -32,5 +34,5 @@ export default function contribute(server: PluginServerContext) {
     console.warn('감독 시작 진단', { path, agentId: record.agentId, detail });
     return {};
   });
-  return () => {};
+  return () => { removeReports(); };
 }
