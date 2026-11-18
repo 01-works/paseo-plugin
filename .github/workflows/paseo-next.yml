@@ -32,7 +32,6 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             mac-monitor/package.json
-            supervision/package.json
           sparse-checkout-cone-mode: false
       - name: 검사할 SDK 버전 고르기
         id: plan
@@ -42,7 +41,7 @@ jobs:
         run: |
           const { execFileSync } = require("node:child_process");
           const { appendFileSync, readFileSync } = require("node:fs");
-          const plugins = { "mac-monitor": "macos-latest", "supervision": "ubuntu-latest" };
+          const plugins = { "mac-monitor": "macos-latest" };
           const packages = ["@getpaseo/plugin", "@getpaseo/client"];
           const view = (spec) => execFileSync("npm", ["view", spec, "version"], { encoding: "utf8" }).trim();
           const target = {};
