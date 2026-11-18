@@ -1,7 +1,7 @@
 {
   "name": "paseo-supervision",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Paseo 감독 시작·복귀와 목표별 상태 보고",
   "files": ["paseo-plugin.json", "OVERVIEW.md", "index.client.tsx", "index.server.ts", "client/", "server/", "shared/", "README.md"],
   "scripts": {
