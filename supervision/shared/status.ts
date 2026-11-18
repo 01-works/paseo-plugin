@@ -1,7 +1,7 @@
 import type { LaneState, ReportState } from './report';
 
 export interface Supervisor {
-  id: string; cwd: string; title: string | null; status: string; lastActivityAt: string;
+  id: string; cwd: string; title: string | null; status: string; lastUserMessageAt: string | null;
   archivedAt?: string | null; labels: Record<string, string>;
 }
 export interface StatusRow {
@@ -15,7 +15,9 @@ export function statusRows(lanes: LaneState[], agents: Supervisor[], serverId: s
   const add = (key: string, state: ReportState | null, agent?: Supervisor, error?: string) => {
     if (agent) represented.add(agent.id);
     const foreign = !!state && state.serverId !== serverId;
-    const missingReport = !state || (!!agent && agent.status === 'idle' && Date.parse(agent.lastActivityAt) > Date.parse(state.reportedAt));
+    // 같은 턴의 최종 응답·idle 전환은 제외하고 보고 뒤 새 프롬프트만 비교한다.
+    const missingReport = !state || (!!agent && agent.status === 'idle' && agent.lastUserMessageAt !== null
+      && Date.parse(agent.lastUserMessageAt) > Date.parse(state.reportedAt));
     const stopped = !!error || foreign || !agent || !!agent.archivedAt || ['error', 'closed'].includes(agent.status) || (agent.status === 'idle' && state?.report.turnEnd.kind === 'next_action');
     const kind = state?.report.turnEnd.kind;
     const status = state?.report.decisions.length || kind === 'user_decision' ? '사용자 결정'

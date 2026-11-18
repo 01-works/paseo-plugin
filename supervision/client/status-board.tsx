@@ -15,8 +15,7 @@ export async function listSupervisors(paseo: ReturnType<typeof usePaseo>) {
     const filter = { labels: { 'yw.role': 'supervisor' }, includeArchived: true, includeBackground: true };
     const options = { filter, includeBackground: true, page: { limit: 100, cursor } };
     const result = await paseo.agents.list(options);
-    // 목록 DTO의 updatedAt은 서버가 메시지·도구·상태 활동 때 갱신한다.
-    agents.push(...result.entries.map(({ agent }) => ({ ...agent, lastActivityAt: agent.updatedAt })));
+    agents.push(...result.entries.map(({ agent }) => agent));
     cursor = result.pageInfo.hasMore ? result.pageInfo.nextCursor ?? undefined : undefined;
   } while (cursor);
   return agents;

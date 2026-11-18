@@ -11,11 +11,21 @@
 
 ## 자동 검사
 
-CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 9개 파일 69개 테스트를 통과했습니다(기존 47개 + 신규 22개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
+CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 9개 파일 77개 테스트를 통과했습니다(기존 47개 + 신규 30개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
 
 새 검사는 완료의 열린 항목 안내, 완료/연기 근거, 대기 재개 조건, 중복 ID·빈 근거, JSON schema 변환, Claude·Codex 라벨/interactive 선별, 신뢰된 호출자 ID·호스트 저장, 읽기 전용 RPC, 경로 탈출·접두사 혼동·외부 symlink, 동시 쓰기 중 완전한 JSON, 파일 0600, 취소 시 이전 상태·임시 파일 정리, 손상·symlink 파일 격리, 미보고·정렬·호스트·archive 판정을 포함합니다. 파일 검사는 임시 디렉터리만 사용합니다.
 
-목록은 React Native 기본 요소, 테마 색상, compact 시 세로 배치를 사용합니다. `state.list`는 상태 폴더 아래 상태 파일만 읽고, 감독 정보는 기존 SDK의 라벨 필터·페이지 목록을 사용합니다. 목록 DTO에는 `lastActivityAt`이 없어 서버 활동 시각 `updatedAt`을 비교합니다. 최종 응답·idle 전환도 보고 뒤 활동으로 취급될 수 있으며 유예 시간이나 lifecycle hook 보정은 없습니다.
+목록은 React Native 기본 요소, 테마 색상, compact 시 세로 배치를 사용합니다. `state.list`는 상태 폴더 아래 상태 파일만 읽고, 감독 정보는 기존 SDK의 라벨 필터·페이지 목록을 사용합니다. 미보고 판정은 SDK 목록의 `lastUserMessageAt > reportedAt`과 현재 `status=idle`을 함께 사용합니다. `updatedAt`과 최종 응답·도구 결과·idle 전환의 활동은 비교하지 않습니다.
+
+## 미보고 오탐 수정
+
+초기 구현의 `updatedAt` 비교는 같은 턴의 최종 응답·idle 전환만으로도 미보고를 만들었습니다. SDK 0.15.4·0.16.1 npm protocol의 `AgentSnapshotPayloadSchema`와 목록 응답에 모두 `lastUserMessageAt: string | null`이 있으므로 이 값을 직접 사용합니다. 클라이언트 목록을 `Supervisor[]`에 넣는 코드도 두 SDK에서 이 필드를 타입 검사합니다.
+
+근거: [0.15.4 agent manager](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/agent/agent-manager.ts)·[0.16.1 agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 `recordSubmittedPromptItem`과 `onStreamTimelineEvent`은 `user_message` 기록 시 `lastUserMessageAt`을 갱신합니다. `finalizeForegroundTurn`은 유휴 상태로 바꾸며 `updatedAt`을 갱신합니다. 두 SDK의 `activeTurn`은 선택 필드이고 종료 시 지워지므로, 목록을 폴링하면서 이미 끝난 새 턴을 찾는 근거로는 사용하지 않습니다.
+
+보고보다 늦은 새 프롬프트가 있고 현재 idle일 때만 기존 보고를 미보고로 바꿉니다. 시각이 null·같음·이전이면 같은 턴으로 보수적으로 취급합니다. 새 프롬프트가 있어도 아직 running이면 미보고가 아니며, 그 턴에서 보고하면 새 보고가 프롬프트보다 늦어 판정이 해제됩니다. `user_message`로 기록되지 않은 입력이나 시각이 없는 imported 세션은 새 턴을 추정하지 않습니다. 두 지원 버전에 공통 필드가 있으므로 2분 유예·lifecycle hook·추가 상태 파일 필드는 필요하지 않습니다.
+
+회귀 검사는 보고 뒤 최종 응답·idle 전환에도 대기/완료 유지, 새 프롬프트 이후 idle만 미보고, 실행 중 제외, 동시각·이전·null 제외, 새 턴의 재보고, 이전 완료 뒤 새 턴 미보고를 포함합니다.
 
 ## 실제 검증 경계
 
