@@ -26,4 +26,12 @@ describe('감독 보고 계약', () => {
     expect(() => reportSchema.parse({ ...report(), items: [...report().items, ...report().items] })).toThrow('중복');
     expect(() => reportSchema.parse({ ...report(), items: [{ id: 'a', summary: '작업', status: 'done', evidence: ' ' }] })).toThrow();
   });
+  it('done의 미결 결정·빈 user_decision·waiting의 사용자 대기를 거부한다', () => {
+    const decision = { question: '선택?', options: ['A', 'B'], recommendation: 'A', impact: '작업' };
+    expect(() => reportSchema.parse({ ...report(), items: [{ id: 'g', summary: '완료', status: 'done', evidence: 'commit abc' }], turnEnd: { kind: 'done', detail: '끝' }, decisions: [decision] })).toThrow('decisions');
+    expect(() => reportSchema.parse({ ...report(), turnEnd: { kind: 'user_decision', detail: '선택 대기' } })).toThrow('1개 이상');
+    expect(() => reportSchema.parse({ ...report(), turnEnd: { kind: 'waiting', detail: '사용자', resume: { type: 'user', ref: '답변' } } })).toThrow('user_decision');
+    expect(reportSchema.parse({ ...report(), turnEnd: { kind: 'user_decision', detail: '선택 대기' }, decisions: [decision] }).decisions).toHaveLength(1);
+  });
+
 });

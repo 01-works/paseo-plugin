@@ -3,31 +3,17 @@ import { usePaseo, useRpc, type PluginScreenProps, type PluginSidebarItemProps }
 import { SidebarRow } from '@getpaseo/plugin/client/ui';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { listReportsRpc } from '../shared/report';
-import { elapsed, statusRows, type Supervisor } from '../shared/status';
+import { elapsed } from '../shared/status';
+import { loadStatus } from './status-data';
 
 export function SupervisorsItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
   return <SidebarRow icon="ListChecks" active={currentScreen?.screenId === 'supervisors'} onPress={() => openScreen({ screenId: 'supervisors' })} />;
-}
-export async function listSupervisors(paseo: ReturnType<typeof usePaseo>) {
-  const agents: Supervisor[] = [];
-  let cursor: string | undefined;
-  do {
-    const filter = { labels: { 'yw.role': 'supervisor' }, includeArchived: true, includeBackground: true };
-    const options = { filter, includeBackground: true, page: { limit: 100, cursor } };
-    const result = await paseo.agents.list(options);
-    agents.push(...result.entries.map(({ agent }) => agent));
-    cursor = result.pageInfo.hasMore ? result.pageInfo.nextCursor ?? undefined : undefined;
-  } while (cursor);
-  return agents;
 }
 export function Supervisors({ theme, layout, host, navigation }: PluginScreenProps) {
   const paseo = usePaseo();
   const list = useRpc(listReportsRpc);
   const query = useQuery({ queryKey: ['supervision-state', host.id], refetchInterval: 10_000,
-    queryFn: async () => {
-      const [lanes, agents] = await Promise.all([list({}), listSupervisors(paseo)]);
-      return { rows: statusRows(lanes, agents, host.id), now: Date.now() };
-    },
+    queryFn: () => loadStatus(paseo, () => list({})),
   });
   const fg = theme.colors.foreground;
   const muted = theme.colors.foregroundMuted;
@@ -43,7 +29,7 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
       const deferred = report?.items.filter(item => item.status === 'deferred').length ?? 0;
       const end = report?.turnEnd;
       return <Pressable key={row.key} accessibilityRole="button" accessibilityLabel={`${row.title}, ${row.status}`}
-        disabled={!navigation || !row.canOpen} onPress={() => row.agent && navigation?.openAgent({ agentId: row.agent.id, serverId: host.id })}
+        disabled={!navigation || !row.canOpen} onPress={() => row.agent && navigation?.openAgent({ agentId: row.agent.id, serverId: query.data!.serverId })}
         style={{ padding: 16, gap: 8, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8 }}>
         <View style={{ flexDirection: layout.compact ? 'column' : 'row', gap: 8, justifyContent: 'space-between' }}>
           <Text style={{ color: fg, fontSize: 18, flexShrink: 1 }}>{row.title}</Text>

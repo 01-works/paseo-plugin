@@ -7,25 +7,29 @@
 - npm SDK 0.15.4·0.16.1의 `server/agent-tools.d.ts`에 `defineAgentTool`과 동일한 실행 문맥(`agent`, `paseo`, `signal`)이 있습니다. 두 버전의 `PluginSessionOpenRequest`에 `labels`, `tools`, `purpose`가 있어 최소 지원 `>=0.15.4`를 유지합니다. 개발 SDK 고정은 0.16.1로 올렸습니다.
 - [0.16.1 hook 문서](https://github.com/getpaseo/paseo/blob/v0.16.1/public-docs/plugins/hooks.md#attach-tools-to-agents), [도구 transport 등록](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/tools/plugin-tools.ts), [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)를 대조했습니다. 붙인 도구는 provider가 지원하는 MCP/native 경로로 같은 콜백에 연결됩니다. [Claude](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/claude/agent.ts)·[Codex](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/providers/codex-app-server-agent.ts)는 모두 `supportsMcpServers: true`입니다. 실제 두 모델 호출은 승인 후 검증할 항목으로 남깁니다. Paseo 도구를 끄거나 provider tool policy로 막은 환경에서는 이 도구도 사용할 수 없습니다.
 - [상류 0.16.1 회귀 테스트](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/agent-tools.e2e.test.ts)는 plugin reload 시 기존 attachment 폐기, idle의 다음 프롬프트에서 한 번 reopen, busy 턴 interrupt 0회, 명시적 SDK reload의 interrupt 1회를 검사합니다. 이 프로젝트에서 상류 테스트를 실행한 것은 아닙니다. 현재 [공식 hook 문서](https://paseo.sh/docs/plugins/hooks.md)와 설치된 공식 스킬도 같은 stale 계약을 설명합니다.
-- session-open hook을 가진 플러그인을 시작·중지·업데이트/reload하면 열린 세션이 stale이 되고 다음 유휴 프롬프트 전에 다시 열립니다. 실행 중 턴은 유지하지만 이전 도구 연결은 폐기됩니다. 재열기에 실패하면 그 프롬프트도 실패합니다. 명시적 `agent.reload()`는 실행 중 턴을 끊으므로 이번 개발에서 호출하지 않습니다.
+- session-open hook을 가진 플러그인을 시작·중지·업데이트/reload하면 데몬 전체의 열린 세션이 stale이 되고 다음 유휴 프롬프트 전에 다시 열립니다. 실행 중 턴은 유지하지만 이전 도구 연결은 폐기되므로 reload 직후 실행 중 턴이 호출하는 도구도 실패할 수 있습니다. 재열기에 실패하면 그 프롬프트도 실패합니다. 명시적 `agent.reload()`는 실행 중 턴을 끊으므로 이번 개발에서 호출하지 않습니다.
 
 ## 자동 검사
 
-CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 9개 파일 77개 테스트를 통과했습니다(기존 47개 + 신규 30개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
+CI는 SDK 0.15.4·0.16.1·latest에 각각 빌드(타입·경계)와 전체 단위 검사를 실행합니다. 기존 daily latest/beta 검사도 유지합니다. 로컬 SDK 0.15.4·0.16.1에서 타입·경계 검사와 12개 파일 90개 테스트를 통과했습니다(기존 47개 + 신규 43개). `latest`가 현재 0.16.1을 가리키므로 현재 두 행은 같은 SDK를 검사하되 향후 릴리스부터 분리됩니다.
 
 새 검사는 완료의 열린 항목 안내, 완료/연기 근거, 대기 재개 조건, 중복 ID·빈 근거, JSON schema 변환, Claude·Codex 라벨/interactive 선별, 신뢰된 호출자 ID·호스트 저장, 읽기 전용 RPC, 경로 탈출·접두사 혼동·외부 symlink, 동시 쓰기 중 완전한 JSON, 파일 0600, 취소 시 이전 상태·임시 파일 정리, 손상·symlink 파일 격리, 미보고·정렬·호스트·archive 판정을 포함합니다. 파일 검사는 임시 디렉터리만 사용합니다.
 
-목록은 React Native 기본 요소, 테마 색상, compact 시 세로 배치를 사용합니다. `state.list`는 상태 폴더 아래 상태 파일만 읽고, 감독 정보는 기존 SDK의 라벨 필터·페이지 목록을 사용합니다. 미보고 판정은 SDK 목록의 `lastUserMessageAt > reportedAt`과 현재 `status=idle`을 함께 사용합니다. `updatedAt`과 최종 응답·도구 결과·idle 전환의 활동은 비교하지 않습니다.
+목록은 React Native 기본 요소·테마 색상·compact 세로 배치를 사용합니다. lane 최상위 `supervision-state.json`만 읽고 하위 cwd는 첫 경로 조각의 lane으로 귀속합니다. 일반 `state.json`과 하위 폴더의 전용 파일은 읽거나 자동 이관하지 않습니다. 순회 중 폴더가 소멸하거나 파일이 손상되어도 다른 lane을 반환하는 테스트가 있습니다. 파일 소유 검증은 tasks.md 첫 감독 줄을 우선하고, 없으면 전용 상태 파일의 agentId를 사용합니다. 인계 줄 교체 없이 다른 감독이 덮어쓰는 것을 거부합니다. 기존 항목 누락은 거부하며, 이전 보고에서 사용자 결정 출처와 deferred를 먼저 남긴 항목만 제외합니다.
 
-## 미보고 오탐 수정
+## 독립 리뷰 반영: 미보고와 현재 상태
 
-초기 구현의 `updatedAt` 비교는 같은 턴의 최종 응답·idle 전환만으로도 미보고를 만들었습니다. SDK 0.15.4·0.16.1 npm protocol의 `AgentSnapshotPayloadSchema`와 목록 응답에 모두 `lastUserMessageAt: string | null`이 있으므로 이 값을 직접 사용합니다. 클라이언트 목록을 `Supervisor[]`에 넣는 코드도 두 SDK에서 이 필드를 타입 검사합니다.
+`lastUserMessageAt`은 에이전트 메시지·자식 알림·heartbeat를 놓치므로 사용하지 않습니다. [0.16.1 envelope](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-messages/envelope.ts)의 `projectAgentMessages`는 이 입력을 `tool_call`로 바꾸며 사용자 메시지 시각을 갱신하지 않습니다.
 
-근거: [0.15.4 agent manager](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/agent/agent-manager.ts)·[0.16.1 agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 `recordSubmittedPromptItem`과 `onStreamTimelineEvent`은 `user_message` 기록 시 `lastUserMessageAt`을 갱신합니다. `finalizeForegroundTurn`은 유휴 상태로 바꾸며 `updatedAt`을 갱신합니다. 두 SDK의 `activeTurn`은 선택 필드이고 종료 시 지워지므로, 목록을 폴링하면서 이미 끝난 새 턴을 찾는 근거로는 사용하지 않습니다.
+두 SDK에 공통인 `agent.turn.before/after`에서 시각을 기록합니다. 영속 위치는 `${XDG_STATE_HOME:-~/.local/state}/paseo-supervision/turns/<agentId>.json`이며 파일 0600·원자 교체입니다. before는 현재 시작 시각을 기록하고 after는 그 값을 마지막 종료 턴의 시작 시각으로 옮깁니다. 콜백 도착 때 잡은 시작 시각을 사용하며 ID 비교나 사용자 메시지 시각을 사용하지 않습니다. 에이전트별로 알림 처리를 직렬화합니다. 재시작 사이의 before/after와 완료된 기록 보존을 테스트합니다. after만 관측했거나 파일이 없거나 손상된 경우 시작 시각은 null, 화면은 “알 수 없음”입니다.
 
-보고보다 늦은 새 프롬프트가 있고 현재 idle일 때만 기존 보고를 미보고로 바꿉니다. 시각이 null·같음·이전이면 같은 턴으로 보수적으로 취급합니다. 새 프롬프트가 있어도 아직 running이면 미보고가 아니며, 그 턴에서 보고하면 새 보고가 프롬프트보다 늦어 판정이 해제됩니다. `user_message`로 기록되지 않은 입력이나 시각이 없는 imported 세션은 새 턴을 추정하지 않습니다. 두 지원 버전에 공통 필드가 있으므로 2분 유예·lifecycle hook·추가 상태 파일 필드는 필요하지 않습니다.
+소스 emit 확인: [0.16.1 lifecycle](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/lifecycle/index.ts)의 `publishAgentStream`은 `turn_started`를 before, `turn_completed/failed/canceled`를 after로 전달합니다. [0.15.4 lifecycle](https://github.com/getpaseo/paseo/blob/v0.15.4/packages/server/src/server/plugins/lifecycle/index.ts)도 같습니다. 양 버전 [agent manager](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/agent/agent-manager.ts)의 accepted-turn 경계는 프롬프트 출처와 무관하게 turn_started를 발행하며, `dispatchStream`은 internal이 아닌 에이전트의 비-timeline 이벤트를 lifecycle로 전달합니다. 따라서 에이전트 메시지로 새 턴이 시작된 경우도 같은 emit 경로입니다. 실행 중인 턴에 steer된 입력은 새로운 턴 시작으로 세지 않습니다. 실제 Claude/Codex 입력별 발화는 설치 승인 전이라 미확인입니다.
 
-회귀 검사는 보고 뒤 최종 응답·idle 전환에도 대기/완료 유지, 새 프롬프트 이후 idle만 미보고, 실행 중 제외, 동시각·이전·null 제외, 새 턴의 재보고, 이전 완료 뒤 새 턴 미보고를 포함합니다.
+마지막 종료 턴 시작이 보고보다 늦으면 idle 상태의 미보고입니다. 같은 턴의 최종 응답·도구 결과·idle 전환으로는 뒤집히지 않습니다. running은 결정·waiting 보고보다 우선해 진행, 결정 rank는 idle에만 적용합니다. idle next_action은 같은 호스트의 자식이 running일 때 진행, 아니면 멈춤입니다. archive 감독은 행에서 제외하고 파일은 유지합니다. 감독 이외의 자식도 SDK 페이지 목록으로 조회합니다.
+
+호스트 확인: 상류 [surface-screen](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/app/src/plugins/surface-screen.tsx)은 `host.id = serverId`로 만듭니다. 구현은 표시용 host.id를 가정하지 않고 선택된 API의 SDK `hosts.list().self.serverId`를 상태 판정·이동에 사용하며, 페이지 조회와 자식 판정도 이 값을 쓰는 테스트가 있습니다. 실제 앱에서 두 값을 동시에 readback하는 검증은 미확인입니다.
+
+reload는 [runtime의 notifySessionOpenChange](https://github.com/getpaseo/paseo/blob/v0.16.1/packages/server/src/server/plugins/runtime.ts)에서 agent 필터 없이 session-open 변경을 통지하므로 영향 범위는 데몬 전체입니다. 실행 중 턴을 interrupt하지 않는다는 것은 기존 attachment를 계속 쓸 수 있다는 뜻이 아닙니다. 기존 도구 연결이 폐기된 뒤 호출은 실패할 수 있고 다음 유휴 프롬프트에서 재열립니다.
 
 ## 실제 검증 경계
 

@@ -22,6 +22,9 @@ export const reportSchema = z.object({
     if (item.status === 'deferred' && !item.deferredBy) issue(`사용자 연기 결정 출처(deferredBy)가 필요합니다: ${item.id}`, ['items', index, 'deferredBy']);
   });
   if (report.turnEnd.kind === 'waiting' && !report.turnEnd.resume) issue('대기에는 재개 조건(resume)이 필요합니다.', ['turnEnd', 'resume']);
+  if (report.turnEnd.kind === 'waiting' && report.turnEnd.resume?.type === 'user') issue('사용자 응답 대기는 user_decision과 decisions로 보고하세요.', ['turnEnd', 'resume']);
+  if (report.turnEnd.kind === 'done' && report.decisions.length) issue('완료에는 미결 decisions가 없어야 합니다.', ['decisions']);
+  if (report.turnEnd.kind === 'user_decision' && !report.decisions.length) issue('user_decision에는 decisions가 1개 이상 필요합니다.', ['decisions']);
   const open = report.items.filter(item => item.status === 'open');
   if (report.turnEnd.kind === 'done' && open.length) issue(`열린 항목이 남았습니다: ${open.map(item => `${item.id} (${item.summary})`).join(', ')}`, ['turnEnd', 'kind']);
 });
@@ -40,4 +43,8 @@ export type Report = z.infer<typeof reportSchema>;
 export type ReportState = z.infer<typeof stateSchema>;
 export const laneStateSchema = z.object({ laneDir: z.string(), state: stateSchema.nullable(), error: z.string().optional() });
 export type LaneState = z.infer<typeof laneStateSchema>;
-export const listReportsRpc = defineRpc({ name: 'state.list', input: z.object({}), output: z.array(laneStateSchema) });
+export const turnStateSchema = z.object({ agentId: z.string(), lastEndedStartedAt: z.iso.datetime().nullable() });
+export type TurnState = z.infer<typeof turnStateSchema>;
+export const listReportsRpc = defineRpc({ name: 'state.list', input: z.object({}), output: z.object({
+  lanes: z.array(laneStateSchema), turns: z.array(turnStateSchema),
+}) });
