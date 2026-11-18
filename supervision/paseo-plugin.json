@@ -1,5 +1,0 @@
-{
-  "id": "supervision",
-  "description": "감독 시작·복귀와 목표별 상태 보고·목록",
-  "requirements": { "paseo": ">=0.15.4" }
-}
