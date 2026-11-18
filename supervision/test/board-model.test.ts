@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD, boardLayout, defaultLane, groupLanes, itemProgress, laneOf, LANES, resumeText, TONE, turnEndText, type Status } from '../client/board-model';
+import { BOARD, boardLayout, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, resumeText, TONE, turnEndText, type Status } from '../client/board-model';
 import type { Report } from '../shared/report';
 
 const statuses: Status[] = ['사용자 결정', '미보고', '멈춤', '대기', '진행', '완료', '알 수 없음'];
@@ -19,6 +19,20 @@ describe('레인 분류', () => {
   it('좁은 화면의 첫 탭은 비어 있지 않은 첫 레인, 모두 비면 사용자 결정', () => {
     expect(defaultLane(groupLanes([{ status: '완료' }, { status: '대기' }]))).toBe('waiting');
     expect(defaultLane(groupLanes([]))).toBe('decision');
+  });
+  it('탭은 첫 카드가 보인 갱신에서 한 번 정하고, 새 사용자 결정이 생기거나 레인이 비어도 유지한다', () => {
+    expect(keepTab(null, groupLanes([]))).toBeNull();
+    const first = keepTab(null, groupLanes([{ status: '진행' }]));
+    expect(first).toBe('running');
+    expect(keepTab(first, groupLanes([{ status: '사용자 결정' }, { status: '진행' }]))).toBe('running');
+    expect(keepTab(first, groupLanes([{ status: '사용자 결정' }]))).toBe('running');
+  });
+  it('갱신 결과에서 사라진 선택은 지워져 같은 키가 돌아와도 다시 열리지 않는다', () => {
+    const rows = [{ key: '/lane/a' }, { key: '/lane/b' }];
+    expect(keepSelection('/lane/a', rows)).toBe('/lane/a');
+    const gone = keepSelection('/lane/a', [{ key: '/lane/b' }]);
+    expect(gone).toBeNull();
+    expect(keepSelection(gone, rows)).toBeNull();
   });
   it('상태 표식은 색이 같아도 모양으로 구분한다', () => {
     const marks = statuses.map(status => `${TONE[status].color}/${TONE[status].shape}`);

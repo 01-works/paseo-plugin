@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePaseo, useRpc, type PluginScreenProps, type PluginSidebarItemProps } from '@getpaseo/plugin/client';
 import { Icon, Modal, SidebarRow } from '@getpaseo/plugin/client/ui';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { listReportsRpc } from '../shared/report';
 import type { StatusRow } from '../shared/status';
-import { BOARD, boardLayout, defaultLane, groupLanes, LANE_MARK, type LaneId } from './board-model';
+import { BOARD, boardLayout, defaultLane, groupLanes, keepSelection, keepTab, LANE_MARK, type LaneId } from './board-model';
 import { Card, Detail, Mark } from './board-parts';
 import { loadStatus } from './status-data';
 
@@ -25,7 +25,12 @@ export function Supervisors({ theme, layout, host, navigation }: PluginScreenPro
   const [tab, setTab] = useState<LaneId | null>(null);
   const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
   const groups = useMemo(() => groupLanes(rows), [rows]);
-  // 갱신 뒤 사라진 행(archive 등)은 선택을 자연히 해제한다.
+  // 갱신마다 사라진 선택을 지우고, 첫 카드가 보인 뒤의 탭은 고정한다(새 카드가 생겨도 탭이 저절로 바뀌지 않음).
+  useEffect(() => {
+    if (!query.data) return;
+    setSelectedKey(key => keepSelection(key, rows));
+    setTab(current => keepTab(current, groups));
+  }, [query.data, rows, groups]);
   const selected = rows.find(row => row.key === selectedKey) ?? null;
   const { phone, inline, laneWidth } = boardLayout(width, layout.compact, !!selected);
   const now = query.data?.now ?? Date.now();

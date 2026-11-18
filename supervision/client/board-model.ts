@@ -30,6 +30,12 @@ export function groupLanes<Row extends Pick<StatusRow, 'status'>>(rows: readonly
 export function defaultLane(groups: readonly { id: LaneId; rows: readonly unknown[] }[]): LaneId {
   return groups.find(group => group.rows.length)?.id ?? 'decision';
 }
+/** 첫 카드가 보인 갱신에서 탭을 한 번 정하고, 이후 갱신에서는 (레인이 비어도) 유지한다. */
+export function keepTab(tab: LaneId | null, groups: readonly { id: LaneId; rows: readonly unknown[] }[]): LaneId | null {
+  return tab ?? (groups.some(group => group.rows.length) ? defaultLane(groups) : null);
+}
+/** 갱신 결과에서 사라진 카드는 선택을 지워, 같은 키가 돌아와도 상세가 저절로 열리지 않게 한다. */
+export const keepSelection = (key: string | null, rows: readonly { key: string }[]) => key !== null && rows.some(row => row.key === key) ? key : null;
 
 export function itemProgress(report: Report | undefined) {
   const items = report?.items ?? [];
