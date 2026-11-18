@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD, boardLayout, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, resumeText, TONE, turnEndText, type Status } from '../client/board-model';
+import { boardColors, boardLayout, cardFacts, defaultLane, groupLanes, itemProgress, keepSelection, keepTab, laneOf, LANES, mix, resumeText, SIDEBAR, TONE, turnEndText, type Status } from '../client/board-model';
 import type { Report } from '../shared/report';
 
 const statuses: Status[] = ['사용자 결정', '미보고', '멈춤', '대기', '진행', '완료', '알 수 없음'];
@@ -34,9 +34,8 @@ describe('레인 분류', () => {
     expect(gone).toBeNull();
     expect(keepSelection(gone, rows)).toBeNull();
   });
-  it('상태 표식은 색이 같아도 모양으로 구분한다', () => {
-    const marks = statuses.map(status => `${TONE[status].color}/${TONE[status].shape}`);
-    expect(new Set(marks).size).toBe(statuses.length);
+  it('상태 표식은 모양만으로도 서로 구분된다', () => {
+    expect(new Set(statuses.map(status => TONE[status].shape)).size).toBe(statuses.length);
   });
 });
 
@@ -61,18 +60,55 @@ describe('진행 막대', () => {
   });
 });
 
-describe('보드 배치', () => {
-  it('compact이거나 두 레인이 안 들어가면 탭, 측정 전에도 탭', () => {
-    expect(boardLayout(1400, true).phone).toBe(true);
-    expect(boardLayout(null, false).phone).toBe(true);
-    expect(boardLayout(BOARD.pad * 2 + BOARD.laneMin * 2 + BOARD.gap - 1, false).phone).toBe(true);
-    expect(boardLayout(BOARD.pad * 2 + BOARD.laneMin * 2 + BOARD.gap, false).phone).toBe(false);
+describe('카드 내용', () => {
+  const state = (report: Report) => ({ version: 1 as const, agentId: 'a', serverId: 's', title: '목표', reportedAt: '2026-11-18T00:00:00Z', report });
+  it('항목·연기·대기 재개 조건을 pill로, 턴 종료를 블록으로 만든다', () => {
+    const facts = cardFacts({ status: '대기', state: state({ items: [{ id: 'a', summary: 'A', status: 'done', evidence: 'PR' }, { id: 'b', summary: 'B', status: 'deferred', deferredBy: '사용자' }],
+      turnEnd: { kind: 'waiting', detail: 'PR 검사 대기', resume: { type: 'pr_check', ref: 'PR #18' } }, decisions: [] }) });
+    expect(facts.pills.map(pill => [pill.key, pill.label, pill.tone])).toEqual([['items', '1/2', 'statusSuccess'], ['deferred', '연기 1', undefined], ['resume', 'PR 검사 · PR #18', undefined]]);
+    expect(facts.turn).toEqual({ icon: 'Hourglass', text: '대기 · PR 검사 대기' });
+    expect(facts.decision).toBeNull();
   });
-  it('1020 이상은 사이드바, 그보다 좁으면 시트. 레인 폭은 260~340', () => {
-    expect(boardLayout(1019, false)).toMatchObject({ phone: false, inline: false, laneWidth: 260 });
-    expect(boardLayout(1020, false).inline).toBe(true);
+  it('열린 항목이 있으면 항목 pill을 물들이지 않고, 대기가 아니면 재개 pill이 없다', () => {
+    const facts = cardFacts({ status: '사용자 결정', state: state({ items: [{ id: 'a', summary: 'A', status: 'open' }],
+      turnEnd: { kind: 'user_decision', detail: '선택 필요', resume: { type: 'child', ref: 'x' } },
+      decisions: [{ question: 'Q1?', options: ['A', 'B'], recommendation: 'A', impact: 'i' }, { question: 'Q2?', options: ['A', 'B'], recommendation: 'B', impact: 'i' }] }) });
+    expect(facts.pills.map(pill => [pill.key, pill.tone])).toEqual([['items', undefined]]);
+    expect(facts.decision).toEqual({ question: 'Q1?', count: 2 });
+  });
+  it('보고가 없으면 블록 없이 비고만, 멈춤 비고는 위험 표시', () => {
+    expect(cardFacts({ status: '알 수 없음', state: null, note: '시각을 알 수 없음' })).toMatchObject({ pills: [], turn: null, decision: null, note: { danger: false } });
+    expect(cardFacts({ status: '멈춤', state: null, note: '감독 조회 불가' }).note).toEqual({ text: '감독 조회 불가', danger: true });
+  });
+});
+
+describe('색과 배치', () => {
+  it('테마 색을 섞고, 해석할 수 없는 색은 그대로 둔다', () => {
+    expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(mix('#fff', 'rgb(0, 0, 0)', 1)).toBe('#000000');
+    expect(mix('var(--x)', '#ffffff', 0.5)).toBe('var(--x)');
+  });
+  it('어두운 테마는 surface2 카드와 surface1 패널, 밝은 테마는 surface0 카드와 surface1·2 사이 패널', () => {
+    const base = { surface1: '#202020', surface2: '#303030', border: '#404040', foreground: '#ffffff', foregroundMuted: '#a0a0a0',
+      accent: '#3080ff', accentForeground: '#ffffff', statusSuccess: '#30c060', statusWarning: '#e0a030', statusDanger: '#f05050' };
+    expect(boardColors({ ...base, surface0: '#101010' })).toMatchObject({ isDark: true, card: '#303030', panel: '#202020' });
+    expect(boardColors({ ...base, surface0: '#ffffff', surface1: '#fafafa', surface2: '#f0f0f0' })).toMatchObject({ isDark: false, card: '#ffffff', panel: '#f5f5f5' });
+  });
+  it('폰 배치는 host compact에서만, 좁은 데스크톱은 레인을 가로 스크롤한다', () => {
+    expect(boardLayout(1400, true).phone).toBe(true);
+    expect(boardLayout(400, false)).toMatchObject({ phone: false, laneWidth: 260 });
+  });
+  it('레인 폭은 300~340을 나누고, 두 레인이 들어가도록 260까지 줄며, 그보다 좁으면 220까지', () => {
     expect(boardLayout(2400, false).laneWidth).toBe(340);
-    expect(boardLayout(1700, false).laneWidth).toBe(Math.floor((1700 - 32 - 48) / 5));
-    expect(boardLayout(1700, false, true).laneWidth).toBe(260);
+    expect(boardLayout(1700, false).laneWidth).toBe(Math.floor((1700 - 24 - 32) / 5));
+    expect(boardLayout(580, false).laneWidth).toBe(274);
+    expect(boardLayout(300, false).laneWidth).toBe(260);
+    expect(boardLayout(200, false).laneWidth).toBe(220);
+  });
+  it('1020 이상에서만 사이드바(380)를 열고, 그보다 좁으면 Modal', () => {
+    expect(boardLayout(1019, false, true)).toMatchObject({ inline: false, sidebar: 0 });
+    expect(boardLayout(1020, false, true)).toMatchObject({ inline: true, sidebar: SIDEBAR.width });
+    expect(boardLayout(1700, false, true)).toMatchObject({ inline: true, sidebar: 380, laneWidth: 300 });
+    expect(boardLayout(1700, false, false).sidebar).toBe(0);
   });
 });
