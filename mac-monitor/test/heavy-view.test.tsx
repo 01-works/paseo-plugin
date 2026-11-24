@@ -3,9 +3,9 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeavyItem, HeavyResult, HeavySlot } from '../shared/heavy';
 
-const hooks = vi.hoisted(() => ({ heavy: vi.fn(), names: {} as Record<string, string> }));
+const hooks = vi.hoisted(() => ({ heavy: vi.fn(), list: vi.fn() }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
-vi.mock('@getpaseo/plugin/client', () => ({ useAgent: (id: string, select: (agent: { title: string }) => unknown) => hooks.names[id] ? select({ title: hooks.names[id] }) : null }));
+vi.mock('@getpaseo/plugin/client', async importOriginal => ({ ...await importOriginal<object>(), getPaseoClient: () => ({ agents: { list: hooks.list } }) }));
 vi.mock('../client/heavy-data', () => ({ useHeavy: hooks.heavy }));
 import { CARD_INTERVAL, HeavyCard, HeavyTrailing, SIDEBAR_INTERVAL, duration, heavySummary, orderedWaiting } from '../client/heavy';
 
@@ -18,8 +18,8 @@ const ok = (slots: HeavySlot[], paused = false): HeavyResult => ({ status: 'ok',
 let renderer: ReactTestRenderer | undefined;
 const render = async (node: React.ReactElement) => { await act(async () => { renderer = create(node); }); return renderer!; };
 const texts = (r: ReactTestRenderer) => r.root.findAll(n => String(n.type) === 'Text').map(n => n.children.join(''));
-beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
-afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; hooks.heavy.mockReset(); hooks.names = {}; });
+beforeEach(() => { hooks.list.mockResolvedValue({ entries: [], subscription: { subscribe: () => {} } }); (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
+afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; hooks.heavy.mockReset(); hooks.list.mockReset(); });
 
 describe('순수 함수', () => {
   it('기간', () => {
@@ -39,9 +39,9 @@ describe('순수 함수', () => {
 
 describe('HeavyCard', () => {
   it('실행 중 작업·예상 차례·기다린 시간과 감독 이름을 보인다', async () => {
-    hooks.names = { 'sup-B1': '감독: 결제' };
+    hooks.list.mockResolvedValue({ entries: [{ agent: { id: 'sup-B1', title: '감독: 결제' } }], subscription: { subscribe: () => {} } });
     hooks.heavy.mockReturnValue({ data: ok([slot()], true), failed: false });
-    const shown = texts(await render(<HeavyCard theme={theme} />));
+    const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
     expect(hooks.heavy).toHaveBeenCalledWith(CARD_INTERVAL);
     for (const value of ['heavy 대기열', '대기 3 · 최장 2시간 5분', '새 제출 중지', 'RUN', '10분', '감독: 결제', 'sup-A1']) expect(shown).toContain(value);
     expect(shown.filter(v => ['A1', 'B1', 'A2'].includes(v))).toEqual(['B1', 'A1', 'A2']);
@@ -50,14 +50,22 @@ describe('HeavyCard', () => {
   it('차례를 모르면 등록 순서임을 알리고, 검증 자리와 많은 줄을 구분한다', async () => {
     const many = Array.from({ length: 23 }, (_, i) => item(`W${i}`, 9000));
     hooks.heavy.mockReturnValue({ data: ok([slot({ turns: null, waiting: many }), slot({ name: 'verifier', running: null, waiting: [], turns: [] })]), failed: true });
-    const shown = texts(await render(<HeavyCard theme={theme} />));
+    const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
     for (const value of ['실제 차례를 알 수 없어 등록 순서로 표시', '외 3건', '검증 자리', '실행 중인 작업 없음', '이전 값']) expect(shown).toContain(value);
   });
   it.each([['missing', null], ['unsupported', '이 기기의 yw-heavy가 현황 조회를 지원하지 않음 · 갱신 필요'], ['error', '대기열 확인 불가']] as const)('%s', async (status, message) => {
     hooks.heavy.mockReturnValue({ data: { status, sampledAt: now, queue: null }, failed: false });
-    const r = await render(<HeavyCard theme={theme} />);
+    const r = await render(<HeavyCard theme={theme} hostId="h" />);
     if (message === null) expect(r.toJSON()).toBeNull(); else expect(texts(r)).toContain(message);
   });
+});
+
+it('예상 차례에 없는 줄에는 번호를 붙이지 않고, 이름 조회가 실패해도 ID로 표시한다', async () => {
+  hooks.list.mockRejectedValue(new Error('연결 안 됨'));
+  hooks.heavy.mockReturnValue({ data: ok([slot({ waiting: [item('A', 9000), item('DEAD', 9000, 'dead:esrch', null)], turns: ['A'] })]), failed: false });
+  const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
+  expect(shown).toContain('1'); expect(shown).not.toContain('2');
+  for (const value of ['·', '끝남', 'sup-A', '감독 확인 불가']) expect(shown).toContain(value);
 });
 
 describe('HeavyTrailing', () => {

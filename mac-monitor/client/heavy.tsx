@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
-import { useAgent } from '@getpaseo/plugin/client';
 import type { HeavyItem, HeavyQueue, HeavySlot } from '../shared/heavy';
+import { useAgentNames } from './agents';
 import { useHeavy } from './heavy-data';
 import { Badge, Card, type Theme } from './visuals';
 
@@ -33,40 +33,39 @@ export function orderedWaiting(slot: HeavySlot): HeavyItem[] {
 }
 
 // 이 호스트에 있는 에이전트면 이름, 아니면 ID 앞자리.
-function Supervisor({ id, theme }: { id: string | null; theme: Theme }) {
-  const title = useAgent(id ?? '', agent => agent.title);
-  return <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: theme.colors.foregroundMuted, flexShrink: 1 }}>{title || (id ? id.slice(0, 12) : '감독 확인 불가')}</Text>;
-}
+type Names = Record<string, string>;
+const supervisorName = (id: string | null, names: Names) => id === null ? '감독 확인 불가' : Object.hasOwn(names, id) ? names[id] : id.slice(0, 12);
 
-function Row({ theme, position, item, time }: { theme: Theme; position: string; item: HeavyItem; time: string }) {
+function Row({ theme, position, item, time, names }: { theme: Theme; position: string; item: HeavyItem; time: string; names: Names }) {
   const c = theme.colors;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.border }}>
     <Text style={{ color: c.foregroundMuted, minWidth: 32, fontVariant: ['tabular-nums'] }}>{position}</Text>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foreground }}>{item.id ?? '작업 확인 불가'}</Text>
-      <Supervisor id={item.supervisor} theme={theme} />
+      <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foregroundMuted, flexShrink: 1 }}>{supervisorName(item.supervisor, names)}</Text>
     </View>
     {item.state === 'alive' ? null : <Badge theme={theme} label={dead(item) ? '끝남' : '확인 불가'} />}
     <Text style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{time}</Text>
   </View>;
 }
 
-function Slot({ theme, slot, now }: { theme: Theme; slot: HeavySlot; now: number }) {
-  const c = theme.colors, items = orderedWaiting(slot);
+function Slot({ theme, slot, now, names }: { theme: Theme; slot: HeavySlot; now: number; names: Names }) {
+  const c = theme.colors, items = orderedWaiting(slot), turns = new Set(slot.turns ?? []);
   const queued = (item: HeavyItem) => { const value = age(item, now); return value === null ? '—' : duration(value); };
   return <View>
     {slot.name === 'main' ? null : <Text style={{ color: c.foregroundMuted, fontWeight: '600', paddingTop: 8 }}>{slot.name === 'verifier' ? '검증 자리' : slot.name}</Text>}
-    {slot.running ? <Row theme={theme} position="실행" item={slot.running}
+    {slot.running ? <Row theme={theme} position="실행" item={slot.running} names={names}
       time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)} />
       : <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실행 중인 작업 없음</Text>}
     {items.length && !slot.turns ? <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실제 차례를 알 수 없어 등록 순서로 표시</Text> : null}
-    {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} theme={theme} position={slot.turns ? `${index + 1}` : '·'} item={item} time={queued(item)} />)}
+    {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} theme={theme} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} names={names} time={queued(item)} />)}
     {items.length > SHOWN ? <Text style={{ color: c.foregroundMuted, paddingTop: 6 }}>외 {items.length - SHOWN}건</Text> : null}
   </View>;
 }
 
-export function HeavyCard({ theme }: { theme: Theme }) {
+export function HeavyCard({ theme, hostId }: { theme: Theme; hostId: string }) {
   const { data, failed } = useHeavy(CARD_INTERVAL);
+  const names = useAgentNames(hostId);
   const c = theme.colors;
   // yw-heavy가 없는 Mac에는 카드를 보이지 않는다.
   if (!data || data.status === 'missing') return null;
@@ -80,7 +79,7 @@ export function HeavyCard({ theme }: { theme: Theme }) {
         {summary ? <Badge theme={theme} label={`대기 ${summary.waiting}${summary.oldest === null ? '' : ` · 최장 ${duration(summary.oldest)}`}`} /> : null}
       </View>
     </View>
-    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} />)
+    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} />)
       : <Text style={{ color: c.foregroundMuted }}>{data.status === 'unsupported' ? '이 기기의 yw-heavy가 현황 조회를 지원하지 않음 · 갱신 필요' : '대기열 확인 불가'}</Text>}
   </Card>;
 }

@@ -5,7 +5,7 @@
 
 ## 2026-11-24 · heavy 대기열 현황 (0.7.0)
 
-- 환경: arm64 macOS, Paseo CLI 0.16.2, SDK 0.13.0. 타입 검사, **19개 파일·154개 테스트**, client audit **0건** 통과.
+- 환경: arm64 macOS, Paseo CLI 0.16.2, SDK 0.13.0. 타입 검사, **19개 파일·155개 테스트**, client audit **0건** 통과.
 - 서버 조회부(`HeavyReader`)를 `status --json`이 있는 `yw-heavy` 사본의 실제 대기열과 설치본(미지원)으로 실행해 `ok`와 `unsupported`를 확인했다.
 - 실제 데몬 설치·앱 화면(사이드바 `trailing`, 카드의 데스크톱·compact·밝은/어두운 테마)과 부하 실측은 하지 않았다.
 

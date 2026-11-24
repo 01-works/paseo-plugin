@@ -2,7 +2,7 @@ import { defineRpc } from '@getpaseo/plugin';
 import { z } from 'zod';
 
 // yw-heavy status --json (schema 1). 모르는 필드는 버린다.
-const text = z.string().max(512);
+const text = z.string().max(8192);
 const seconds = z.number().int().nonnegative().nullable();
 export const heavyItemSchema = z.object({ id: text.nullable(), supervisor: text.nullable(), queued: seconds, state: text });
 export const heavySlotSchema = z.object({
