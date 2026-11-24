@@ -5,7 +5,7 @@ import { z } from 'zod';
 const text = z.string().max(8192);
 const seconds = z.number().int().nonnegative().nullable();
 // pid는 yw-heavy가, directory는 이 플러그인 서버가 pid의 작업 폴더로 채운다.
-export const heavyItemSchema = z.object({ id: text.nullable(), pid: z.number().int().positive().nullable().default(null),
+export const heavyItemSchema = z.object({ id: text.nullable(), pid: z.number().int().positive().nullable().default(null).catch(null),
   directory: z.string().max(8192).nullable().default(null), supervisor: text.nullable(), queued: seconds, state: text });
 export const heavySlotSchema = z.object({
   name: text, running: heavyItemSchema.extend({ started: seconds }).nullable(),

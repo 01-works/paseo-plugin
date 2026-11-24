@@ -35,7 +35,13 @@ describe('HeavyReader', () => {
     const failed = await new HeavyReader(async () => json, () => 1, async () => { throw new Error('lsof 없음'); }).get();
     expect(failed.status).toBe('ok'); expect(failed.queue!.slots[0].waiting.map(w => w.directory)).toEqual([null, null, null]);
   });
+  it('잘못된 pid 하나가 전체 현황을 가리지 않는다', async () => {
+    const json = JSON.stringify({ ...queueJson, slots: [{ ...queueJson.slots[0], waiting: [{ id: 'Z', pid: 0, supervisor: null, queued: 1, state: 'unknown' }] }] });
+    const result = await new HeavyReader(async () => json, () => 1, async () => new Map()).get();
+    expect(result.status).toBe('ok'); expect(result.queue!.slots[0].waiting[0].pid).toBeNull();
+  });
   it('lsof -Fpn 출력에서 폴더만 읽는다', () => {
+    expect([...parseDirectories('p42\nfcwd\nn/repo')]).toEqual([]);
     expect([...parseDirectories('p11\nfcwd\nn/a b/c\np12\nfcwd\nnpermission denied\n\n')]).toEqual([[11, '/a b/c']]);
   });
   it('동시 요청을 합치고 10초 동안 재사용한 뒤 다시 읽는다', async () => {

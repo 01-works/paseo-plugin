@@ -91,15 +91,20 @@ function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: nu
   </View>;
 }
 
-export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId: string; navigation?: PluginSurfaceProps['navigation'] }) {
-  const { data, failed } = useHeavy(CARD_INTERVAL);
+// 대기열을 읽은 뒤에만 감독·workspace 목록을 조회한다.
+function Slots({ theme, hostId, navigation, slots, now }: { theme: Theme; hostId: string; navigation?: PluginSurfaceProps['navigation']; slots: HeavySlot[]; now: number }) {
   const names = useAgentNames(hostId);
   const workspaces = useWorkspaces(hostId);
-  const c = theme.colors;
   const open = navigation?.openAgent;
   const openAgent = open ? (agentId: string) => open({ agentId, serverId: hostId }) : undefined;
   const show = navigation?.openWorkspace;
   const openWorkspace = show ? (workspaceId: string) => show({ workspaceId, serverId: hostId }) : undefined;
+  return <>{slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={now} names={names} workspaces={workspaces} openAgent={openAgent} openWorkspace={openWorkspace} />)}</>;
+}
+
+export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId: string; navigation?: PluginSurfaceProps['navigation'] }) {
+  const { data, failed } = useHeavy(CARD_INTERVAL);
+  const c = theme.colors;
   // yw-heavy가 없는 Mac에는 카드를 보이지 않는다.
   if (!data || data.status === 'missing') return null;
   const summary = data.queue ? heavySummary(data.queue, data.sampledAt) : null;
@@ -112,7 +117,7 @@ export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId:
         {summary ? <Badge theme={theme} label={`대기 ${summary.waiting}${summary.oldest === null ? '' : ` · 최장 ${duration(summary.oldest)}`}`} /> : null}
       </View>
     </View>
-    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} workspaces={workspaces} openAgent={openAgent} openWorkspace={openWorkspace} />)
+    {data.queue ? <Slots theme={theme} hostId={hostId} navigation={navigation} slots={data.queue.slots} now={data.sampledAt} />
       : <Text style={{ color: c.foregroundMuted }}>{data.status === 'unsupported' ? '이 기기의 yw-heavy가 현황 조회를 지원하지 않음 · 갱신 필요' : '대기열 확인 불가'}</Text>}
   </Card>;
 }

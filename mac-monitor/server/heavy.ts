@@ -22,7 +22,8 @@ const readDirectories: HeavyDirectories = pids => new Promise(resolve => {
 export function parseDirectories(output: string): Map<number, string> {
   const found = new Map<number, string>();
   let pid: number | undefined;
-  for (const line of output.split('\n')) {
+  // 시간 초과·버퍼 제한으로 잘린 마지막 줄은 다른 폴더로 읽힐 수 있어 버린다.
+  for (const line of output.split('\n').slice(0, -1)) {
     if (line.startsWith('p')) pid = Number(line.slice(1));
     else if (line.startsWith('n') && pid !== undefined && line.startsWith('n/')) found.set(pid, line.slice(1));
   }

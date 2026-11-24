@@ -57,6 +57,7 @@ describe('HeavyCard', () => {
     hooks.heavy.mockReturnValue({ data: { status, sampledAt: now, queue: null }, failed: false });
     const r = await render(<HeavyCard theme={theme} hostId="h" />);
     if (message === null) expect(r.toJSON()).toBeNull(); else expect(texts(r)).toContain(message);
+    expect(hooks.list).not.toHaveBeenCalled(); expect(hooks.workspaces).not.toHaveBeenCalled();
   });
 });
 
@@ -75,6 +76,17 @@ it('작업 폴더로 workspace 제목과 PR을 보이고 누르면 연다. 못 �
   expect(openWorkspace).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'w1', serverId: 'h' });
   expect(shown.filter(v => v === 'D')).toHaveLength(1);
   expect(shown).not.toContain('다른 조사'); expect(shown).not.toContain('PR #9');
+});
+
+it('같은 폴더의 workspace가 여럿이면 맞추지 않고, 다음 쪽에 있는 하위 workspace를 찾는다', async () => {
+  const entry = (id: string, dir: string, number: number) => ({ id, workspaceDirectory: dir, projectKind: 'git', workspaceKind: 'worktree', name: id, title: id, githubRuntime: { pullRequest: { number } } });
+  hooks.workspaces.mockImplementation(async ({ page }: { page: { cursor?: string } }) => page.cursor === 'next'
+    ? { entries: [entry('깊은 곳', '/r/wt', 3), entry('둘째', '/same', 5)], pageInfo: { hasMore: false, nextCursor: null } }
+    : { entries: [entry('위', '/r', 1), entry('첫째', '/same', 4)], pageInfo: { hasMore: true, nextCursor: 'next' } });
+  hooks.heavy.mockReturnValue({ data: ok([slot({ turns: ['A', 'B'], waiting: [{ ...item('A', 9000), directory: '/r/wt/x' }, { ...item('B', 9000), directory: '/same' }] })]), failed: false });
+  const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
+  for (const value of ['깊은 곳', 'PR #3', 'same']) expect(shown).toContain(value);
+  for (const value of ['위', '첫째', '둘째', 'PR #1', 'PR #4', 'PR #5']) expect(shown).not.toContain(value);
 });
 
 it('이 호스트에서 찾은 감독만 누르면 그 세션을 열고, 이동 기능이 없으면 이름만 보인다', async () => {
