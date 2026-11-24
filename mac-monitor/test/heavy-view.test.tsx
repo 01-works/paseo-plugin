@@ -61,8 +61,8 @@ describe('HeavyCard', () => {
 });
 
 it('작업 폴더로 workspace 제목과 PR을 보이고 누르면 연다. 못 찾으면 폴더 이름, 폴더도 모르면 작업 ID', async () => {
-  const entry = (id: string, dir: string, title: string | null, number?: number) => ({ id, workspaceDirectory: dir, name: `${id}-name`, title, githubRuntime: number ? { pullRequest: { number } } : null });
-  hooks.workspaces.mockResolvedValue({ entries: [entry('w0', '/r', '저장소'), entry('w1', '/r/wt', '#10808 재구독 차단', 77)] });
+  const entry = (id: string, dir: string, title: string | null, number?: number) => ({ id, workspaceDirectory: dir, projectKind: 'git', workspaceKind: 'worktree', name: `${id}-name`, title, githubRuntime: number ? { pullRequest: { number } } : null });
+  hooks.workspaces.mockResolvedValue({ entries: [entry('w0', '/r', '저장소'), entry('w1', '/r/wt', '#10808 재구독 차단', 77), { ...entry('tmp', '/x', '다른 조사', 9), projectKind: 'directory', workspaceKind: 'directory' }] });
   hooks.heavy.mockReturnValue({ data: ok([slot({ turns: ['A', 'B', 'C', 'D'], waiting: [
     { ...item('A', 9000), directory: '/r/wt/apps' }, { ...item('B', 9000), directory: '/r/wt2' }, { ...item('C', 9000), directory: '/x/red-1' }, item('D', 9000)] })]), failed: false });
   const openWorkspace = vi.fn();
@@ -74,6 +74,7 @@ it('작업 폴더로 workspace 제목과 PR을 보이고 누르면 연다. 못 �
   link[0].props.onPress();
   expect(openWorkspace).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'w1', serverId: 'h' });
   expect(shown.filter(v => v === 'D')).toHaveLength(1);
+  expect(shown).not.toContain('다른 조사'); expect(shown).not.toContain('PR #9');
 });
 
 it('이 호스트에서 찾은 감독만 누르면 그 세션을 열고, 이동 기능이 없으면 이름만 보인다', async () => {
