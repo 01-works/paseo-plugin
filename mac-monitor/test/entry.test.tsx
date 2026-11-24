@@ -6,6 +6,7 @@ vi.mock('react-native', () => ({ Pressable: 'Pressable', View: 'View' }));
 vi.mock('@getpaseo/plugin/client/react-native', () => ({ Modal: 'Modal' }));
 vi.mock('@getpaseo/plugin/client/ui', () => ({ SidebarRow: 'SidebarRow' }));
 vi.mock('../client/dashboard', () => ({ Dashboard: () => null }));
+vi.mock('../client/heavy', () => ({ HeavyTrailing: () => null }));
 vi.mock('../client/popover', () => ({ MonitorContent: () => null, pressureColor: () => '' }));
 import contribute from '../index.client';
 import { requestSnapshot } from '../client/data';
@@ -35,6 +36,7 @@ it.each([false, true])('사이드바에서 모니터를 열고 entry 해제 시 
       const row = Item({ ...hostProps, currentScreen: { screenId: 'main', params: {} } });
       const props = row.props as { active: boolean; icon: string; onPress: () => void };
       expect(props.active).toBe(true); expect(props.icon).toBe('Activity');
+      expect((row.props as { trailing: { props: { theme: unknown } } }).trailing.props.theme).toBe(hostProps.theme);
       props.onPress(); expect(openScreen).toHaveBeenCalledExactlyOnceWith({ screenId: 'main' });
       const inactive = Item({ ...hostProps, currentScreen: null });
       expect((inactive.props as { active: boolean }).active).toBe(false);

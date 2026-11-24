@@ -4,13 +4,18 @@ import { Dashboard } from './client/dashboard';
 import { contributePills } from './client/pill';
 import { configureRequester } from './client/data';
 import { snapshotRpc } from './shared/contracts';
+import { heavyRpc } from './shared/heavy';
+import { configureHeavy } from './client/heavy-data';
+import { HeavyTrailing } from './client/heavy';
 
-function MonitorItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
-  return <SidebarRow icon="Activity" active={currentScreen?.screenId === 'main'} onPress={() => openScreen({ screenId: 'main' })} />;
+function MonitorItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
+  return <SidebarRow icon="Activity" active={currentScreen?.screenId === 'main'} onPress={() => openScreen({ screenId: 'main' })}
+    trailing={<HeavyTrailing theme={theme} />} />;
 }
 
 export default function contribute(client: PluginClientContext) {
   const clearRequester = configureRequester(input => client.rpc(snapshotRpc, input));
+  const clearHeavy = configureHeavy(() => client.rpc(heavyRpc, {}));
   const removePills = contributePills(client);
   const screens = typeof client.addScreen === 'function' && typeof client.addSidebarHeaderItem === 'function';
   const removeSurface = screens
@@ -19,5 +24,5 @@ export default function contribute(client: PluginClientContext) {
   const removeSidebar = screens
     ? client.addSidebarHeaderItem({ id: 'main', title: 'Mac 모니터', Component: MonitorItem })
     : client.addSidebarItem({ id: 'main', title: 'Mac 모니터', icon: 'Activity', surface: 'main' });
-  return () => { removePills(); removeSidebar(); removeSurface(); clearRequester(); };
+  return () => { removePills(); removeSidebar(); removeSurface(); clearHeavy(); clearRequester(); };
 }

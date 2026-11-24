@@ -9,6 +9,7 @@ vi.mock('react-native', () => ({ View: 'View', Text: 'Text', ScrollView: 'Scroll
 vi.mock('@getpaseo/plugin/client', () => ({ useHosts: () => [{ serverId: 'a', label: 'Mac A', status: 'online' }, { serverId: 'b', label: 'Mac B', status: 'offline' }], useRpc: () => hooks.info }));
 vi.mock('../client/data', () => ({ useSnapshot: hooks.sample }));
 vi.mock('../client/agents', () => ({ useAgentCounts: () => ({ a: { running: 1, idle: 2, other: 0 } }) }));
+vi.mock('../client/heavy', () => ({ HeavyCard: () => null }));
 vi.mock('../client/popover', () => ({ Details: (props: Record<string, unknown>) => React.createElement('Details', props) }));
 import { Dashboard } from '../client/dashboard';
 

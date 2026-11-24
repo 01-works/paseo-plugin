@@ -4,10 +4,13 @@ import { getCollector, stopCollector } from './server/collector';
 import { hostInfo } from './server/host-info';
 import { cleanupStartRpc, cleanupGetRpc, cleanupCancelRpc, cleanupTerminateRpc } from './shared/cleanup';
 import { Cleanup } from './server/cleanup';
+import { heavyRpc } from './shared/heavy';
+import { HeavyReader } from './server/heavy';
 
 export default function contribute(server: PluginServerContext) {
   const collector = getCollector();
   const cleanup = new Cleanup(collector);
+  const heavy = new HeavyReader();
   server.handle(snapshotRpc, ({ includeProcesses }) => collector.snapshot(includeProcesses));
   server.handle(hostInfoRpc, () => hostInfo(collector.mode));
   server.handle(processListRpc, ({ group }) => collector.processList(group));
@@ -17,6 +20,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(cleanupGetRpc, ({ id }) => cleanup.get(id));
   server.handle(cleanupCancelRpc, ({ id }) => cleanup.cancel(id));
   server.handle(cleanupTerminateRpc, ({ id, targets, confirmNonRecommended }) => cleanup.terminate(id, targets, confirmNonRecommended));
+  server.handle(heavyRpc, () => heavy.get());
   void collector.start();
   return async () => {
     // 먼저 검사를 취소한다. 헬퍼를 함께 닫아 대기 중인 실행 정보 응답도 즉시 해제한다.
