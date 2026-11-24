@@ -1,4 +1,5 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import type { PluginSurfaceProps } from '@getpaseo/plugin/client';
 import type { HeavyItem, HeavyQueue, HeavySlot } from '../shared/heavy';
 import { useAgentNames } from './agents';
 import { useHeavy } from './heavy-data';
@@ -34,39 +35,53 @@ export function orderedWaiting(slot: HeavySlot): HeavyItem[] {
 
 // 이 호스트에 있는 에이전트면 이름, 아니면 ID 앞자리.
 type Names = Record<string, string>;
+type OpenAgent = (agentId: string) => void;
 const supervisorName = (id: string | null, names: Names) => id === null ? '감독 확인 불가' : Object.hasOwn(names, id) ? names[id] : id.slice(0, 12);
 
-function Row({ theme, position, item, time, names }: { theme: Theme; position: string; item: HeavyItem; time: string; names: Names }) {
+// 이 호스트에서 찾은 감독만 세션을 연다. 구버전 앱에는 이동 기능이 없다.
+function Supervisor({ theme, id, names, openAgent }: { theme: Theme; id: string | null; names: Names; openAgent?: OpenAgent }) {
+  const c = theme.colors, name = supervisorName(id, names);
+  if (!openAgent || id === null || !Object.hasOwn(names, id)) return <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foregroundMuted, flexShrink: 1 }}>{name}</Text>;
+  return <Pressable accessibilityRole="link" accessibilityLabel={`감독 세션 열기: ${name}`} hitSlop={6} onPress={() => openAgent(id)}
+    style={({ pressed }) => ({ alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 4, backgroundColor: pressed ? c.surface2 : undefined })}>
+    <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.accent }}>{name}</Text>
+  </Pressable>;
+}
+
+type RowContext = { theme: Theme; names: Names; openAgent?: OpenAgent };
+function Row({ theme, position, item, time, names, openAgent }: RowContext & { position: string; item: HeavyItem; time: string }) {
   const c = theme.colors;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.border }}>
     <Text style={{ color: c.foregroundMuted, minWidth: 32, fontVariant: ['tabular-nums'] }}>{position}</Text>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foreground }}>{item.id ?? '작업 확인 불가'}</Text>
-      <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foregroundMuted, flexShrink: 1 }}>{supervisorName(item.supervisor, names)}</Text>
+      <Supervisor theme={theme} id={item.supervisor} names={names} openAgent={openAgent} />
     </View>
     {item.state === 'alive' ? null : <Badge theme={theme} label={dead(item) ? '끝남' : '확인 불가'} />}
     <Text style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{time}</Text>
   </View>;
 }
 
-function Slot({ theme, slot, now, names }: { theme: Theme; slot: HeavySlot; now: number; names: Names }) {
-  const c = theme.colors, items = orderedWaiting(slot), turns = new Set(slot.turns ?? []);
+function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: number }) {
+  const { theme } = context, c = theme.colors, items = orderedWaiting(slot), turns = new Set(slot.turns ?? []);
   const queued = (item: HeavyItem) => { const value = age(item, now); return value === null ? '—' : duration(value); };
   return <View>
     {slot.name === 'main' ? null : <Text style={{ color: c.foregroundMuted, fontWeight: '600', paddingTop: 8 }}>{slot.name === 'verifier' ? '검증 자리' : slot.name}</Text>}
-    {slot.running ? <Row theme={theme} position="실행" item={slot.running} names={names}
+    {slot.running ? <Row {...context} position="실행" item={slot.running}
       time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)} />
       : <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실행 중인 작업 없음</Text>}
     {items.length && !slot.turns ? <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실제 차례를 알 수 없어 등록 순서로 표시</Text> : null}
-    {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} theme={theme} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} names={names} time={queued(item)} />)}
+    {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} {...context} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} time={queued(item)} />)}
     {items.length > SHOWN ? <Text style={{ color: c.foregroundMuted, paddingTop: 6 }}>외 {items.length - SHOWN}건</Text> : null}
   </View>;
 }
 
-export function HeavyCard({ theme, hostId }: { theme: Theme; hostId: string }) {
+export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId: string; navigation?: PluginSurfaceProps['navigation'] }) {
   const { data, failed } = useHeavy(CARD_INTERVAL);
   const names = useAgentNames(hostId);
   const c = theme.colors;
+  const open = navigation?.openAgent;
+  const openAgent = open ? (agentId: string) => open({ agentId, serverId: hostId }) : undefined;
   // yw-heavy가 없는 Mac에는 카드를 보이지 않는다.
   if (!data || data.status === 'missing') return null;
   const summary = data.queue ? heavySummary(data.queue, data.sampledAt) : null;
@@ -79,7 +94,7 @@ export function HeavyCard({ theme, hostId }: { theme: Theme; hostId: string }) {
         {summary ? <Badge theme={theme} label={`대기 ${summary.waiting}${summary.oldest === null ? '' : ` · 최장 ${duration(summary.oldest)}`}`} /> : null}
       </View>
     </View>
-    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} />)
+    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} openAgent={openAgent} />)
       : <Text style={{ color: c.foregroundMuted }}>{data.status === 'unsupported' ? '이 기기의 yw-heavy가 현황 조회를 지원하지 않음 · 갱신 필요' : '대기열 확인 불가'}</Text>}
   </Card>;
 }

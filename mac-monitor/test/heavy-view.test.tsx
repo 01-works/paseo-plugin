@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeavyItem, HeavyResult, HeavySlot } from '../shared/heavy';
 
 const hooks = vi.hoisted(() => ({ heavy: vi.fn(), list: vi.fn() }));
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
+vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('@getpaseo/plugin/client', async importOriginal => ({ ...await importOriginal<object>(), getPaseoClient: () => ({ agents: { list: hooks.list } }) }));
 vi.mock('../client/heavy-data', () => ({ useHeavy: hooks.heavy }));
 import { CARD_INTERVAL, HeavyCard, HeavyTrailing, SIDEBAR_INTERVAL, duration, heavySummary, orderedWaiting } from '../client/heavy';
@@ -58,6 +58,19 @@ describe('HeavyCard', () => {
     const r = await render(<HeavyCard theme={theme} hostId="h" />);
     if (message === null) expect(r.toJSON()).toBeNull(); else expect(texts(r)).toContain(message);
   });
+});
+
+it('이 호스트에서 찾은 감독만 누르면 그 세션을 열고, 이동 기능이 없으면 이름만 보인다', async () => {
+  hooks.list.mockResolvedValue({ entries: [{ agent: { id: 'sup-B1', title: '감독: 결제' } }], subscription: { subscribe: () => {} } });
+  hooks.heavy.mockReturnValue({ data: ok([slot()]), failed: false });
+  const openAgent = vi.fn();
+  const links = (r: ReactTestRenderer) => r.root.findAll(n => String(n.type) === 'Pressable');
+  const r = await render(<HeavyCard theme={theme} hostId="h" navigation={{ openAgent, openWorkspace: vi.fn() }} />);
+  expect(links(r).map(n => n.props.accessibilityLabel)).toEqual(['감독 세션 열기: 감독: 결제']);
+  links(r)[0].props.onPress();
+  expect(openAgent).toHaveBeenCalledExactlyOnceWith({ agentId: 'sup-B1', serverId: 'h' });
+  await act(async () => r.update(<HeavyCard theme={theme} hostId="h" />));
+  expect(links(r)).toHaveLength(0); expect(texts(r)).toContain('감독: 결제');
 });
 
 it('예상 차례에 없는 줄에는 번호를 붙이지 않고, 이름 조회가 실패해도 ID로 표시한다', async () => {
