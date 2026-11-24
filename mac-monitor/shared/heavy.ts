@@ -4,7 +4,9 @@ import { z } from 'zod';
 // yw-heavy status --json (schema 1). 모르는 필드는 버린다.
 const text = z.string().max(8192);
 const seconds = z.number().int().nonnegative().nullable();
-export const heavyItemSchema = z.object({ id: text.nullable(), supervisor: text.nullable(), queued: seconds, state: text });
+// pid는 yw-heavy가, directory는 이 플러그인 서버가 pid의 작업 폴더로 채운다.
+export const heavyItemSchema = z.object({ id: text.nullable(), pid: z.number().int().positive().nullable().default(null),
+  directory: z.string().max(8192).nullable().default(null), supervisor: text.nullable(), queued: seconds, state: text });
 export const heavySlotSchema = z.object({
   name: text, running: heavyItemSchema.extend({ started: seconds }).nullable(),
   waiting: z.array(heavyItemSchema).max(2048), turns: z.array(text).max(2048).nullable(),

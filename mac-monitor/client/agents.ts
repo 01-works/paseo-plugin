@@ -48,7 +48,7 @@ export function useAgentNames(serverId: string): Record<string, string> {
     const add = (agent: Named) => { if (agent.title) known.set(agent.id, agent.title); };
     const publish = () => { if (!stopped) setNames(Object.fromEntries(known)); };
     try {
-      void getPaseoClient(serverId).agents.list({ subscribe: {}, signal: lifetime.signal }).then(({ subscription, entries }) => {
+      void getPaseoClient(serverId).agents.list({ subscribe: {}, includeBackground: true, page: { limit: 200 }, signal: lifetime.signal }).then(({ subscription, entries }) => {
         if (stopped) return;
         for (const { agent } of entries) add(agent); publish();
         subscription?.subscribe({

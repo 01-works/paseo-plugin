@@ -3,6 +3,7 @@ import type { PluginSurfaceProps } from '@getpaseo/plugin/client';
 import type { HeavyItem, HeavyQueue, HeavySlot } from '../shared/heavy';
 import { useAgentNames } from './agents';
 import { useHeavy } from './heavy-data';
+import { findWorkspace, useWorkspaces, type WorkspaceInfo } from './workspaces';
 import { Badge, Card, type Theme } from './visuals';
 
 const SHOWN = 20;
@@ -36,6 +37,7 @@ export function orderedWaiting(slot: HeavySlot): HeavyItem[] {
 // 이 호스트에 있는 에이전트면 이름, 아니면 ID 앞자리.
 type Names = Record<string, string>;
 type OpenAgent = (agentId: string) => void;
+type OpenWorkspace = (workspaceId: string) => void;
 const supervisorName = (id: string | null, names: Names) => id === null ? '감독 확인 불가' : Object.hasOwn(names, id) ? names[id] : id.slice(0, 12);
 
 // 이 호스트에서 찾은 감독만 세션을 연다. 구버전 앱에는 이동 기능이 없다.
@@ -48,15 +50,28 @@ function Supervisor({ theme, id, names, openAgent }: { theme: Theme; id: string 
   </Pressable>;
 }
 
-type RowContext = { theme: Theme; names: Names; openAgent?: OpenAgent };
-function Row({ theme, position, item, time, names, openAgent }: RowContext & { position: string; item: HeavyItem; time: string }) {
+type RowContext = { theme: Theme; names: Names; workspaces: readonly WorkspaceInfo[]; openAgent?: OpenAgent; openWorkspace?: OpenWorkspace };
+// 제목: workspace 이름 → 작업 폴더 이름 → 작업 ID. 제목이 있으면 작업 ID는 둘째 줄로 내린다.
+function Title({ theme, item, workspace, openWorkspace }: { theme: Theme; item: HeavyItem; workspace: WorkspaceInfo | null; openWorkspace?: OpenWorkspace }) {
   const c = theme.colors;
+  const label = workspace?.name ?? item.directory?.split('/').filter(Boolean).pop() ?? item.id ?? '작업 확인 불가';
+  if (!workspace || !openWorkspace) return <Text selectable numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground, fontWeight: '600' }}>{label}</Text>;
+  return <Pressable accessibilityRole="link" accessibilityLabel={`workspace 열기: ${label}`} onPress={() => openWorkspace(workspace.id)}
+    style={({ pressed }) => ({ alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 4, backgroundColor: pressed ? c.surface2 : undefined })}>
+    <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground, fontWeight: '600' }}>{label}</Text>
+  </Pressable>;
+}
+function Row({ theme, position, item, time, names, workspaces, openAgent, openWorkspace }: RowContext & { position: string; item: HeavyItem; time: string }) {
+  const c = theme.colors, workspace = findWorkspace(workspaces, item.directory);
+  const titled = workspace !== null || item.directory !== null;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.border }}>
     <Text style={{ color: c.foregroundMuted, minWidth: 32, fontVariant: ['tabular-nums'] }}>{position}</Text>
     <View style={{ flex: 1, minWidth: 0 }}>
-      <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foreground }}>{item.id ?? '작업 확인 불가'}</Text>
+      <Title theme={theme} item={item} workspace={workspace} openWorkspace={openWorkspace} />
+      {titled && item.id !== null ? <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foregroundMuted }}>{item.id}</Text> : null}
       <Supervisor theme={theme} id={item.supervisor} names={names} openAgent={openAgent} />
     </View>
+    {workspace?.pr == null ? null : <Badge theme={theme} label={`PR #${workspace.pr}`} />}
     {item.state === 'alive' ? null : <Badge theme={theme} label={dead(item) ? '끝남' : '확인 불가'} />}
     <Text style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{time}</Text>
   </View>;
@@ -79,9 +94,12 @@ function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: nu
 export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId: string; navigation?: PluginSurfaceProps['navigation'] }) {
   const { data, failed } = useHeavy(CARD_INTERVAL);
   const names = useAgentNames(hostId);
+  const workspaces = useWorkspaces(hostId);
   const c = theme.colors;
   const open = navigation?.openAgent;
   const openAgent = open ? (agentId: string) => open({ agentId, serverId: hostId }) : undefined;
+  const show = navigation?.openWorkspace;
+  const openWorkspace = show ? (workspaceId: string) => show({ workspaceId, serverId: hostId }) : undefined;
   // yw-heavy가 없는 Mac에는 카드를 보이지 않는다.
   if (!data || data.status === 'missing') return null;
   const summary = data.queue ? heavySummary(data.queue, data.sampledAt) : null;
@@ -94,7 +112,7 @@ export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId:
         {summary ? <Badge theme={theme} label={`대기 ${summary.waiting}${summary.oldest === null ? '' : ` · 최장 ${duration(summary.oldest)}`}`} /> : null}
       </View>
     </View>
-    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} openAgent={openAgent} />)
+    {data.queue ? data.queue.slots.map(slot => <Slot key={slot.name} theme={theme} slot={slot} now={data.sampledAt} names={names} workspaces={workspaces} openAgent={openAgent} openWorkspace={openWorkspace} />)
       : <Text style={{ color: c.foregroundMuted }}>{data.status === 'unsupported' ? '이 기기의 yw-heavy가 현황 조회를 지원하지 않음 · 갱신 필요' : '대기열 확인 불가'}</Text>}
   </Card>;
 }

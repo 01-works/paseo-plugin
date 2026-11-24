@@ -3,14 +3,14 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeavyItem, HeavyResult, HeavySlot } from '../shared/heavy';
 
-const hooks = vi.hoisted(() => ({ heavy: vi.fn(), list: vi.fn() }));
+const hooks = vi.hoisted(() => ({ heavy: vi.fn(), list: vi.fn(), workspaces: vi.fn() }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
-vi.mock('@getpaseo/plugin/client', async importOriginal => ({ ...await importOriginal<object>(), getPaseoClient: () => ({ agents: { list: hooks.list } }) }));
+vi.mock('@getpaseo/plugin/client', async importOriginal => ({ ...await importOriginal<object>(), getPaseoClient: () => ({ agents: { list: hooks.list }, workspaces: { list: hooks.workspaces } }) }));
 vi.mock('../client/heavy-data', () => ({ useHeavy: hooks.heavy }));
 import { CARD_INTERVAL, HeavyCard, HeavyTrailing, SIDEBAR_INTERVAL, duration, heavySummary, orderedWaiting } from '../client/heavy';
 
 const theme = { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444', statusWarning: '#aa0' } } as never;
-const item = (id: string, queued: number | null, state = 'alive', supervisor: string | null = `sup-${id}`): HeavyItem => ({ id, supervisor, queued, state });
+const item = (id: string, queued: number | null, state = 'alive', supervisor: string | null = `sup-${id}`): HeavyItem => ({ id, pid: 1, directory: null, supervisor, queued, state });
 const now = 10_000_000; // 10,000초
 const slot = (over: Partial<HeavySlot> = {}): HeavySlot => ({ name: 'main', running: { ...item('RUN', 1000), started: 9400 },
   waiting: [item('A1', 2500), item('B1', 9940), item('A2', null)], turns: ['B1', 'A1', 'A2'], ...over });
@@ -18,8 +18,8 @@ const ok = (slots: HeavySlot[], paused = false): HeavyResult => ({ status: 'ok',
 let renderer: ReactTestRenderer | undefined;
 const render = async (node: React.ReactElement) => { await act(async () => { renderer = create(node); }); return renderer!; };
 const texts = (r: ReactTestRenderer) => r.root.findAll(n => String(n.type) === 'Text').map(n => n.children.join(''));
-beforeEach(() => { hooks.list.mockResolvedValue({ entries: [], subscription: { subscribe: () => {} } }); (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
-afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; hooks.heavy.mockReset(); hooks.list.mockReset(); });
+beforeEach(() => { hooks.workspaces.mockResolvedValue({ entries: [] }); hooks.list.mockResolvedValue({ entries: [], subscription: { subscribe: () => {} } }); (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
+afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; hooks.heavy.mockReset(); hooks.list.mockReset(); hooks.workspaces.mockReset(); });
 
 describe('순수 함수', () => {
   it('기간', () => {
@@ -58,6 +58,22 @@ describe('HeavyCard', () => {
     const r = await render(<HeavyCard theme={theme} hostId="h" />);
     if (message === null) expect(r.toJSON()).toBeNull(); else expect(texts(r)).toContain(message);
   });
+});
+
+it('작업 폴더로 workspace 제목과 PR을 보이고 누르면 연다. 못 찾으면 폴더 이름, 폴더도 모르면 작업 ID', async () => {
+  const entry = (id: string, dir: string, title: string | null, number?: number) => ({ id, workspaceDirectory: dir, name: `${id}-name`, title, githubRuntime: number ? { pullRequest: { number } } : null });
+  hooks.workspaces.mockResolvedValue({ entries: [entry('w0', '/r', '저장소'), entry('w1', '/r/wt', '#10808 재구독 차단', 77)] });
+  hooks.heavy.mockReturnValue({ data: ok([slot({ turns: ['A', 'B', 'C', 'D'], waiting: [
+    { ...item('A', 9000), directory: '/r/wt/apps' }, { ...item('B', 9000), directory: '/r/wt2' }, { ...item('C', 9000), directory: '/x/red-1' }, item('D', 9000)] })]), failed: false });
+  const openWorkspace = vi.fn();
+  const r = await render(<HeavyCard theme={theme} hostId="h" navigation={{ openAgent: vi.fn(), openWorkspace }} />);
+  const shown = texts(r);
+  for (const value of ['#10808 재구독 차단', 'PR #77', 'A', '저장소', 'B', 'red-1', 'C', 'D']) expect(shown).toContain(value);
+  const link = r.root.findAll(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === 'workspace 열기: #10808 재구독 차단');
+  expect(link).toHaveLength(1);
+  link[0].props.onPress();
+  expect(openWorkspace).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'w1', serverId: 'h' });
+  expect(shown.filter(v => v === 'D')).toHaveLength(1);
 });
 
 it('이 호스트에서 찾은 감독만 누르면 그 세션을 열고, 이동 기능이 없으면 이름만 보인다', async () => {
