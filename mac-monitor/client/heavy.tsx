@@ -123,8 +123,9 @@ export function HeavyCard({ theme, hostId, navigation }: { theme: Theme; hostId:
 }
 
 export function HeavyTrailing({ theme }: { theme: Theme }) {
-  const { data } = useHeavy(SIDEBAR_INTERVAL);
-  if (!data?.queue) return null;
+  const { data, failed } = useHeavy(SIDEBAR_INTERVAL);
+  // 사이드바에는 '이전 값' 표시 자리가 없어, 조회가 실패하면 옛 건수를 보이지 않는다.
+  if (failed || !data?.queue) return null;
   const { waiting, oldest } = heavySummary(data.queue, data.sampledAt);
   if (!waiting) return null;
   return <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, fontVariant: ['tabular-nums'] }}>대기 {waiting}{oldest === null ? '' : ` · ${duration(oldest)}`}</Text>;

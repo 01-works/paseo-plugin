@@ -117,6 +117,14 @@ describe('HeavyTrailing', () => {
     expect(hooks.heavy).toHaveBeenCalledWith(SIDEBAR_INTERVAL);
     expect(texts(r)).toEqual(['대기 3 · 2시간 5분']);
   });
+  it('조회가 실패하면 옛 건수를 숨기고 성공하면 다시 보인다', async () => {
+    hooks.heavy.mockReturnValue({ data: ok([slot()]), failed: true });
+    const r = await render(<HeavyTrailing theme={theme} />);
+    expect(r.toJSON()).toBeNull();
+    hooks.heavy.mockReturnValue({ data: ok([slot()]), failed: false });
+    await act(async () => r.update(<HeavyTrailing theme={theme} />));
+    expect(texts(r)).toEqual(['대기 3 · 2시간 5분']);
+  });
   it.each([[undefined], [ok([slot({ waiting: [] })])], [{ status: 'missing', sampledAt: now, queue: null } as HeavyResult]])('표시하지 않음', async data => {
     hooks.heavy.mockReturnValue({ data, failed: false });
     expect((await render(<HeavyTrailing theme={theme} />)).toJSON()).toBeNull();
