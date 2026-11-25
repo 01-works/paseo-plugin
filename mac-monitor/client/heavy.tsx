@@ -89,7 +89,7 @@ function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: nu
     {slot.name === 'main' ? null : <Text style={{ color: c.foregroundMuted, fontWeight: '600', paddingTop: 8 }}>{slot.name === 'verifier' ? '검증 자리' : slot.name}</Text>}
     {slot.running ? <Row {...context} position="실행" item={slot.running}
       time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)}
-      long={!dead(slot.running) && slot.running.started !== null && now / 1000 - slot.running.started >= LONG_RUN_SECONDS} />
+      long={!dead(slot.running) && slot.running.started !== null && now / 1000 - slot.running.started > LONG_RUN_SECONDS} />
       : <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실행 중인 작업 없음</Text>}
     {items.length && !slot.turns ? <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실제 차례를 알 수 없어 등록 순서로 표시</Text> : null}
     {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} {...context} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} time={queued(item)} />)}

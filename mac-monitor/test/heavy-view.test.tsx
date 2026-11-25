@@ -110,7 +110,7 @@ it('예상 차례에 없는 줄에는 번호를 붙이지 않고, 이름 조회�
   for (const value of ['·', '끝남', 'sup-A', '감독 확인 불가']) expect(shown).toContain(value);
 });
 
-it.each([[LONG_RUN_SECONDS - 1, false], [LONG_RUN_SECONDS, true]])('실행 중인 작업이 %s초 차례를 잡았을 때 오래 실행 중 표시: %s', async (held, marked) => {
+it.each([[LONG_RUN_SECONDS, false], [LONG_RUN_SECONDS + 1, true]])('실행 중인 작업이 %s초 차례를 잡았을 때 오래 실행 중 표시: %s', async (held, marked) => {
   hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000), started: now / 1000 - held } })]), failed: false });
   const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
   expect(shown.includes('오래 실행 중')).toBe(marked);
