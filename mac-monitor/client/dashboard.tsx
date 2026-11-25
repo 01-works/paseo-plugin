@@ -6,6 +6,7 @@ import { Details } from './popover';
 import { useSnapshot } from './data';
 import { useAgentCounts } from './agents';
 import { Badge, Card } from './visuals';
+import { HeavyCard } from './heavy';
 
 export function Dashboard(props: PluginSurfaceProps) {
   return <SelectedHost key={props.host.id} {...props} />;
@@ -25,6 +26,7 @@ function SelectedHost(props: PluginSurfaceProps) {
     <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', gap: 16 }}>
       <Details key={host.id} {...props} snapshot={sample.data} name={info.data?.hostname ?? host.label}
         error={sample.error?.message} refreshing={sample.isFetching} onRefresh={sample.error ? () => void sample.refetch() : undefined} />
+      <HeavyCard theme={theme} hostId={host.id} navigation={props.navigation} />
       {hosts.length > 1 ? <Text style={{ color: c.foregroundMuted }}>기기 전환은 상단 선택기에서 · 각 Mac에 mac-monitor 설치 필요</Text> : null}
       <Card theme={theme}>
         <Text style={{ color: c.foreground, fontWeight: '600' }}>연결된 호스트 / 에이전트</Text>

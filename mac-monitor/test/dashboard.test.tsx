@@ -9,6 +9,7 @@ vi.mock('react-native', () => ({ View: 'View', Text: 'Text', ScrollView: 'Scroll
 vi.mock('@getpaseo/plugin/client', () => ({ useHosts: () => [{ serverId: 'a', label: 'Mac A', status: 'online' }, { serverId: 'b', label: 'Mac B', status: 'offline' }], useRpc: () => hooks.info }));
 vi.mock('../client/data', () => ({ useSnapshot: hooks.sample }));
 vi.mock('../client/agents', () => ({ useAgentCounts: () => ({ a: { running: 1, idle: 2, other: 0 } }) }));
+vi.mock('../client/heavy', () => ({ HeavyCard: (props: Record<string, unknown>) => React.createElement('HeavyCard', props) }));
 vi.mock('../client/popover', () => ({ Details: (props: Record<string, unknown>) => React.createElement('Details', props) }));
 import { Dashboard } from '../client/dashboard';
 
@@ -31,6 +32,7 @@ it('선택한 호스트의 스냅샷 하나만 표시하며 호스트 전환은 
   const details = renderer!.root.findByType('Details' as React.ElementType);
   expect(details.props.snapshot).toBe(second); expect(details.props.host.id).toBe('b'); expect(details.props.name).toBe('Mac B');
   expect(hooks.info).toHaveBeenCalledTimes(2);
+  expect(renderer!.root.findByType('HeavyCard' as React.ElementType).props.hostId).toBe('b');
   const current = renderer!.root.findAll(node => String(node.type) === 'Text' && node.children.join('') === '현재 기기');
   expect(current).toHaveLength(1);
 });

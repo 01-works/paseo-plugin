@@ -246,7 +246,7 @@ mac-monitor/
 
 - 기존 `paseo-top` 또는 다른 프로젝트 수정 (`~/.paseo/top/pills` 잔여 파일 포함)
 - 데몬 재시작
-- `ps`/`top`을 주기적으로 실행
+- `ps`/`top`을 주기적으로 실행 (예외: [heavy 대기열 현황](DECISIONS.md)의 `yw-heavy status --json`)
 - 클라이언트 요청으로 측정 트리거
 - 사용자 승인 없이 다른 호스트에 설치하거나 플러그인 전역 설정 변경
 
