@@ -119,6 +119,9 @@ it.each([[LONG_RUN_SECONDS - 1, false], [LONG_RUN_SECONDS, true]])('실행 중�
 it('오래 기다린 대기 작업이나 시작 시각을 모르는 작업에는 오래 실행 중을 붙이지 않는다', async () => {
   hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000), started: null }, waiting: [item('A1', 0)], turns: ['A1'] })]), failed: false });
   expect(texts(await render(<HeavyCard theme={theme} hostId="h" />))).not.toContain('오래 실행 중');
+  hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000, 'dead:esrch'), started: now / 1000 - LONG_RUN_SECONDS * 2 } })]), failed: false });
+  await act(async () => renderer!.update(<HeavyCard theme={theme} hostId="h" />));
+  expect(texts(renderer!)).toContain('끝남'); expect(texts(renderer!)).not.toContain('오래 실행 중');
 });
 
 describe('HeavyTrailing', () => {

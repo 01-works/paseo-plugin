@@ -72,9 +72,11 @@ function Row({ theme, position, item, time, long = false, names, workspaces, ope
       <Title theme={theme} item={item} workspace={workspace} openWorkspace={openWorkspace} />
       {titled && item.id !== null ? <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foregroundMuted }}>{item.id}</Text> : null}
       <Supervisor theme={theme} id={item.supervisor} names={names} openAgent={openAgent} />
+      {long || workspace?.pr != null ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 2 }}>
+        {long ? <Badge theme={theme} label="오래 실행 중" color={c.statusWarning} dot /> : null}
+        {workspace?.pr == null ? null : <Badge theme={theme} label={`PR #${workspace.pr}`} />}
+      </View> : null}
     </View>
-    {workspace?.pr == null ? null : <Badge theme={theme} label={`PR #${workspace.pr}`} />}
-    {long ? <Badge theme={theme} label="오래 실행 중" color={c.statusWarning} dot /> : null}
     {item.state === 'alive' ? null : <Badge theme={theme} label={dead(item) ? '끝남' : '확인 불가'} />}
     <Text style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{time}</Text>
   </View>;
@@ -87,7 +89,7 @@ function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: nu
     {slot.name === 'main' ? null : <Text style={{ color: c.foregroundMuted, fontWeight: '600', paddingTop: 8 }}>{slot.name === 'verifier' ? '검증 자리' : slot.name}</Text>}
     {slot.running ? <Row {...context} position="실행" item={slot.running}
       time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)}
-      long={slot.running.started !== null && now / 1000 - slot.running.started >= LONG_RUN_SECONDS} />
+      long={!dead(slot.running) && slot.running.started !== null && now / 1000 - slot.running.started >= LONG_RUN_SECONDS} />
       : <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실행 중인 작업 없음</Text>}
     {items.length && !slot.turns ? <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실제 차례를 알 수 없어 등록 순서로 표시</Text> : null}
     {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} {...context} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} time={queued(item)} />)}
