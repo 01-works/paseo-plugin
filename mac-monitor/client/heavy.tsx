@@ -10,6 +10,8 @@ const SHOWN = 20;
 // status --json 한 번이 약 0.2초의 CPU를 쓴다. 사이드바는 화면보다 드물게 읽는다.
 export const SIDEBAR_INTERVAL = 60_000;
 export const CARD_INTERVAL = 15_000;
+// 실행 중인 작업이 이만큼 차례를 잡으면 눈에 띄게 한다. 끝나는 시각은 예측하지 않는다(같은 이름 이력이 거의 없어 맞지 않음).
+export const LONG_RUN_SECONDS = 30 * 60;
 
 export function duration(seconds: number): string {
   const minutes = Math.floor(Math.max(0, seconds) / 60);
@@ -61,7 +63,7 @@ function Title({ theme, item, workspace, openWorkspace }: { theme: Theme; item: 
     <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: c.foreground, fontWeight: '600' }}>{label}</Text>
   </Pressable>;
 }
-function Row({ theme, position, item, time, names, workspaces, openAgent, openWorkspace }: RowContext & { position: string; item: HeavyItem; time: string }) {
+function Row({ theme, position, item, time, long = false, names, workspaces, openAgent, openWorkspace }: RowContext & { position: string; item: HeavyItem; time: string; long?: boolean }) {
   const c = theme.colors, workspace = findWorkspace(workspaces, item.directory);
   const titled = workspace !== null || item.directory !== null;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: c.border }}>
@@ -70,8 +72,11 @@ function Row({ theme, position, item, time, names, workspaces, openAgent, openWo
       <Title theme={theme} item={item} workspace={workspace} openWorkspace={openWorkspace} />
       {titled && item.id !== null ? <Text selectable numberOfLines={1} ellipsizeMode="middle" style={{ color: c.foregroundMuted }}>{item.id}</Text> : null}
       <Supervisor theme={theme} id={item.supervisor} names={names} openAgent={openAgent} />
+      {long || workspace?.pr != null ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 2 }}>
+        {long ? <Badge theme={theme} label="오래 실행 중" color={c.statusWarning} dot /> : null}
+        {workspace?.pr == null ? null : <Badge theme={theme} label={`PR #${workspace.pr}`} />}
+      </View> : null}
     </View>
-    {workspace?.pr == null ? null : <Badge theme={theme} label={`PR #${workspace.pr}`} />}
     {item.state === 'alive' ? null : <Badge theme={theme} label={dead(item) ? '끝남' : '확인 불가'} />}
     <Text style={{ color: c.foregroundMuted, fontVariant: ['tabular-nums'] }}>{time}</Text>
   </View>;
@@ -83,7 +88,8 @@ function Slot({ slot, now, ...context }: RowContext & { slot: HeavySlot; now: nu
   return <View>
     {slot.name === 'main' ? null : <Text style={{ color: c.foregroundMuted, fontWeight: '600', paddingTop: 8 }}>{slot.name === 'verifier' ? '검증 자리' : slot.name}</Text>}
     {slot.running ? <Row {...context} position="실행" item={slot.running}
-      time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)} />
+      time={slot.running.started === null ? '—' : duration(now / 1000 - slot.running.started)}
+      long={!dead(slot.running) && slot.running.started !== null && now / 1000 - slot.running.started > LONG_RUN_SECONDS} />
       : <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실행 중인 작업 없음</Text>}
     {items.length && !slot.turns ? <Text style={{ color: c.foregroundMuted, paddingVertical: 6 }}>실제 차례를 알 수 없어 등록 순서로 표시</Text> : null}
     {items.slice(0, SHOWN).map((item, index) => <Row key={`${item.id}:${index}`} {...context} position={item.id !== null && turns.has(item.id) ? `${index + 1}` : '·'} item={item} time={queued(item)} />)}

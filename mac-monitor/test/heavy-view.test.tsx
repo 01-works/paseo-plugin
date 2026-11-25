@@ -7,7 +7,7 @@ const hooks = vi.hoisted(() => ({ heavy: vi.fn(), list: vi.fn(), workspaces: vi.
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable' }));
 vi.mock('@getpaseo/plugin/client', async importOriginal => ({ ...await importOriginal<object>(), getPaseoClient: () => ({ agents: { list: hooks.list }, workspaces: { list: hooks.workspaces } }) }));
 vi.mock('../client/heavy-data', () => ({ useHeavy: hooks.heavy }));
-import { CARD_INTERVAL, HeavyCard, HeavyTrailing, SIDEBAR_INTERVAL, duration, heavySummary, orderedWaiting } from '../client/heavy';
+import { LONG_RUN_SECONDS, CARD_INTERVAL, HeavyCard, HeavyTrailing, SIDEBAR_INTERVAL, duration, heavySummary, orderedWaiting } from '../client/heavy';
 
 const theme = { colors: { foreground: '#eee', foregroundMuted: '#888', surface1: '#222', surface2: '#333', border: '#444', statusWarning: '#aa0' } } as never;
 const item = (id: string, queued: number | null, state = 'alive', supervisor: string | null = `sup-${id}`): HeavyItem => ({ id, pid: 1, directory: null, supervisor, queued, state });
@@ -108,6 +108,20 @@ it('예상 차례에 없는 줄에는 번호를 붙이지 않고, 이름 조회�
   const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
   expect(shown).toContain('1'); expect(shown).not.toContain('2');
   for (const value of ['·', '끝남', 'sup-A', '감독 확인 불가']) expect(shown).toContain(value);
+});
+
+it.each([[LONG_RUN_SECONDS, false], [LONG_RUN_SECONDS + 1, true]])('실행 중인 작업이 %s초 차례를 잡았을 때 오래 실행 중 표시: %s', async (held, marked) => {
+  hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000), started: now / 1000 - held } })]), failed: false });
+  const shown = texts(await render(<HeavyCard theme={theme} hostId="h" />));
+  expect(shown.includes('오래 실행 중')).toBe(marked);
+});
+
+it('오래 기다린 대기 작업이나 시작 시각을 모르는 작업에는 오래 실행 중을 붙이지 않는다', async () => {
+  hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000), started: null }, waiting: [item('A1', 0)], turns: ['A1'] })]), failed: false });
+  expect(texts(await render(<HeavyCard theme={theme} hostId="h" />))).not.toContain('오래 실행 중');
+  hooks.heavy.mockReturnValue({ data: ok([slot({ running: { ...item('RUN', 1000, 'dead:esrch'), started: now / 1000 - LONG_RUN_SECONDS * 2 } })]), failed: false });
+  await act(async () => renderer!.update(<HeavyCard theme={theme} hostId="h" />));
+  expect(texts(renderer!)).toContain('끝남'); expect(texts(renderer!)).not.toContain('오래 실행 중');
 });
 
 describe('HeavyTrailing', () => {
